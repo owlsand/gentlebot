@@ -1,53 +1,121 @@
-from __future__ import annotations
-import os
-from dotenv import load_dotenv
-load_dotenv()
+"""
+roles_cog.py – Behavior and Vanity Role Automation for Gentlebot
+================================================================
+Handles both reaction-based vanity roles and activity-based behavioral roles:
 
+Vanity Roles (single-choice)
+  🔥 Team Chaos
+  ☕️ Team Cozy
+  👀 Shadow Council
+  🧌 Team Goblin
+  📜 Team Sage
+  📢 Team Hype
+
+Behavioral Roles (auto-assigned):
+  • Ghost           – no posts in X days
+  • Threadlord      – ≥N long messages per period
+  • Builder         – first attachment/link in build channels
+  • Prompt Wizard   – top-level prompts count in DAILY_PING
+  • Money Gremlin   – message count in MONEY_TALK
+
+Admin Commands:
+  • !chaos_mvp @user – grant Chaos MVP for 7 days
+  • !mascot @user    – rotate Server Mascot for 7 days
+
+All IDs & thresholds come from **bot_config.py**.
+"""
+from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Set
+from typing import Set, Dict
 
 import discord
 from discord.ext import commands, tasks
 
-import bot_config as cfg  # pull ALL IDs / thresholds from here
+import bot_config as cfg
 
-# ─── Config aliases ─────────────────────────────────────────────────────────
-GUILD_ID: int                    = cfg.GUILD_ID
-DAILY_PING: int                  = cfg.DAILY_PING_CHANNEL
-MONEY_TALK: int                  = cfg.MONEY_TALK_CHANNEL
-BUILD_CHANNELS: Set[int]         = set(cfg.BUILD_CHANNELS)
+# ── Vanity Role Config ──────────────────────────────────────────────────────
+VANITY_CHANNEL: int = getattr(cfg, 'VANITY_CHANNEL', None)
+VANITY_MESSAGE_ID: int = getattr(cfg, 'VANITY_MESSAGE', None)
+VANITY_ROLES: Dict[str, int] = {
+    '🔥': cfg.ROLE_CHAOS,
+    '☕️': cfg.ROLE_COZY,
+    '👀': cfg.ROLE_SHADOW,
+    '🃏': cfg.ROLE_GOBLIN,
+    '🌿': cfg.ROLE_SAGE,
+    '📢': cfg.ROLE_HYPE,
+}
 
-ROLE_GHOST: int          = cfg.ROLE_GHOST
-ROLE_THREADLORD: int     = cfg.ROLE_THREADLORD
-ROLE_BUILDER: int        = cfg.ROLE_BUILDER
-ROLE_PROMPT_WIZARD: int  = cfg.ROLE_PROMPT_WIZARD
-ROLE_MONEY_GREMLIN: int  = cfg.ROLE_MONEY_GREMLIN
-ROLE_CHAOS_MVP: int      = cfg.ROLE_CHAOS_MVP
-ROLE_MASCOT: int         = cfg.ROLE_MASCOT
+# ── Behavioral Role Config ──────────────────────────────────────────────────
+GUILD_ID: int = cfg.GUILD_ID
+DAILY_PING: int = cfg.DAILY_PING_CHANNEL
+MONEY_TALK: int = cfg.MONEY_TALK_CHANNEL
+BUILD_CHANNELS: Set[int] = set(cfg.BUILD_CHANNELS)
 
-# thresholds (keep defaults but override in cfg if present)
-INACTIVE_DAYS: int           = getattr(cfg, "INACTIVE_DAYS", 30)
-THREADLORD_MIN_LEN: int      = getattr(cfg, "THREADLORD_MIN_LEN", 300)
-THREADLORD_REQUIRED: int     = getattr(cfg, "THREADLORD_REQUIRED", 3)
-PROMPT_WIZARD_WEEKLY: int    = getattr(cfg, "PROMPT_WIZARD_WEEKLY", 5)
-MONEY_GREMLIN_WEEKLY: int    = getattr(cfg, "MONEY_GREMLIN_WEEKLY", 5)
+ROLE_GHOST: int = cfg.ROLE_GHOST
+ROLE_THREADLORD: int = cfg.ROLE_THREADLORD
+ROLE_BUILDER: int = cfg.ROLE_BUILDER
+ROLE_PROMPT_WIZARD: int = cfg.ROLE_PROMPT_WIZARD
+ROLE_MONEY_GREMLIN: int = cfg.ROLE_MONEY_GREMLIN
+ROLE_CHAOS_MVP: int = cfg.ROLE_CHAOS_MVP
+ROLE_MASCOT: int = cfg.ROLE_MASCOT
 
-# ─── Cog implementation ────────────────────────────────────────────────────
+# thresholds (override in bot_config if desired)
+INACTIVE_DAYS: int = cfg.INACTIVE_DAYS
+THREADLORD_MIN_LEN: int = cfg.THREADLORD_MIN_LEN
+THREADLORD_REQUIRED: int = cfg.THREADLORD_REQUIRED
+PROMPT_WIZARD_WEEKLY: int = cfg.PROMPT_WIZARD_WEEKLY
+MONEY_GREMLIN_WEEKLY: int = cfg.MONEY_GREMLIN_WEEKLY
+
 class RoleCog(commands.Cog):
-    """Auto‑assigns social/behaviour roles based on activity patterns."""
+    """Manages vanity reaction roles and auto-assigns behavioral roles based on activity."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Debug: log configured vanity channel and message
+        print(f"[RoleCog] Configured VANITY_CHANNEL={VANITY_CHANNEL}, VANITY_MESSAGE_ID={VANITY_MESSAGE_ID}")
         self.last_activity: dict[int, datetime] = {}
         self.long_post_counts: defaultdict[int, int] = defaultdict(int)
         self.prompt_counts: defaultdict[int, int] = defaultdict(int)
         self.money_counts: defaultdict[int, int] = defaultdict(int)
-        self.builder_flagged: set[int] = set()
+        self.builder_flagged: Set[int] = set()
         self.maintenance_loop.start()
 
-    # ─── Listeners ───────────────────────────────────────────────────────
+    # ── Vanity Reaction Handlers ───────────────────────────────────────────────
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        print(f"[RoleCog] on_raw_reaction_add -> guild={payload.guild_id}, message={payload.message_id}, emoji={payload.emoji}")
+        if payload.guild_id != GUILD_ID or payload.message_id != VANITY_MESSAGE_ID:
+            return
+        emoji = str(payload.emoji)
+        if emoji not in VANITY_ROLES:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+        for em, rid in VANITY_ROLES.items():
+            if rid != VANITY_ROLES[emoji] and rid in [r.id for r in member.roles]:
+                await self._remove(member, rid)
+        role_id = VANITY_ROLES[emoji]
+        print(f"[RoleCog] Attempting vanity assign role_id={role_id} for emoji {emoji} to member {member.id}")
+        await self._assign(member, role_id)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+        if payload.guild_id != GUILD_ID or payload.message_id != VANITY_MESSAGE_ID:
+            return
+        emoji = str(payload.emoji)
+        if emoji not in VANITY_ROLES:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+        await self._remove(member, VANITY_ROLES[emoji])
+
+        # ── Activity Listeners ─────────────────────────────────────────────────────
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
         if msg.author.bot or msg.guild is None or msg.guild.id != GUILD_ID:
@@ -55,101 +123,129 @@ class RoleCog(commands.Cog):
         member_id = msg.author.id
         now = datetime.utcnow()
         self.last_activity[member_id] = now
+        # Immediately remove Ghost role when user becomes active
+        await self._remove(msg.author, ROLE_GHOST)
 
-        # Threadlord
+        # Threadlord: long messages
         if len(msg.content) >= THREADLORD_MIN_LEN:
             self.long_post_counts[member_id] += 1
             if self.long_post_counts[member_id] >= THREADLORD_REQUIRED:
                 await self._assign(msg.author, ROLE_THREADLORD)
 
-        # Prompt Wizard (top‑level prompts only)
+        # Prompt Wizard: top-level prompts in DAILY_PING
         if msg.channel.id == DAILY_PING and msg.reference is None:
             self.prompt_counts[member_id] += 1
+            # Auto-assign when threshold reached
+            if self.prompt_counts[member_id] >= PROMPT_WIZARD_WEEKLY:
+                await self._assign(msg.author, ROLE_PROMPT_WIZARD)
 
-        # Money Gremlin
+        # Money Gremlin: any msg in MONEY_TALK
         if msg.channel.id == MONEY_TALK:
             self.money_counts[member_id] += 1
+            # Auto-assign when threshold reached
+            if self.money_counts[member_id] >= MONEY_GREMLIN_WEEKLY:
+                await self._assign(msg.author, ROLE_MONEY_GREMLIN)
 
-        # Builder
+        # Builder: attachments or links in BUILD_CHANNELS
         if msg.channel.id in BUILD_CHANNELS and (msg.attachments or "http" in msg.content):
             if member_id not in self.builder_flagged:
                 await self._assign(msg.author, ROLE_BUILDER)
                 self.builder_flagged.add(member_id)
 
-    # ─── Background maintenance ──────────────────────────────────────────
-    @tasks.loop(hours=24)
+    # ── Background Maintenance ─────────────────────────────────────────────────
+    @tasks.loop(minutes=1)
     async def maintenance_loop(self):
         guild = self.bot.get_guild(GUILD_ID)
-        if guild is None:
+        if not guild:
             return
         now = datetime.utcnow()
-
-        for m in guild.members:
-            if m.bot:
+        # Ghost role still managed daily
+        for member in guild.members:
+            if member.bot:
                 continue
-            last_seen = self.last_activity.get(m.id)
-            if last_seen is None or (now - last_seen) > timedelta(days=INACTIVE_DAYS):
-                await self._assign(m, ROLE_GHOST)
+            last = self.last_activity.get(member.id)
+            if last is None or (now - last) > timedelta(days=INACTIVE_DAYS):
+                await self._assign(member, ROLE_GHOST)
             else:
-                await self._remove(m, ROLE_GHOST)
-
-        # Monday reset (UTC)
+                await self._remove(member, ROLE_GHOST)
+        # Weekly reset on Mondays (UTC)
         if now.weekday() == 0:
             self.long_post_counts.clear()
             self.builder_flagged.clear()
-            # rotate weekly roles
-            for m in guild.members:
-                await self._remove(m, ROLE_PROMPT_WIZARD)
-                await self._remove(m, ROLE_MONEY_GREMLIN)
-
-            # award based on counts
-            for uid, count in self.prompt_counts.items():
-                if count >= PROMPT_WIZARD_WEEKLY:
-                    member = guild.get_member(uid)
-                    if member:
-                        await self._assign(member, ROLE_PROMPT_WIZARD)
-            for uid, count in self.money_counts.items():
-                if count >= MONEY_GREMLIN_WEEKLY:
-                    member = guild.get_member(uid)
-                    if member:
-                        await self._assign(member, ROLE_MONEY_GREMLIN)
             self.prompt_counts.clear()
             self.money_counts.clear()
 
-    # ─── Admin commands ──────────────────────────────────────────────────
+    @tasks.loop(hours=24)
+    async def maintenance_loop(self):
+        guild = self.bot.get_guild(GUILD_ID)
+        if not guild:
+            return
+        now = datetime.utcnow()
+        for member in guild.members:
+            if member.bot:
+                continue
+            last = self.last_activity.get(member.id)
+            if last is None or (now - last) > timedelta(days=INACTIVE_DAYS):
+                await self._assign(member, ROLE_GHOST)
+            else:
+                await self._remove(member, ROLE_GHOST)
+        if now.weekday() == 0:
+            self.long_post_counts.clear()
+            self.builder_flagged.clear()
+            for uid, count in self.prompt_counts.items():
+                if count >= PROMPT_WIZARD_WEEKLY:
+                    m = guild.get_member(uid)
+                    if m:
+                        await self._assign(m, ROLE_PROMPT_WIZARD)
+            for uid, count in self.money_counts.items():
+                if count >= MONEY_GREMLIN_WEEKLY:
+                    m = guild.get_member(uid)
+                    if m:
+                        await self._assign(m, ROLE_MONEY_GREMLIN)
+            self.prompt_counts.clear()
+            self.money_counts.clear()
+
+    # ── Admin Commands ─────────────────────────────────────────────────────────
     @commands.command()
     @commands.has_permissions(manage_roles=True)
     async def chaos_mvp(self, ctx: commands.Context, member: discord.Member):
-        """Grant Chaos MVP for 7 days."""
         await self._assign(member, ROLE_CHAOS_MVP)
-        await ctx.send(f"{member.mention} crowned Chaos MVP for 7 days.")
+        await ctx.send(f"{member.mention} crowned Chaos MVP for 7 days.")
         await asyncio.sleep(7 * 86400)
         await self._remove(member, ROLE_CHAOS_MVP)
 
     @commands.command()
     @commands.has_permissions(manage_roles=True)
     async def mascot(self, ctx: commands.Context, member: discord.Member):
-        """Rotate Server Mascot role (7‑day tenure)."""
         guild = ctx.guild
         for m in guild.members:
             if discord.utils.get(m.roles, id=ROLE_MASCOT):
                 await self._remove(m, ROLE_MASCOT)
         await self._assign(member, ROLE_MASCOT)
-        await ctx.send(f"{member.mention} is now the Server Mascot! 🎉")
+        await ctx.send(f"{member.mention} is now the Server Mascot! 🎉")
         await asyncio.sleep(7 * 86400)
         await self._remove(member, ROLE_MASCOT)
 
-    # ─── Role helpers ────────────────────────────────────────────────────
+    # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
+        print(f"[RoleCog] Attempting to assign new role ({role_id}) to member ({member.id})")
         role = member.guild.get_role(role_id)
-        if role and role not in member.roles:
-            await member.add_roles(role, reason="Auto‑assign by RoleCog")
+        if not role:
+            print(f"[RoleCog] ERROR - role_id={role_id} not found in guild {member.guild.id}")
+            return
+        if role in member.roles:
+            print(f"[RoleCog] Member {member.id} already has role {role_id}")
+            return
+        try:
+            await member.add_roles(role, reason="RoleCog auto-assign")
+            print(f"[RoleCog] Successfully assigned role {role.name} ({role_id}) to member {member.id}")
+        except Exception as e:
+            print(f"[RoleCog] Failed assigning role {role_id} to {member.id}: {e}")
 
     async def _remove(self, member: discord.Member, role_id: int):
         role = member.guild.get_role(role_id)
         if role and role in member.roles:
-            await member.remove_roles(role, reason="Auto‑remove by RoleCog")
+            await member.remove_roles(role, reason="RoleCog auto-remove")
 
-# ─── Loader ─────────────────────────────────────────────────────────────
 async def setup(bot: commands.Bot):
     await bot.add_cog(RoleCog(bot))

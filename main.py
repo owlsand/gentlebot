@@ -9,13 +9,14 @@ intents.members         = True          # RoleCog needs this
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 async def load_cogs():
-    # await bot.load_extension("f1_cog")          # NEW class-based file
-    await bot.load_extension("market_cog")      # NEW class-based file
+    await bot.load_extension("f1_cog")
+    await bot.load_extension("market_cog")
     await bot.load_extension("roles_cog")
+    await bot.load_extension("prompt_cog")
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} ({bot.user.id})")
+    print(f"[Main] {bot.user} is now online in this guild")
 
 async def main():
     async with bot:
