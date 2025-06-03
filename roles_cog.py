@@ -74,7 +74,6 @@ class RoleCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         # Debug: log configured vanity channel and message
-        print(f"[RoleCog] Configured VANITY_CHANNEL={VANITY_CHANNEL}, VANITY_MESSAGE_ID={VANITY_MESSAGE_ID}")
         self.last_activity: dict[int, datetime] = {}
         self.long_post_counts: defaultdict[int, int] = defaultdict(int)
         self.prompt_counts: defaultdict[int, int] = defaultdict(int)
@@ -85,7 +84,6 @@ class RoleCog(commands.Cog):
     # ── Vanity Reaction Handlers ───────────────────────────────────────────────
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
-        print(f"[RoleCog] on_raw_reaction_add -> guild={payload.guild_id}, message={payload.message_id}, emoji={payload.emoji}")
         if payload.guild_id != GUILD_ID or payload.message_id != VANITY_MESSAGE_ID:
             return
         emoji = str(payload.emoji)

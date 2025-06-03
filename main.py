@@ -13,6 +13,7 @@ async def load_cogs():
     await bot.load_extension("market_cog")
     await bot.load_extension("roles_cog")
     await bot.load_extension("prompt_cog")
+    await bot.load_extension("huggingface_cog")
 
 @bot.event
 async def on_ready():
