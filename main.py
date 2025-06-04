@@ -1,19 +1,20 @@
-import asyncio, discord
+import asyncio
+from pathlib import Path
+import discord
 from discord.ext import commands
 import bot_config as cfg
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members         = True          # RoleCog needs this
+intents.members = True  # RoleCog needs this
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+class GentleBot(commands.Bot):
+    async def setup_hook(self):
+        cog_dir = Path(__file__).parent / "cogs"
+        for file in cog_dir.glob("*_cog.py"):
+            await self.load_extension(f"cogs.{file.stem}")
 
-async def load_cogs():
-    await bot.load_extension("f1_cog")
-    await bot.load_extension("market_cog")
-    await bot.load_extension("roles_cog")
-    await bot.load_extension("prompt_cog")
-    await bot.load_extension("huggingface_cog")
+bot = GentleBot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
@@ -21,7 +22,6 @@ async def on_ready():
 
 async def main():
     async with bot:
-        await load_cogs()
         await bot.start(cfg.TOKEN)
 
 if __name__ == "__main__":
