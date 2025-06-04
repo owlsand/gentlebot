@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pytz
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
 import pandas as pd
 
 import bot_config as cfg
@@ -158,6 +159,10 @@ class MarketCog(commands.Cog):
         except asyncio.TimeoutError:
             log.exception("Timeout retrieving earnings for %s", symbol)
             await itx.followup.send("Could not retrieve earnings data right now.")
+            return
+        except YFRateLimitError:
+            log.warning("Rate limit hit retrieving earnings for %s", symbol)
+            await itx.followup.send("Yahoo Finance rate limit reached. Please try again later.")
             return
         except Exception:
             log.exception("Error retrieving earnings for %s", symbol)
