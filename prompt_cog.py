@@ -5,12 +5,11 @@ Generates a rotating, AI-powered prompt each day via Hugging Face inference,
 posts to DAILY_PING on schedule, and provides a command to skip to a new prompt.
 
 Configuration in bot_config.py:
-  • DAILY_PING: channel ID for daily‑ping
+  • DAILY_PING_CHANNEL: channel ID for daily‑ping (must be an integer)
   • PROMPT_SCHEDULE_HOUR: (optional) local hour to schedule daily prompts
   • HF_API_TOKEN: required for HF inference
   • HF_MODEL: model ID for HF text-generation API
   • PROMPT_HISTORY_SIZE: how many past prompts to send as context
-  • PROMPT_TEST_INTERVAL: (optional) seconds interval for test runs
 
 Requires:
   • discord.py v2+
@@ -21,9 +20,10 @@ Requires:
 from __future__ import annotations
 import os
 import random
-from datetime import datetime, time, timezone
+import asyncio
+from datetime import datetime, time, timedelta
 from collections import deque
-from discord.ext import commands, tasks
+from discord.ext import commands
 from huggingface_hub import InferenceClient
 import bot_config as cfg
 from zoneinfo import ZoneInfo
@@ -31,7 +31,6 @@ from zoneinfo import ZoneInfo
 # Timezone for scheduling
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 8)
-DAILY_TIME = time(hour=SCHEDULE_HOUR, minute=0, tzinfo=LOCAL_TZ)
 
 # Fallback prompts
 FALLBACK_PROMPTS = [
@@ -58,21 +57,20 @@ PROMPT_TYPES = [
 ]
 
 class PromptCog(commands.Cog):
-    """Scheduled and on‑demand AI-powered prompt generator with type rotation."""
+    """Scheduled and on‑demand AI-powered prompt generator with type rotation and custom scheduler."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         size = getattr(cfg, 'PROMPT_HISTORY_SIZE', 5)
         self.history = deque(maxlen=size)
-        self.rotation_index = 0
-        # Start the appropriate loop in cog_load
+        # Start with a random prompt type index
+        self.rotation_index = random.randrange(len(PROMPT_TYPES))
+        self._scheduler_task = None
 
     def fetch_prompt(self) -> str:
         """Generate a new prompt via HF inference, including rotation and history."""
-        # Rotate type
         prompt_type = PROMPT_TYPES[self.rotation_index]
         self.rotation_index = (self.rotation_index + 1) % len(PROMPT_TYPES)
-        # Build messages
         messages = [
             {'role': 'system', 'content': 'You generate creative discussion prompts for a friendly Discord group. Your personality should be that of a robot butler with an almost imperceptibly subtle sardonic wit.'}
         ]
@@ -99,42 +97,59 @@ class PromptCog(commands.Cog):
                     self.history.append(prompt)
                     return prompt
             except Exception as e:
-                print(f"PromptCog: inference error: {e}")
-        # fallback
+                print(f"[PromptCog] inference error: {e}")
         prompt = random.choice(FALLBACK_PROMPTS)
         self.history.append(prompt)
         return prompt
 
-    # Conditional loop decorator
-    test_interval = os.getenv('PROMPT_TEST_INTERVAL')
-    if test_interval:
-        @tasks.loop(seconds=int(test_interval))
-        async def daily_task(self):
-            print(f"[PromptCog] test trigger at {datetime.now()}")
-            await self._send_prompt()
-    else:
-        @tasks.loop(time=DAILY_TIME)
-        async def daily_task(self):
-            print(f"[PromptCog] scheduled trigger at {datetime.now()} PST/PDT")
-            await self._send_prompt()
-
     async def _send_prompt(self):
-        channel = self.bot.get_channel(cfg.DAILY_PING_CHANNEL)
-        if not channel:
+        # Retrieve and cast channel ID
+        raw_channel = getattr(cfg, 'DAILY_PING_CHANNEL', None)
+        try:
+            channel_id = int(raw_channel) if raw_channel is not None else None
+        except (TypeError, ValueError):
+            print(f"[PromptCog] DAILY_PING_CHANNEL invalid: {raw_channel}")
             return
-        date_str = datetime.now(timezone.utc).strftime('%a, %b %d')
+        if channel_id is None:
+            print("[PromptCog] DAILY_PING_CHANNEL not set in config.")
+            return
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            print(f"[PromptCog] Unable to find channel with ID {channel_id}.")
+            return
         prompt = self.fetch_prompt()
         await channel.send(f"{prompt}")
 
+    async def _scheduler(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            now = datetime.now(LOCAL_TZ)
+            # Calculate next run at SCHEDULE_HOUR:00 local
+            next_run = now.replace(hour=SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            # Log next scheduled time
+            formatted = next_run.strftime("%I:%M:%S %p %Z").lstrip('0')
+            print(f"[PromptCog] Next prompt scheduled at {formatted}")
+            # Sleep until then
+            wait_seconds = (next_run - now).total_seconds()
+            await asyncio.sleep(wait_seconds)
+            # Time to send prompt
+            print(f"[PromptCog] firing scheduled prompt at {datetime.now(LOCAL_TZ):%I:%M:%S %p %Z}")
+            await self._send_prompt()
+            # Loop continues to schedule next day
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # Start scheduler once
+        if self._scheduler_task is None:
+            print("[PromptCog] Starting scheduler task.")
+            self._scheduler_task = self.bot.loop.create_task(self._scheduler())
+
     @commands.command(name='skip_prompt')
     async def skip_prompt(self, ctx: commands.Context):
-        date_str = datetime.now(timezone.utc).strftime('%a, %b %d')
         prompt = self.fetch_prompt()
         await ctx.send(f"{prompt}")
-
-    def cog_load(self):
-        # Start loop after cog is loaded
-        self.daily_task.start()
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PromptCog(bot))
