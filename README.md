@@ -15,11 +15,12 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 ```
 main.py            # bot entry point
 bot_config.py      # environment configuration and ID constants
-f1_cog.py          # Formula 1 commands
-market_cog.py      # stock/earnings commands
-roles_cog.py       # role automation
-prompt_cog.py      # daily prompts
-huggingface_cog.py # conversation + emoji reactions
+cogs/               # feature cogs
+  f1_cog.py         # Formula 1 commands
+  market_cog.py     # stock/earnings commands
+  roles_cog.py      # role automation
+  prompt_cog.py     # daily prompts
+  huggingface_cog.py # conversation + emoji reactions
 run_bot.sh         # run helper (prod)
 dev_run.sh         # auto-restart helper (dev)
 check_commands.sh  # verify /stock command registration
@@ -58,5 +59,4 @@ check_commands.sh  # verify /stock command registration
 
 ## Contributing
 
-Each cog is self‑contained.  To add a new feature, create a new cog file and load it in `load_cogs()` inside `main.py`.  Pull requests are welcome!
-
+Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
