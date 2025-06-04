@@ -66,9 +66,8 @@ class HuggingFaceCog(commands.Cog):
     async def on_ready(self):
         bot_id = self.bot.user.id
         self.mention_strs = [f"<@{bot_id}>", f"<@!{bot_id}>"]
-        # Register slash command and sync
+        # Sync slash commands once we're ready
         try:
-            self.bot.tree.add_command(self.ask)
             await self.bot.tree.sync()
             log.info("Slash commands synced on ready.")
         except Exception as e:
