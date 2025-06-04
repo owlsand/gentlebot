@@ -3,6 +3,7 @@ import logging
 
 import discord
 from discord.ext import commands
+import bot_config as cfg
 
 # Use the same logger as main.py so handlers are attached
 log = logging.getLogger("gentlebot")
@@ -12,6 +13,16 @@ class TestLoggingCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Log all slash commands once synced."""
+        try:
+            cmds = await self.bot.tree.sync(guild=discord.Object(id=cfg.GUILD_ID))
+            for cmd in cmds:
+                log.info("[TEST] Synced /%s", cmd.name)
+        except Exception as e:
+            log.exception("[TEST] Failed to sync slash commands: %s", e)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
