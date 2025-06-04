@@ -25,11 +25,10 @@ class StatsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         try:
-            self.bot.tree.add_command(self.engagement)
-            await self.bot.tree.sync(guild=discord.Object(id=cfg.GUILD_ID))
-            log.info("StatsCog slash command synced")
+            await self.bot.tree.sync()
+            log.info("Slash commands synced on ready.")
         except Exception as e:
-            log.exception("Failed to sync StatsCog commands: %s", e)
+            log.exception("Failed to sync commands: %s", e)
 
     async def _gather_stats(self, days: int = 7, per_channel: int = 1000):
         guild = self.bot.get_guild(cfg.GUILD_ID)
