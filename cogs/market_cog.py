@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 from datetime import datetime, time, timedelta
 from typing import Tuple
+import logging
 
 import discord
 from discord import app_commands
@@ -31,6 +32,8 @@ import yfinance as yf
 import pandas as pd
 
 import bot_config as cfg
+
+log = logging.getLogger(__name__)
 
 # ── ENV -------------------------------------------------------------------
 TOKEN    = cfg.TOKEN

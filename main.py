@@ -1,8 +1,25 @@
 import asyncio
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
 import discord
 from discord.ext import commands
+
 import bot_config as cfg
+
+# ─── Logging Setup ─────────────────────────────────────────────────────────
+logger = logging.getLogger("gentlebot")
+logger.setLevel(logging.INFO)
+log_format = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+file_handler = RotatingFileHandler("bot.log", maxBytes=1_000_000, backupCount=3)
+file_handler.setFormatter(log_format)
+logger.addHandler(file_handler)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_format)
+logger.addHandler(console_handler)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,11 +31,20 @@ class GentleBot(commands.Bot):
         for file in cog_dir.glob("*_cog.py"):
             await self.load_extension(f"cogs.{file.stem}")
 
+
 bot = GentleBot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"[Main] {bot.user} is now online in this guild")
+    logger.info("%s is now online in this guild", bot.user)
+
+@bot.event
+async def on_error(event: str, *args, **kwargs):
+    logger.exception("Unhandled exception in event %s", event)
+
+@bot.event
+async def on_command_error(ctx: commands.Context, exc: commands.CommandError):
+    logger.exception("Error in command '%s'", getattr(ctx.command, 'name', 'unknown'), exc_info=exc)
 
 async def main():
     async with bot:

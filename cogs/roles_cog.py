@@ -26,12 +26,15 @@ All IDs & thresholds come from **bot_config.py**.
 """
 from __future__ import annotations
 import asyncio
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Set, Dict
 
 import discord
 from discord.ext import commands, tasks
+
+log = logging.getLogger(__name__)
 
 import bot_config as cfg
 
@@ -98,7 +101,7 @@ class RoleCog(commands.Cog):
             if rid != VANITY_ROLES[emoji] and rid in [r.id for r in member.roles]:
                 await self._remove(member, rid)
         role_id = VANITY_ROLES[emoji]
-        print(f"[RoleCog] Attempting vanity assign role_id={role_id} for emoji {emoji} to member {member.id}")
+        log.info("Attempting vanity assign role_id=%s for emoji %s to member %s", role_id, emoji, member.id)
         await self._assign(member, role_id)
 
     @commands.Cog.listener()
@@ -227,19 +230,19 @@ class RoleCog(commands.Cog):
 
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
-        print(f"[RoleCog] Attempting to assign new role ({role_id}) to member ({member.id})")
+        log.info("Attempting to assign new role (%s) to member (%s)", role_id, member.id)
         role = member.guild.get_role(role_id)
         if not role:
-            print(f"[RoleCog] ERROR - role_id={role_id} not found in guild {member.guild.id}")
+            log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
             return
         if role in member.roles:
-            print(f"[RoleCog] Member {member.id} already has role {role_id}")
+            log.info("Member %s already has role %s", member.id, role_id)
             return
         try:
             await member.add_roles(role, reason="RoleCog auto-assign")
-            print(f"[RoleCog] Successfully assigned role {role.name} ({role_id}) to member {member.id}")
+            log.info("Successfully assigned role %s (%s) to member %s", role.name, role_id, member.id)
         except Exception as e:
-            print(f"[RoleCog] Failed assigning role {role_id} to {member.id}: {e}")
+            log.error("Failed assigning role %s to %s: %s", role_id, member.id, e)
 
     async def _remove(self, member: discord.Member, role_id: int):
         role = member.guild.get_role(role_id)

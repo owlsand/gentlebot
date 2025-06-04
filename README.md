@@ -23,7 +23,6 @@ cogs/               # feature cogs
   huggingface_cog.py # conversation + emoji reactions
 run_bot.sh         # run helper (prod)
 dev_run.sh         # auto-restart helper (dev)
-check_commands.sh  # verify /stock command registration
 ```
 
 ## Setup
@@ -49,14 +48,37 @@ check_commands.sh  # verify /stock command registration
    ```bash
    ./run_bot.sh
    ```
-   During development you can use `./dev_run.sh` for automatic restarts when files change (requires `watchdog`).
+During development you can use `./dev_run.sh` for automatic restarts when files change (requires `watchdog`).
+
+## Production Tips
+
+Logs are written to `bot.log` with rotation so they don't grow indefinitely.
+When deploying permanently, consider running the bot under a process manager
+like **systemd** so it restarts automatically on failure. A minimal service
+unit might look like:
+
+```ini
+[Service]
+WorkingDirectory=/path/to/gentlebot
+ExecStart=/path/to/gentlebot/venv/bin/python main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+On a Raspberry Pi 5 install common build prerequisites before `pip install`:
+
+```bash
+sudo apt update
+sudo apt install python3-dev build-essential libatlas-base-dev libffi-dev \
+    libssl-dev libjpeg-dev libopenjp2-7 libtiff5
+```
 
 ## Notes
 
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
 - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
-- `check_commands.sh` is a helper to confirm that the `/stock` command is registered with Discord.
-
 ## Contributing
 
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
