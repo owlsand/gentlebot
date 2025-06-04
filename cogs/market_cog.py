@@ -19,6 +19,7 @@ import io
 from datetime import datetime, time, timedelta
 from typing import Tuple
 import logging
+import asyncio
 
 import discord
 from discord import app_commands
@@ -141,14 +142,41 @@ class MarketCog(commands.Cog):
     @app_commands.describe(symbol="Ticker symbol")
     async def earnings(self, itx: discord.Interaction, symbol: str):
         log.info("/earnings invoked by %s in %s", itx.user.id, getattr(itx.channel, "name", itx.channel_id))
-        await itx.response.defer()
+        await itx.response.defer(thinking=True)
         tk = yf.Ticker(symbol.upper())
-        cal = tk.calendar
+        try:
+            cal, eps_est, rev_est = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: (
+                        tk.calendar,
+                        tk.earnings_estimate,
+                        tk.revenue_estimate,
+                    )
+                ),
+                timeout=10,
+            )
+        except asyncio.TimeoutError:
+            log.exception("Timeout retrieving earnings for %s", symbol)
+            await itx.followup.send("Could not retrieve earnings data right now.")
+            return
+        except Exception:
+            log.exception("Error retrieving earnings for %s", symbol)
+            await itx.followup.send("Could not retrieve earnings data right now.")
+            return
         if cal.empty or "Earnings Date" not in cal.index:
             await itx.followup.send("No upcoming earnings date found.")
             return
         date = cal.loc["Earnings Date"][0].to_pydatetime()
-        await itx.followup.send(f"Next earnings call for **{symbol.upper()}**: **{date:%Y‑%m‑%d}**")
+        msg = f"Next earnings call for **{symbol.upper()}**: **{date:%Y-%m-%d}**"
+        if not eps_est.empty and "avg" in eps_est.columns and "0q" in eps_est.index:
+            eps_val = eps_est.loc["0q"]["avg"]
+            if pd.notna(eps_val):
+                msg += f"\nAnalysts expect **EPS {eps_val:.2f}**"
+        if not rev_est.empty and "avg" in rev_est.columns and "0q" in rev_est.index:
+            rev_val = rev_est.loc["0q"]["avg"]
+            if pd.notna(rev_val):
+                msg += f", revenue **${rev_val/1e9:,.0f}B**"
+        await itx.followup.send(msg)
 
 # ─── Loader ────────────────────────────────────────────────────────────────
 async def setup(bot: commands.Bot):
