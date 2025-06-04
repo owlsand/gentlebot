@@ -20,8 +20,8 @@ class HuggingFaceCog(commands.Cog):
         # === Env/config ===
         self.hf_api_key = os.getenv("HF_API_TOKEN")
         self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.max_tokens = int(os.getenv("HF_MAX_TOKENS", 200))
-        self.temperature = float(os.getenv("HF_TEMPERATURE", 0.8))
+        self.max_tokens = int(os.getenv("HF_MAX_TOKENS", 150))
+        self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
         self.top_p = float(os.getenv("HF_TOP_P", 0.9))
 
         if not self.hf_api_key:
@@ -61,15 +61,15 @@ class HuggingFaceCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         bot_id = self.bot.user.id
-        self.mention_strs = [f"<@{bot_id}>", f"<@!{bot_id}>" ]
+        self.mention_strs = [f"<@{bot_id}>", f"<@!{bot_id}>"]
         # Register slash command and sync
         try:
             self.bot.tree.add_command(self.ask)
             await self.bot.tree.sync()
             print("[HuggingFaceCog] Slash commands synced on ready.")
         except Exception as e:
-            print(f"[HuggingFaceCog] Error syncing slash commands: {e}")
-        print(f"[HuggingFaceCog] Ready. mention_strs={self.mention_strs}")
+            pass
+        print(f"[HuggingFaceCog] Ready to interact with the guild.")
 
     def sanitize_prompt(self, raw: str) -> str | None:
         """
@@ -94,15 +94,28 @@ class HuggingFaceCog(commands.Cog):
 
     async def call_hf(self, channel_id: int, user_prompt: str) -> str:
         """
-        Build context with recent history + system directive, send to HF, update history.
+        Build context with channel info + recent history + system directive, send to HF, update history.
         """
+        # Fetch channel info for tone adjustment
+        channel = self.bot.get_channel(channel_id)
+        if isinstance(channel, discord.TextChannel):
+            channel_name = channel.name
+            channel_topic = channel.topic or "No description"
+            channel_info = f"This conversation is happening in the '{channel_name}' channel (topic/description: {channel_topic}). "
+        else:
+            channel_info = ""
+
         history = self.histories[channel_id]
 
         system_directive = (
-            "Please keep your response under 1900 characters to fit Discord's limits. "
-            "Finish your response with a complete sentence before stopping. Do not ask follow-up questions in your response. "
-            "Your personality should be that of a robot butler with an almost imperceptibly subtle sardonic wit."
+            f"{channel_info}"
+            "Please keep your response under 1900 characters to fit Discord's limits and finish your response with a complete sentence before stopping. "
+            "Speak like a helpful and concise British butler from the 1800's (but don't ever reference this directly) with a slight sardonic wit."
+            "Adapt your formality to the channel: be more formal in informational channels and more casual in informal channels."
+            "Never start your response with filler words or interjections like 'Ah' or 'Well'."
+            "Be concise and never ask follow-up questions."
         )
+
         messages = []
         messages.extend(history[-(self.max_turns * 2):])
         messages.append({"role": "system", "content": system_directive})
@@ -116,13 +129,14 @@ class HuggingFaceCog(commands.Cog):
             top_p=self.top_p
         )
 
-        reply = getattr(completion.choices[0].message, "content", "").strip()
+        reply = getattr(completion.choices[0].message, "content", "")
 
         history.append({"role": "user", "content": user_prompt})
         history.append({"role": "assistant", "content": reply})
         if len(history) > self.max_turns * 2:
             self.histories[channel_id] = history[-(self.max_turns * 2):]
 
+        print(f"[HuggingFaceCog] Response invoked in channel {channel_id} with prompt: {user_prompt}")
         return reply
 
     async def choose_emoji_hf(self, message_content: str, available_emojis: list[str]) -> str | None:
@@ -133,7 +147,7 @@ class HuggingFaceCog(commands.Cog):
         emoji_list_str = ", ".join(available_emojis)
         prompt = (
             f"Here is a list of emojis available in the server: {emoji_list_str}. "
-            f"Select one emoji from this list that best expresses how a robotic butler with a sardonic wit would react to the following message: '{message_content}'. Respond only with the emoji."
+            f"Select one emoji from this list that best expresses how a butler with a sardonic wit would react to the following message: '{message_content}'. Respond only with the emoji."
         )
         try:
             # Use dummy channel to avoid polluting histories
@@ -177,9 +191,9 @@ class HuggingFaceCog(commands.Cog):
             return
 
         prompt = None
+        parts = content.split()
 
         # 5) Direct mention: strip mention
-        parts = content.split()
         if parts and parts[0] in self.mention_strs:
             raw = content
             for mention in self.mention_strs:
@@ -187,18 +201,23 @@ class HuggingFaceCog(commands.Cog):
                     raw = raw.replace(mention, "", 1).strip()
                     break
             prompt = raw
+        # 6) Reply to bot: treat as prompt
         elif message.reference and isinstance(message.reference.resolved, discord.Message):
             ref_msg = message.reference.resolved
             if ref_msg.author.id == self.bot.user.id:
                 prompt = content
-        # 6) Ambient response: rare chance if not directed
-        elif random.random() < self.ambient_chance:
-            prompt = content
+        # 7) Ambient response: increased chance if 'gentlebot' mentioned, else rare chance
+        else:
+            if 'gentlebot' in content.lower():
+                if random.random() < self.mention_reaction_chance:
+                    prompt = content
+            elif random.random() < self.ambient_chance:
+                prompt = content
 
         if not prompt:
             return
 
-        # 7) Rate‑limit per user: wait instead of immediate reply
+        # 8) Rate‑limit per user: wait instead of immediate reply
         now = time.time()
         last = self.cooldowns[message.author.id]
         elapsed = now - last
@@ -207,21 +226,36 @@ class HuggingFaceCog(commands.Cog):
             await asyncio.sleep(wait_time)
         self.cooldowns[message.author.id] = time.time()
 
-                # 8) Sanitize prompt with awareness of ambient jump
-        if "prompt" in locals() and prompt:
-            if 'ambient_chance' in dir(self) and prompt == content and 'gentlebot' not in content.lower() and not (parts and parts[0] in self.mention_strs) and not (message.reference and isinstance(message.reference.resolved, discord.Message) and message.reference.resolved.author.id == self.bot.user.id):
-                # Ambient jump: prepend context note
-                user_prompt = f"You are unexpectedly inserting yourself into an ongoing conversation. The message you're reacting to is: '{prompt}'. Be concise."
-            else:
-                user_prompt = prompt
+        # 9) Build user_prompt, including last 5 messages if ambient
+        is_ambient = (
+            prompt == content
+            and 'gentlebot' not in content.lower()
+            and not (parts and parts[0] in self.mention_strs)
+            and not (message.reference and isinstance(message.reference.resolved, discord.Message) and message.reference.resolved.author.id == self.bot.user.id)
+        )
+        if is_ambient:
+            recent_msgs = []
+            async for m in message.channel.history(limit=6):
+                if m.id != message.id and not m.author.bot:
+                    recent_msgs.append(m.content.strip())
+                if len(recent_msgs) >= 5:
+                    break
+            recent_msgs.reverse()
+            context_str = "\n".join(recent_msgs)
+            user_prompt = (
+                f"You are jumping into an ongoing conversation that people probably don't want you involved in. Here are the last few messages:\n{context_str}\n"
+                f"Now react to the message: '{prompt}'"
+            )
         else:
-            return
+            user_prompt = prompt
+
+        # 10) Sanitize prompt
         sanitized = self.sanitize_prompt(user_prompt)
         if sanitized is None:
             await message.reply("❌ Invalid prompt: too long, empty, or disallowed mentions.")
             return
 
-        # 9) Typing indicator while fetching while fetching
+        # 11) Typing indicator while fetching
         async with message.channel.typing():
             try:
                 response = await self.call_hf(message.channel.id, sanitized)
@@ -229,7 +263,7 @@ class HuggingFaceCog(commands.Cog):
                 await message.reply(f"⚠️ HuggingFace error: {e}")
                 return
 
-        # 10) Paginate if needed
+        # 12) Paginate if needed
         if len(response) <= 2000:
             await message.reply(response)
         else:

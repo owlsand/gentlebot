@@ -4,6 +4,7 @@
 
 # Activate virtual environment
 source venv/bin/activate
+export env=TEST
 
 # Start the bot and auto-restart on Python file changes
 watchmedo auto-restart \
