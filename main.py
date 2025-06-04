@@ -38,6 +38,8 @@ class GentleBot(commands.Bot):
     async def setup_hook(self):
         cog_dir = Path(__file__).parent / "cogs"
         for file in cog_dir.glob("*_cog.py"):
+            if file.stem == "test_logging_cog" and not cfg.IS_TEST:
+                continue
             await self.load_extension(f"cogs.{file.stem}")
 
 
