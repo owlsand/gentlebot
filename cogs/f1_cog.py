@@ -18,6 +18,7 @@ Requires:
 from __future__ import annotations
 import os
 from datetime import datetime, timezone
+import logging
 
 import discord
 from discord import app_commands
@@ -28,6 +29,8 @@ import pytz
 from bs4 import BeautifulSoup
 
 import bot_config as cfg
+
+log = logging.getLogger(__name__)
 
 # Local timezone for display (fallback to UTC)
 LOCAL_TZ = pytz.timezone(os.getenv("LOCAL_TZ", "UTC"))

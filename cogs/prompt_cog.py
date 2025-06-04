@@ -21,12 +21,15 @@ from __future__ import annotations
 import os
 import random
 import asyncio
+import logging
 from datetime import datetime, time, timedelta
 from collections import deque
 from discord.ext import commands
 from huggingface_hub import InferenceClient
 import bot_config as cfg
 from zoneinfo import ZoneInfo
+
+log = logging.getLogger(__name__)
 
 # Timezone for scheduling
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
@@ -97,7 +100,7 @@ class PromptCog(commands.Cog):
                     self.history.append(prompt)
                     return prompt
             except Exception as e:
-                print(f"[PromptCog] inference error: {e}")
+                log.exception("inference error: %s", e)
         prompt = random.choice(FALLBACK_PROMPTS)
         self.history.append(prompt)
         return prompt
@@ -108,14 +111,14 @@ class PromptCog(commands.Cog):
         try:
             channel_id = int(raw_channel) if raw_channel is not None else None
         except (TypeError, ValueError):
-            print(f"[PromptCog] DAILY_PING_CHANNEL invalid: {raw_channel}")
+            log.error("DAILY_PING_CHANNEL invalid: %s", raw_channel)
             return
         if channel_id is None:
-            print("[PromptCog] DAILY_PING_CHANNEL not set in config.")
+            log.error("DAILY_PING_CHANNEL not set in config.")
             return
         channel = self.bot.get_channel(channel_id)
         if not channel:
-            print(f"[PromptCog] Unable to find channel with ID {channel_id}.")
+            log.error("Unable to find channel with ID %s", channel_id)
             return
         prompt = self.fetch_prompt()
         await channel.send(f"{prompt}")
@@ -130,12 +133,12 @@ class PromptCog(commands.Cog):
                 next_run += timedelta(days=1)
             # Log next scheduled time
             formatted = next_run.strftime("%I:%M:%S %p %Z").lstrip('0')
-            print(f"[PromptCog] Next prompt scheduled at {formatted}")
+            log.info("Next prompt scheduled at %s", formatted)
             # Sleep until then
             wait_seconds = (next_run - now).total_seconds()
             await asyncio.sleep(wait_seconds)
             # Time to send prompt
-            print(f"[PromptCog] firing scheduled prompt at {datetime.now(LOCAL_TZ):%I:%M:%S %p %Z}")
+            log.info("firing scheduled prompt at %s", datetime.now(LOCAL_TZ).strftime("%I:%M:%S %p %Z"))
             await self._send_prompt()
             # Loop continues to schedule next day
 
@@ -143,7 +146,7 @@ class PromptCog(commands.Cog):
     async def on_ready(self):
         # Start scheduler once
         if self._scheduler_task is None:
-            print("[PromptCog] Starting scheduler task.")
+            log.info("Starting scheduler task.")
             self._scheduler_task = self.bot.loop.create_task(self._scheduler())
 
     @commands.command(name='skip_prompt')

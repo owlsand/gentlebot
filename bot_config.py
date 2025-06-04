@@ -17,6 +17,7 @@ DISCORD_TOKEN_PROD=yyy
 You can also inject IDs via env‑vars if you’d rather not commit them.
 """
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -96,4 +97,4 @@ MONEY_GREMLIN_WEEKLY = int(os.getenv("MONEY_GREMLIN_WEEKLY", 5))
 PROMPT_SCHEDULE_HOUR = 8
 
 # Helper: convenience log line
-print(f"[BotConfig] Loaded {env} env for Guild {GUILD_ID}")
+logging.getLogger(__name__).info("Loaded %s env for Guild %s", env, GUILD_ID)

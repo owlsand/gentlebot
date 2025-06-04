@@ -5,12 +5,16 @@ import re
 import time
 import random
 import asyncio
+import logging
 from collections import defaultdict
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from huggingface_hub import InferenceClient
+
+
+log = logging.getLogger(__name__)
 
 
 class HuggingFaceCog(commands.Cog):
@@ -66,10 +70,10 @@ class HuggingFaceCog(commands.Cog):
         try:
             self.bot.tree.add_command(self.ask)
             await self.bot.tree.sync()
-            print("[HuggingFaceCog] Slash commands synced on ready.")
+            log.info("Slash commands synced on ready.")
         except Exception as e:
             pass
-        print(f"[HuggingFaceCog] Ready to interact with the guild.")
+        log.info("Ready to interact with the guild.")
 
     def sanitize_prompt(self, raw: str) -> str | None:
         """
@@ -136,7 +140,7 @@ class HuggingFaceCog(commands.Cog):
         if len(history) > self.max_turns * 2:
             self.histories[channel_id] = history[-(self.max_turns * 2):]
 
-        print(f"[HuggingFaceCog] Response invoked in channel {channel_id} with prompt: {user_prompt}")
+        log.info("Response invoked in channel %s with prompt: %s", channel_id, user_prompt)
         return reply
 
     async def choose_emoji_hf(self, message_content: str, available_emojis: list[str]) -> str | None:
