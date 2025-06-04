@@ -4,7 +4,8 @@ import logging
 import discord
 from discord.ext import commands
 
-log = logging.getLogger(__name__)
+# Use the same logger as main.py so handlers are attached
+log = logging.getLogger("gentlebot")
 
 class TestLoggingCog(commands.Cog):
     """Extra verbose logging for test environment."""
