@@ -72,7 +72,7 @@ class HuggingFaceCog(commands.Cog):
             await self.bot.tree.sync()
             log.info("Slash commands synced on ready.")
         except Exception as e:
-            pass
+            log.exception("Failed to sync commands: %s", e)
         log.info("Ready to interact with the guild.")
 
     def sanitize_prompt(self, raw: str) -> str | None:
@@ -160,7 +160,8 @@ class HuggingFaceCog(commands.Cog):
                 if emoji in response:
                     return emoji
             return None
-        except Exception:
+        except Exception as e:
+            log.exception("HF emoji selection failed: %s", e)
             return None
 
     @commands.Cog.listener()
@@ -187,8 +188,8 @@ class HuggingFaceCog(commands.Cog):
             emoji_to_use = emoji_resp if emoji_resp else random.choice(available)
             try:
                 await message.add_reaction(emoji_to_use)
-            except Exception:
-                pass
+            except Exception as e:
+                log.exception("Failed to add reaction: %s", e)
 
         # 4) Ensure mention_strs initialized
         if not self.mention_strs:
@@ -279,6 +280,7 @@ class HuggingFaceCog(commands.Cog):
     @app_commands.command(name="ask", description="Ask Gentlebot a question.")
     async def ask(self, interaction: discord.Interaction, prompt: str):
         """Slash command to ask Gentlebot a question."""
+        log.info("/ask invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
         await interaction.response.defer()
         sanitized = self.sanitize_prompt(prompt)
         if not sanitized:

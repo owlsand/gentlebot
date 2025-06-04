@@ -103,6 +103,7 @@ class MarketCog(commands.Cog):
     @app_commands.describe(symbol="Ticker symbol", period="Time period")
     @app_commands.choices(period=[app_commands.Choice(name=n, value=v) for n,v in period_choices])
     async def stock(self, itx: discord.Interaction, symbol: str, period: app_commands.Choice[str]):
+        log.info("/stock invoked by %s in %s", itx.user.id, getattr(itx.channel, "name", itx.channel_id))
         await itx.response.defer(thinking=True)
         symbol = symbol.upper()
         tk = yf.Ticker(symbol)
@@ -139,6 +140,7 @@ class MarketCog(commands.Cog):
     @app_commands.command(name="earnings", description="Next earnings date for a ticker")
     @app_commands.describe(symbol="Ticker symbol")
     async def earnings(self, itx: discord.Interaction, symbol: str):
+        log.info("/earnings invoked by %s in %s", itx.user.id, getattr(itx.channel, "name", itx.channel_id))
         await itx.response.defer()
         tk = yf.Ticker(symbol.upper())
         cal = tk.calendar

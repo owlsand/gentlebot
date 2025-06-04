@@ -211,6 +211,7 @@ class RoleCog(commands.Cog):
     @commands.command()
     @commands.has_permissions(manage_roles=True)
     async def chaos_mvp(self, ctx: commands.Context, member: discord.Member):
+        log.info("!chaos_mvp invoked by %s in %s for target %s", ctx.author.id, getattr(ctx.channel, "name", ctx.channel.id), member.id)
         await self._assign(member, ROLE_CHAOS_MVP)
         await ctx.send(f"{member.mention} crowned Chaos MVP for 7 days.")
         await asyncio.sleep(7 * 86400)
@@ -219,6 +220,7 @@ class RoleCog(commands.Cog):
     @commands.command()
     @commands.has_permissions(manage_roles=True)
     async def mascot(self, ctx: commands.Context, member: discord.Member):
+        log.info("!mascot invoked by %s in %s for target %s", ctx.author.id, getattr(ctx.channel, "name", ctx.channel.id), member.id)
         guild = ctx.guild
         for m in guild.members:
             if discord.utils.get(m.roles, id=ROLE_MASCOT):

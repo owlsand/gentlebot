@@ -75,7 +75,8 @@ class F1Cog(commands.Cog):
                         "round_num": round_num,
                     })
             return sorted(sessions, key=lambda s: s["utc"])
-        except Exception:
+        except Exception as e:
+            log.exception("Failed to fetch F1 schedule: %s", e)
             return []
 
     def fetch_f1_standings(self) -> tuple[list[dict], list[dict]]:
@@ -152,8 +153,8 @@ class F1Cog(commands.Cog):
                         if src.startswith('//'):
                             src = 'https:' + src
                         embed.set_image(url=src)
-            except Exception:
-                pass
+            except Exception as e:
+                log.exception("Failed to fetch track map: %s", e)
         # Session fields
         for s in weekend:
             # label + emoji
@@ -178,6 +179,7 @@ class F1Cog(commands.Cog):
     @app_commands.command(name="nextf1", description="Show the next F1 race weekend preview with track map")
     async def nextf1(self, interaction: discord.Interaction):
         """Show embed for next race weekend."""
+        log.info("/nextf1 invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
         await interaction.response.defer(thinking=True)
         now = datetime.now(timezone.utc)
         sessions = self.fetch_f1_schedule()
@@ -193,6 +195,7 @@ class F1Cog(commands.Cog):
 
     @app_commands.command(name="f1standings", description="Show current F1 driver & constructor standings")
     async def f1standings(self, interaction: discord.Interaction):
+        log.info("/f1standings invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
         await interaction.response.defer(thinking=True)
         drivers, constructors = self.fetch_f1_standings()
         if not drivers and not constructors:

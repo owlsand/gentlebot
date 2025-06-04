@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -10,7 +11,9 @@ import bot_config as cfg
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
 logger = logging.getLogger("gentlebot")
-logger.setLevel(logging.INFO)
+level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+level = getattr(logging, level_name, logging.INFO)
+logger.setLevel(level)
 log_format = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 file_handler = RotatingFileHandler("bot.log", maxBytes=1_000_000, backupCount=3)
@@ -20,6 +23,12 @@ logger.addHandler(file_handler)
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_format)
 logger.addHandler(console_handler)
+
+logger.info(
+    "Starting GentleBot in %s environment with level %s",
+    getattr(cfg, "env", "PROD"),
+    level_name,
+)
 
 intents = discord.Intents.default()
 intents.message_content = True
