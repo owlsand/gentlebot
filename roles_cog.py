@@ -79,7 +79,8 @@ class RoleCog(commands.Cog):
         self.prompt_counts: defaultdict[int, int] = defaultdict(int)
         self.money_counts: defaultdict[int, int] = defaultdict(int)
         self.builder_flagged: Set[int] = set()
-        self.maintenance_loop.start()
+        self.minute_maintenance.start()
+        self.daily_maintenance.start()
 
     # ── Vanity Reaction Handlers ───────────────────────────────────────────────
     @commands.Cog.listener()
@@ -152,7 +153,7 @@ class RoleCog(commands.Cog):
 
     # ── Background Maintenance ─────────────────────────────────────────────────
     @tasks.loop(minutes=1)
-    async def maintenance_loop(self):
+    async def minute_maintenance(self):
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
             return
@@ -174,7 +175,7 @@ class RoleCog(commands.Cog):
             self.money_counts.clear()
 
     @tasks.loop(hours=24)
-    async def maintenance_loop(self):
+    async def daily_maintenance(self):
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
             return
