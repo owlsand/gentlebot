@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import asyncio
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 import random
@@ -223,32 +224,20 @@ class StatsCog(commands.Cog):
         buf.seek(0)
         return buf
 
-    @app_commands.command(name="engagement", description="Show recent guild engagement stats")
-    @app_commands.describe(time_window="Time grouping", chart="Chart type")
-    @app_commands.choices(
-        time_window=[
-            app_commands.Choice(name="Days", value="days"),
-            app_commands.Choice(name="Weeks", value="weeks"),
-            app_commands.Choice(name="Months", value="months"),
-        ],
-        chart=[
-            app_commands.Choice(name="None", value="none"),
-            app_commands.Choice(name="Messages", value="messages"),
-            app_commands.Choice(name="Users", value="users"),
-            app_commands.Choice(name="Channels", value="channels"),
-        ],
-    )
-    async def engagement(
+    async def _engagement_background(
         self,
         interaction: discord.Interaction,
-        time_window: str = "days",
-        chart: app_commands.Choice[str] | None = None,
-    ):
-        log.info("/engagement invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        stats = await self._gather_stats(time_window)
+        time_window: str,
+        chart: app_commands.Choice[str] | None,
+    ) -> None:
+        """Gather stats in the background and send the resulting embed."""
+        stats = await self._gather_stats(time_window, per_channel=None)
         if not stats:
-            await interaction.followup.send("Guild not found.", ephemeral=True)
+            try:
+                await interaction.followup.send("Guild not found.", ephemeral=True)
+            except discord.HTTPException:
+                if interaction.channel:
+                    await interaction.channel.send("Guild not found.")
             return
 
         u_curr = stats["users_curr"]
@@ -288,13 +277,16 @@ class StatsCog(commands.Cog):
             f"Messages/Channel: {avg(msgs_curr, active_channels)} ({delta(avg(msgs_curr, active_channels), avg(msgs_prev, active_channels_prev))})",
         ]
 
-        # Highlights
         top_channel = max(ch_curr.items(), key=lambda x: x[1]) if ch_curr else (None, 0)
         quiet_channels = [c for c, cnt in ch_curr.items() if cnt == min(ch_curr.values())] if ch_curr else []
         quiet_channel = random.choice(quiet_channels) if quiet_channels else (None)
 
         top_member = max(u_curr.items(), key=lambda x: x[1]) if u_curr else (None, 0)
-        top_reactor = max(stats["reactions_sent_curr"].items(), key=lambda x: x[1]) if stats["reactions_sent_curr"] else (None, 0)
+        top_reactor = (
+            max(stats["reactions_sent_curr"].items(), key=lambda x: x[1])
+            if stats["reactions_sent_curr"]
+            else (None, 0)
+        )
         longest_msg = stats["longest"][0]
         longest_len = stats["longest"][1]
 
@@ -342,9 +334,46 @@ class StatsCog(commands.Cog):
                 buf = self._channels_chart_png(ch_curr)
             file = discord.File(buf, filename="activity.png")
             embed.set_image(url="attachment://activity.png")
-            await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+            try:
+                await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+            except discord.HTTPException:
+                if interaction.channel:
+                    await interaction.channel.send(embed=embed, file=file)
         else:
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            try:
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            except discord.HTTPException:
+                if interaction.channel:
+                    await interaction.channel.send(embed=embed)
+
+    @app_commands.command(name="engagement", description="Show recent guild engagement stats")
+    @app_commands.describe(time_window="Time grouping", chart="Chart type")
+    @app_commands.choices(
+        time_window=[
+            app_commands.Choice(name="Days", value="days"),
+            app_commands.Choice(name="Weeks", value="weeks"),
+            app_commands.Choice(name="Months", value="months"),
+        ],
+        chart=[
+            app_commands.Choice(name="None", value="none"),
+            app_commands.Choice(name="Messages", value="messages"),
+            app_commands.Choice(name="Users", value="users"),
+            app_commands.Choice(name="Channels", value="channels"),
+        ],
+    )
+    async def engagement(
+        self,
+        interaction: discord.Interaction,
+        time_window: str = "days",
+        chart: app_commands.Choice[str] | None = None,
+    ):
+        log.info(
+            "/engagement invoked by %s in %s",
+            interaction.user.id,
+            getattr(interaction.channel, "name", interaction.channel_id),
+        )
+        await interaction.response.send_message("Working on it...", ephemeral=True)
+        asyncio.create_task(self._engagement_background(interaction, time_window, chart))
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(StatsCog(bot))
