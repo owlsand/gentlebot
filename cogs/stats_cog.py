@@ -87,16 +87,13 @@ class StatsCog(commands.Cog):
                     # reactions on this message
                     for reaction in msg.reactions:
                         try:
-                            users = [u async for u in reaction.users()]
+                            count = reaction.count
                         except Exception as e:
-                            log.exception("Reaction fetch failed for %s: %s", reaction.message.id, e)
+                            log.exception("Reaction count failed for %s: %s", reaction.message.id, e)
                             continue
-                        count = len(users)
                         if target_curr:
                             reactions_curr += count
                             reactions_received_curr[msg.author] += count
-                            for u in users:
-                                reactions_sent_curr[u] += 1
                         else:
                             reactions_prev += count
             except Exception as e:
