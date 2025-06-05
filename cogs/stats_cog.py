@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import random
 import io
 import matplotlib
@@ -51,7 +51,7 @@ class StatsCog(commands.Cog):
             "months": 12 * 30,
         }[window]
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         after = now - timedelta(days=span_days * 2)
         start_current = now - timedelta(days=span_days)
 
