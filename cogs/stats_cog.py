@@ -244,12 +244,12 @@ class StatsCog(commands.Cog):
     async def engagement(
         self,
         interaction: discord.Interaction,
-        time_window: app_commands.Choice[str] = "days",
+        time_window: str = "days",
         chart: app_commands.Choice[str] | None = None,
     ):
         log.info("/engagement invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
         await interaction.response.defer(thinking=True, ephemeral=True)
-        stats = await self._gather_stats(time_window.value)
+        stats = await self._gather_stats(time_window)
         if not stats:
             await interaction.followup.send("Guild not found.", ephemeral=True)
             return
@@ -330,7 +330,7 @@ class StatsCog(commands.Cog):
             "months": "Engagement Stats (Last 12 months)",
         }
 
-        embed = discord.Embed(title=title_map[time_window.value], color=discord.Color.orange())
+        embed = discord.Embed(title=title_map[time_window], color=discord.Color.orange())
         embed.add_field(name="Metrics", value="\n".join(metrics), inline=False)
         if highlights:
             embed.add_field(name="Highlights", value="\n".join(highlights), inline=False)
@@ -338,9 +338,9 @@ class StatsCog(commands.Cog):
         if chart and chart.value != "none":
             periods = sorted(stats["period_msgs"].keys())
             if chart.value == "messages":
-                buf = self._messages_chart_png(stats["period_msgs"], periods, time_window.value)
+                buf = self._messages_chart_png(stats["period_msgs"], periods, time_window)
             elif chart.value == "users":
-                buf = self._users_chart_png(stats["period_active"], periods, time_window.value)
+                buf = self._users_chart_png(stats["period_active"], periods, time_window)
             elif chart.value == "channels":
                 buf = self._channels_chart_png(ch_curr)
             file = discord.File(buf, filename="activity.png")
