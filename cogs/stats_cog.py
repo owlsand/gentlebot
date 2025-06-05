@@ -244,7 +244,7 @@ class StatsCog(commands.Cog):
     async def engagement(
         self,
         interaction: discord.Interaction,
-        time_window: app_commands.Choice[str] = app_commands.Choice(name="Days", value="days"),
+        time_window: app_commands.Choice[str] = "days",
         chart: app_commands.Choice[str] | None = None,
     ):
         log.info("/engagement invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
