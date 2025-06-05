@@ -87,7 +87,7 @@ class StatsCog(commands.Cog):
                     # reactions on this message
                     for reaction in msg.reactions:
                         try:
-                            users = await reaction.users().flatten()
+                            users = [u async for u in reaction.users()]
                         except Exception as e:
                             log.exception("Reaction fetch failed for %s: %s", reaction.message.id, e)
                             continue
