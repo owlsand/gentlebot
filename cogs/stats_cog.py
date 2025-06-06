@@ -228,7 +228,7 @@ class StatsCog(commands.Cog):
         stats = await self._gather_stats(time_window, per_channel=None)
         if not stats:
             try:
-                await interaction.followup.send("Guild not found.", ephemeral=True)
+                await interaction.followup.send("Guild not found.")
             except discord.HTTPException:
                 if interaction.channel:
                     await interaction.channel.send("Guild not found.")
@@ -329,13 +329,13 @@ class StatsCog(commands.Cog):
             file = discord.File(buf, filename="activity.png")
             embed.set_image(url="attachment://activity.png")
             try:
-                await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+                await interaction.followup.send(embed=embed, file=file)
             except discord.HTTPException:
                 if interaction.channel:
                     await interaction.channel.send(embed=embed, file=file)
         else:
             try:
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed)
             except discord.HTTPException:
                 if interaction.channel:
                     await interaction.channel.send(embed=embed)
@@ -366,7 +366,7 @@ class StatsCog(commands.Cog):
             interaction.user.id,
             chan_name(interaction.channel),
         )
-        await interaction.response.send_message("Working on it...", ephemeral=True)
+        await interaction.response.send_message("Working on it...")
         asyncio.create_task(self._engagement_background(interaction, time_window, chart))
 
 async def setup(bot: commands.Bot):
