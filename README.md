@@ -6,6 +6,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 
 - **F1Cog** – `/nextf1` and `/f1standings` commands show upcoming Formula 1 sessions and current standings.
 - **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
+- **MarketMoodCog** – posts a "Market Mood Ring" summary each U.S. trading day at market open.
 - **RolesCog** – Manages vanity reaction roles and activity‑based roles.
 - **PromptCog** – Posts a daily prompt generated via the Hugging Face API.
 - **HuggingFaceCog** – Adds AI conversation and emoji reactions using Hugging Face models.
@@ -21,6 +22,7 @@ bot_config.py      # environment configuration and ID constants
 cogs/               # feature cogs
   f1_cog.py         # Formula 1 commands
   market_cog.py     # stock/earnings commands
+  market_mood_cog.py # daily market sentiment
   roles_cog.py      # role automation
   prompt_cog.py     # daily prompts
   huggingface_cog.py # conversation + emoji reactions
@@ -39,14 +41,17 @@ dev_run.sh         # auto-restart helper (dev)
    ```
 3. Install dependencies:
    ```bash
-   pip install discord.py requests python-dateutil pytz beautifulsoup4 \
-       yfinance matplotlib pandas huggingface-hub watchdog
+   pip install -r requirements.txt
+   pip install python-dateutil pytz beautifulsoup4 yfinance matplotlib pandas \
+       huggingface-hub watchdog
    ```
 4. Create a `.env` file with your bot token and other IDs (see `bot_config.py` for variables).  Example:
    ```ini
    DISCORD_TOKEN=<your bot token>
    DISCORD_APPLICATION_ID=<app id>
    DISCORD_GUILD_ID=<guild id>
+   ALPHA_VANTAGE_KEY=<alpha vantage api key>
+   MONEY_TALK_CHANNEL=<market mood channel id>
    ```
 5. Run the bot:
    ```bash
