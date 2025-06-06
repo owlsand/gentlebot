@@ -31,15 +31,6 @@ class StatsCog(commands.Cog):
         if window == "months":
             return date(dt.year, dt.month, 1)
         return dt.date()
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        try:
-            await self.bot.tree.sync()
-            log.info("Slash commands synced on ready.")
-        except Exception as e:
-            log.exception("Failed to sync commands: %s", e)
-
     async def _gather_stats(self, window: str, per_channel: int = 1000):
         """Collect message, reaction and event stats for the given time window."""
         guild = self.bot.get_guild(cfg.GUILD_ID)

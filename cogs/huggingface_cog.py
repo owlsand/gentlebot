@@ -66,12 +66,6 @@ class HuggingFaceCog(commands.Cog):
     async def on_ready(self):
         bot_id = self.bot.user.id
         self.mention_strs = [f"<@{bot_id}>", f"<@!{bot_id}>"]
-        # Sync slash commands once we're ready
-        try:
-            await self.bot.tree.sync()
-            log.info("Slash commands synced on ready.")
-        except Exception as e:
-            log.exception("Failed to sync commands: %s", e)
         log.info("Ready to interact with the guild.")
 
     def sanitize_prompt(self, raw: str) -> str | None:

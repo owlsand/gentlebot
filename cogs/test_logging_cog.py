@@ -16,13 +16,9 @@ class TestLoggingCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        """Log all slash commands once synced."""
-        try:
-            cmds = await self.bot.tree.sync(guild=discord.Object(id=cfg.GUILD_ID))
-            for cmd in cmds:
-                log.info("[TEST] Synced /%s", cmd.name)
-        except Exception as e:
-            log.exception("[TEST] Failed to sync slash commands: %s", e)
+        """Log all registered slash commands."""
+        for cmd in self.bot.tree.get_commands():
+            log.info("[TEST] Loaded /%s", cmd.name)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
