@@ -15,6 +15,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import bot_config as cfg
+from util import chan_name
 
 log = logging.getLogger(__name__)
 
@@ -88,19 +89,21 @@ class StatsCog(commands.Cog):
                             reactions_received_curr[msg.author] += count
                         else:
                             reactions_prev += count
+            except discord.Forbidden as e:
+                log.warning("History fetch failed for channel %s: %s", chan_name(channel), e)
             except Exception as e:
-                log.exception("History fetch failed for channel %s: %s", channel.id, e)
+                log.exception("History fetch failed for channel %s: %s", chan_name(channel), e)
 
         per_period_active = {d: len(u) for d, u in per_period_users.items()}
 
         events_curr = 0
         events_prev = 0
         for event in guild.scheduled_events:
-            if not event.scheduled_start_time:
+            if not event.start_time:
                 continue
-            if event.scheduled_start_time >= start_current:
+            if event.start_time >= start_current:
                 events_curr += 1
-            elif event.scheduled_start_time >= after:
+            elif event.start_time >= after:
                 events_prev += 1
 
         return {
@@ -361,7 +364,7 @@ class StatsCog(commands.Cog):
         log.info(
             "/engagement invoked by %s in %s",
             interaction.user.id,
-            getattr(interaction.channel, "name", interaction.channel_id),
+            chan_name(interaction.channel),
         )
         await interaction.response.send_message("Working on it...", ephemeral=True)
         asyncio.create_task(self._engagement_background(interaction, time_window, chart))

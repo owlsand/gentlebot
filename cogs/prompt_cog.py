@@ -25,6 +25,7 @@ import logging
 from datetime import datetime, time, timedelta
 from collections import deque
 from discord.ext import commands
+from util import chan_name
 from huggingface_hub import InferenceClient
 import bot_config as cfg
 from zoneinfo import ZoneInfo
@@ -151,7 +152,7 @@ class PromptCog(commands.Cog):
 
     @commands.command(name='skip_prompt')
     async def skip_prompt(self, ctx: commands.Context):
-        log.info("skip_prompt invoked by %s in %s", ctx.author.id, getattr(ctx.channel, "name", ctx.channel.id))
+        log.info("skip_prompt invoked by %s in %s", ctx.author.id, chan_name(ctx.channel))
         prompt = self.fetch_prompt()
         await ctx.send(f"{prompt}")
 

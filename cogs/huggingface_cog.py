@@ -11,6 +11,7 @@ from collections import defaultdict
 import discord
 from discord import app_commands
 from discord.ext import commands
+from util import chan_name
 from huggingface_hub import InferenceClient
 
 
@@ -133,7 +134,7 @@ class HuggingFaceCog(commands.Cog):
         if len(history) > self.max_turns * 2:
             self.histories[channel_id] = history[-(self.max_turns * 2):]
 
-        log.info("Response invoked in channel %s with prompt: %s", channel_id, user_prompt)
+        log.info("Response invoked in channel %s with prompt: %s", chan_name(channel), user_prompt)
         return reply
 
     async def choose_emoji_hf(self, message_content: str, available_emojis: list[str]) -> str | None:
@@ -273,7 +274,7 @@ class HuggingFaceCog(commands.Cog):
     @app_commands.command(name="ask", description="Ask Gentlebot a question.")
     async def ask(self, interaction: discord.Interaction, prompt: str):
         """Slash command to ask Gentlebot a question."""
-        log.info("/ask invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
+        log.info("/ask invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
         await interaction.response.defer()
         sanitized = self.sanitize_prompt(prompt)
         if not sanitized:

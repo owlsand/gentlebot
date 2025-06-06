@@ -23,6 +23,7 @@ import logging
 import discord
 from discord import app_commands
 from discord.ext import commands
+from util import chan_name
 import requests
 from dateutil import parser
 import pytz
@@ -179,7 +180,7 @@ class F1Cog(commands.Cog):
     @app_commands.command(name="nextf1", description="Show the next F1 race weekend preview with track map")
     async def nextf1(self, interaction: discord.Interaction):
         """Show embed for next race weekend."""
-        log.info("/nextf1 invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
+        log.info("/nextf1 invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
         await interaction.response.defer(thinking=True)
         now = datetime.now(timezone.utc)
         sessions = self.fetch_f1_schedule()
@@ -195,7 +196,7 @@ class F1Cog(commands.Cog):
 
     @app_commands.command(name="f1standings", description="Show current F1 driver & constructor standings")
     async def f1standings(self, interaction: discord.Interaction):
-        log.info("/f1standings invoked by %s in %s", interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
+        log.info("/f1standings invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
         await interaction.response.defer(thinking=True)
         drivers, constructors = self.fetch_f1_standings()
         if not drivers and not constructors:
