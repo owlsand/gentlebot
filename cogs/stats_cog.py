@@ -88,6 +88,8 @@ class StatsCog(commands.Cog):
                             reactions_received_curr[msg.author] += count
                         else:
                             reactions_prev += count
+            except discord.Forbidden as e:
+                log.warning("History fetch failed for channel %s: %s", channel.id, e)
             except Exception as e:
                 log.exception("History fetch failed for channel %s: %s", channel.id, e)
 
@@ -96,11 +98,11 @@ class StatsCog(commands.Cog):
         events_curr = 0
         events_prev = 0
         for event in guild.scheduled_events:
-            if not event.scheduled_start_time:
+            if not event.start_time:
                 continue
-            if event.scheduled_start_time >= start_current:
+            if event.start_time >= start_current:
                 events_curr += 1
-            elif event.scheduled_start_time >= after:
+            elif event.start_time >= after:
                 events_prev += 1
 
         return {
