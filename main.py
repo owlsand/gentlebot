@@ -45,9 +45,19 @@ class GentleBot(commands.Bot):
 
 bot = GentleBot(command_prefix="!", intents=intents)
 
+_synced = False
+
 @bot.event
 async def on_ready():
+    global _synced
     logger.info("%s is now online in this guild", bot.user)
+    if not _synced:
+        try:
+            cmds = await bot.tree.sync()
+            logger.info("Synced %d commands.", len(cmds))
+        except Exception as e:
+            logger.exception("Failed to sync commands: %s", e)
+        _synced = True
 
 @bot.event
 async def on_error(event: str, *args, **kwargs):
