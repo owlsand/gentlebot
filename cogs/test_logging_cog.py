@@ -3,6 +3,7 @@ import logging
 
 import discord
 from discord.ext import commands
+from util import chan_name
 import bot_config as cfg
 
 # Use the same logger as main.py so handlers are attached
@@ -25,13 +26,13 @@ class TestLoggingCog(commands.Cog):
         if interaction.type is discord.InteractionType.application_command:
             data = interaction.data or {}
             name = data.get("name")
-            log.info("[TEST] Slash command /%s by %s in %s", name, interaction.user.id, getattr(interaction.channel, "name", interaction.channel_id))
+            log.info("[TEST] Slash command /%s by %s in %s", name, interaction.user.id, chan_name(interaction.channel))
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
-        log.info("[TEST] Message from %s in %s: %s", message.author.id, getattr(message.channel, "name", message.channel.id), message.content.replace('\n', ' '))
+        log.info("[TEST] Message from %s in %s: %s", message.author.id, chan_name(message.channel), message.content.replace('\n', ' '))
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
@@ -40,7 +41,7 @@ class TestLoggingCog(commands.Cog):
             str(payload.emoji),
             payload.user_id,
             payload.message_id,
-            payload.channel_id,
+            chan_name(self.bot.get_channel(payload.channel_id)),
         )
 
 async def setup(bot: commands.Bot):
