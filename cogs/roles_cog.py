@@ -249,8 +249,16 @@ class RoleCog(commands.Cog):
 
     async def _remove(self, member: discord.Member, role_id: int):
         role = member.guild.get_role(role_id)
-        if role and role in member.roles:
+        if not role:
+            log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
+            return
+        if role not in member.roles:
+            return
+        try:
             await member.remove_roles(role, reason="RoleCog auto-remove")
+            log.info("Successfully removed role %s (%s) from member %s", role.name, role_id, member.id)
+        except Exception as e:
+            log.error("Failed removing role %s from %s: %s", role_id, member.id, e)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(RoleCog(bot))
