@@ -1,7 +1,10 @@
 # Dockerfile for Gentlebot on Raspberry Pi
 # Uses Python 3 on Debian and installs system build deps
 
-FROM arm64v8/python:3.11-slim-bookworm
+# Use the official multi-arch Python image so the Docker build works for both
+# amd64 and arm64 targets. The previous arm64v8-only image caused build errors
+# when GitHub Actions attempted to build for multiple platforms.
+FROM python:3.11-slim-bookworm
 
 # Install build tools and libraries required by Pillow and Matplotlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
