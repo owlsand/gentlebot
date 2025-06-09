@@ -1,9 +1,7 @@
 # Gentlebot
-
 Gentlebot is a modular Discord bot composed of several **cogs** that handle different features.  It uses `discord.py` v2 and integrates with third‑party APIs such as Hugging Face and Yahoo Finance.
 
 ## Features
-
 - **F1Cog** – `/nextf1` and `/f1standings` commands show upcoming Formula 1 sessions and current standings.
 - **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
 - **MarketMoodCog** – posts a "Market Mood Ring" summary each U.S. trading day at market open.
@@ -15,7 +13,6 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
   activity chart.
 
 ## Repository Layout
-
 ```
 main.py            # bot entry point
 bot_config.py      # environment configuration and ID constants
@@ -32,7 +29,6 @@ dev_run.sh         # auto-restart helper (dev)
 ```
 
 ## Setup
-
 1. Install Python 3.10 or newer.
 2. Create and activate a virtual environment:
    ```bash
@@ -59,33 +55,7 @@ dev_run.sh         # auto-restart helper (dev)
    ```
 During development you can use `./dev_run.sh` for automatic restarts when files change (requires `watchdog`).
 
-## Production Tips
-
-Logs are written to `bot.log` with rotation so they don't grow indefinitely.
-When deploying permanently, consider running the bot under a process manager
-like **systemd** so it restarts automatically on failure. A minimal service
-unit might look like:
-
-```ini
-[Service]
-WorkingDirectory=/path/to/gentlebot
-ExecStart=/path/to/gentlebot/venv/bin/python main.py
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-On a Raspberry Pi 5 install common build prerequisites before `pip install`:
-
-```bash
-sudo apt update
-sudo apt install python3-dev build-essential libatlas-base-dev libffi-dev \
-    libssl-dev libjpeg-dev libopenjp2-7 libtiff5
-```
-
 ## Docker
-
 You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`
 is provided. Build the image and pass your `.env` file at runtime:
 
@@ -95,7 +65,6 @@ docker run --env-file .env --rm gentlebot
 ```
 
 ### GitHub Actions
-
 A workflow in `.github/workflows/docker-image.yml` automatically builds and
 pushes a multi-architecture image to **GitHub Container Registry** whenever the
 `main` branch is updated. The image is tagged with `latest` and the commit SHA.
@@ -107,9 +76,8 @@ docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
 ```
 
 ## Notes
-
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
 - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
-## Contributing
 
+## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
