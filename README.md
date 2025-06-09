@@ -84,6 +84,28 @@ sudo apt install python3-dev build-essential libatlas-base-dev libffi-dev \
     libssl-dev libjpeg-dev libopenjp2-7 libtiff5
 ```
 
+## Docker
+
+You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`
+is provided. Build the image and pass your `.env` file at runtime:
+
+```bash
+docker build -t gentlebot .
+docker run --env-file .env --rm gentlebot
+```
+
+### GitHub Actions
+
+A workflow in `.github/workflows/docker-image.yml` automatically builds and
+pushes a multi-architecture image to **GitHub Container Registry** whenever the
+`main` branch is updated. The image is tagged with `latest` and the commit SHA.
+You can pull and run the prebuilt container instead of building locally:
+
+```bash
+docker pull ghcr.io/<owner>/<repo>:latest
+docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
+```
+
 ## Notes
 
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
