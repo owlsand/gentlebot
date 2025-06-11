@@ -11,6 +11,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 - **StatsCog** – `/engagement` now replies "Working on it..." and then gathers
   unlimited history in the background before posting the stats and optional
   activity chart.
+- **VersionCog** – `/version` prints the current commit hash for debugging.
 
 ## Repository Layout
 ```
