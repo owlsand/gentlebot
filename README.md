@@ -40,7 +40,7 @@ dev_run.sh         # auto-restart helper (dev)
    ```bash
    pip install -r requirements.txt
    pip install python-dateutil pytz beautifulsoup4 yfinance matplotlib pandas \
-       huggingface-hub watchdog
+       timezonefinder huggingface-hub watchdog
    ```
 4. Create a `.env` file with your bot token and other IDs (see `bot_config.py` for variables).  Example:
    ```ini

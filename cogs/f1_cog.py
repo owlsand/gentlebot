@@ -10,7 +10,7 @@ Slash commands:
 
 Requires:
   • discord.py v2+
-  • requests, python-dateutil, pytz, bs4
+  • requests, python-dateutil, pytz, bs4, timezonefinder
   • Bot_config with GUILD_ID
   • ENV var F1_SCHEDULE_URL (optional override)
 """
@@ -27,14 +27,20 @@ from util import chan_name
 import requests
 from dateutil import parser
 import pytz
+from timezonefinder import TimezoneFinder
 from bs4 import BeautifulSoup
 
+# ── time zones --------------------------------------------------------------
 import bot_config as cfg
 
 log = logging.getLogger(__name__)
 
 # Local timezone for display (fallback to UTC)
 LOCAL_TZ = pytz.timezone(os.getenv("LOCAL_TZ", "UTC"))
+# Pacific time for schedule comparison
+PST_TZ = pytz.timezone("America/Los_Angeles")
+# Finder for track locales
+TF = TimezoneFinder()
 # Map session names to emojis
 SESSION_EMOJI = {
     "Free Practice 1": "🛠",
@@ -63,14 +69,20 @@ class F1Cog(commands.Cog):
                 location_name = race.get("location")
                 slug = race.get("slug", "")
                 round_num = race.get("round")
+                lat = race.get("latitude")
+                lon = race.get("longitude")
+                race_tz_name = TF.timezone_at(lng=lon, lat=lat)
+                race_tz = pytz.timezone(race_tz_name) if race_tz_name else pytz.UTC
                 for session_name, iso in race.get("sessions", {}).items():
                     dt_utc = parser.isoparse(iso).astimezone(pytz.UTC)
-                    dt_local = dt_utc.astimezone(LOCAL_TZ)
+                    dt_local = dt_utc.astimezone(race_tz)
+                    dt_pst = dt_utc.astimezone(PST_TZ)
                     sessions.append({
                         "round": round_name,
                         "slug": slug,
                         "session": session_name,
                         "utc": dt_utc,
+                        "pst": dt_pst,
                         "local": dt_local,
                         "location": location_name,
                         "round_num": round_num,
@@ -131,8 +143,8 @@ class F1Cog(commands.Cog):
         # Title
         title_base = f"Next F1 Race: {round_name}" if embed_type != 'notification' else f"Upcoming Race: {round_name}"
         if gp:
-            gp_time = gp['local'].strftime('%a, %B %d').replace(' 0', ' ')
-            title = f"{title_base} ({gp_time})"
+            gp_time = gp['pst'].strftime('%a, %B %d').replace(' 0', ' ')
+            title = f"{title_base} ({gp_time} PST)"
         else:
             title = title_base
         embed = discord.Embed(title=title, color=discord.Color.blue())
@@ -170,8 +182,13 @@ class F1Cog(commands.Cog):
             else:
                 label = lbl_key.capitalize()
             emoji = SESSION_EMOJI.get(label, '')
-            local_str = s['local'].strftime('%A, %B %d, %I:%M%p').replace(' 0', ' ')
-            embed.add_field(name=f"{label} {emoji}", value=local_str, inline=False)
+            pst_str = s['pst'].strftime('%A, %B %d, %I:%M%p').replace(' 0', ' ')
+            loc_str = s['local'].strftime('%A, %B %d, %I:%M%p').replace(' 0', ' ')
+            embed.add_field(
+                name=f"{label} {emoji}",
+                value=f"{pst_str} PST / {loc_str} local",
+                inline=False,
+            )
         # Footer
         updated_str = datetime.now(LOCAL_TZ).strftime('%A, %B %d, %I:%M%p').replace(' 0', ' ')
         embed.set_footer(text=f"Last updated: {updated_str}")
