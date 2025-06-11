@@ -128,8 +128,17 @@ class MarketMoodCog(commands.Cog):
         vix = vix if vix is not None else float("nan")
         ten_y = ten_y if ten_y is not None else float("nan")
         emoji, colour = self.classify(pct)
-        desc = f"{emoji}  S&P  {pct:+.2f}% | VIX  {vix:.1f} | 10Y  {ten_y:.2f}%"
-        embed = discord.Embed(title="📈 Market Mood Ring", description=desc, colour=colour)
+        desc = (
+            f"{emoji}\n"
+            f"\u2022 **S&P** {pct:+.2f}%\n"
+            f"\u2022 **VIX** {vix:.1f}\n"
+            f"\u2022 **10Y** {ten_y:.2f}%"
+        )
+        embed = discord.Embed(
+            title="📈 Market Mood Ring",
+            description=desc,
+            colour=colour,
+        )
         embed.add_field(name="Top Techmeme Story", value=f"[{headline}]({link})", inline=False)
         embed.set_footer(text="Data: Alpha Vantage · FRED · Techmeme")
         return embed
