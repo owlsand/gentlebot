@@ -69,12 +69,20 @@ class MarketMoodCog(commands.Cog):
 
     async def _fetch_quote_price(self, symbol: str) -> Optional[float]:
         try:
-            j = await self._get_json({"function": "GLOBAL_QUOTE", "symbol": symbol, "apikey": cfg.ALPHA_VANTAGE_KEY})
+            j = await self._get_json(
+                {
+                    "function": "GLOBAL_QUOTE",
+                    "symbol": symbol,
+                    "apikey": cfg.ALPHA_VANTAGE_KEY,
+                }
+            )
             quote = j.get("Global Quote", {})
-            return float(quote.get("05. price"))
+            price = quote.get("05. price")
+            if price is not None:
+                return float(price)
         except Exception:
             log.exception("Failed to fetch price for %s", symbol)
-            return None
+        return None
 
     async def _fetch_yield(self) -> Optional[float]:
         try:
