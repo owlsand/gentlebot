@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 ALPHA_URL = "https://www.alphavantage.co/query"
 FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 TECHMEME_RSS = "https://www.techmeme.com/feed.xml"
+SEEKING_ALPHA_RSS = "https://seekingalpha.com/api/sa/combined/top-news.xml"
 
 NY_TZ = ZoneInfo("US/Eastern")
 
@@ -104,6 +105,16 @@ class MarketMoodCog(commands.Cog):
             log.exception("Failed to fetch Techmeme RSS")
         return "N/A", "https://www.techmeme.com/"
 
+    async def _fetch_sa_headline(self) -> Tuple[str, str]:
+        try:
+            feed = await asyncio.to_thread(feedparser.parse, SEEKING_ALPHA_RSS)
+            if feed.entries:
+                e = feed.entries[0]
+                return e.title, e.link
+        except Exception:
+            log.exception("Failed to fetch Seeking Alpha RSS")
+        return "N/A", "https://seekingalpha.com/"
+
     # ─── Mood Helpers ───────────────────────────────────────────────────────
     @staticmethod
     def classify(pct: float) -> Tuple[str, int]:
@@ -118,11 +129,12 @@ class MarketMoodCog(commands.Cog):
         return "🔴", 0xE74C3C
 
     async def build_embed(self) -> discord.Embed:
-        pct, vix, ten_y, (headline, link) = await asyncio.gather(
+        pct, vix, ten_y, (headline, link), (sa_title, sa_link) = await asyncio.gather(
             self._fetch_quote_change("^GSPC"),
             self._fetch_quote_price("^VIX"),
             self._fetch_yield(),
             self._fetch_headline(),
+            self._fetch_sa_headline(),
         )
         pct = pct if pct is not None else 0.0
         vix = vix if vix is not None else float("nan")
@@ -131,7 +143,8 @@ class MarketMoodCog(commands.Cog):
         desc = f"{emoji}  S&P  {pct:+.2f}% | VIX  {vix:.1f} | 10Y  {ten_y:.2f}%"
         embed = discord.Embed(title="📈 Market Mood Ring", description=desc, colour=colour)
         embed.add_field(name="Top Techmeme Story", value=f"[{headline}]({link})", inline=False)
-        embed.set_footer(text="Data: Alpha Vantage · FRED · Techmeme")
+        embed.add_field(name="Top Seeking Alpha Story", value=f"[{sa_title}]({sa_link})", inline=False)
+        embed.set_footer(text="Data: Alpha Vantage · FRED · Techmeme · Seeking Alpha")
         return embed
 
     async def publish(self):
