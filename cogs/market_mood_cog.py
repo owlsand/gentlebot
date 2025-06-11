@@ -26,6 +26,9 @@ ALPHA_URL = "https://www.alphavantage.co/query"
 FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 TECHMEME_RSS = "https://www.techmeme.com/feed.xml"
 SEEKING_ALPHA_RSS = "https://seekingalpha.com/api/sa/combined/top-news.xml"
+BULL_EMOJI = "🐂"
+BEAR_EMOJI = "🐻"
+NEUTRAL_EMOJI = "😐"
 
 NY_TZ = ZoneInfo("US/Eastern")
 
@@ -35,10 +38,14 @@ class MarketMoodCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.session = requests.Session()
+        self.week_open_price: Optional[float] = None
+        self.poll_message_id: Optional[int] = None
         self.mood_task.start()
+        self.weekly_result_task.start()
 
     def cog_unload(self):
         self.mood_task.cancel()
+        self.weekly_result_task.cancel()
         self.session.close()
 
     # ─── Utils ──────────────────────────────────────────────────────────────
@@ -153,7 +160,7 @@ class MarketMoodCog(commands.Cog):
         )
         embed.add_field(name="Top Techmeme Story", value=f"[{headline}]({link})", inline=False)
         embed.add_field(name="Top Seeking Alpha Story", value=f"[{sa_title}]({sa_link})", inline=False)
-        embed.set_footer(text="Data: Alpha Vantage · FRED · Techmeme · Seeking Alpha")
+        embed.set_footer(text="Data: Alpha Vantage · FRED · Techmeme · Seeking Alpha – not financial advice")
         return embed
 
     async def publish(self):
@@ -168,6 +175,65 @@ class MarketMoodCog(commands.Cog):
         except Exception:
             log.exception("Failed to post market mood")
 
+    async def post_sentiment_poll(self):
+        """Post a weekly sentiment poll and record the open price."""
+        channel = self.bot.get_channel(cfg.MONEY_TALK_CHANNEL)
+        if not channel:
+            log.error("Money Talk channel %s not found", cfg.MONEY_TALK_CHANNEL)
+            return
+        msg = await channel.send("How do you feel about the market this week?")
+        self.poll_message_id = msg.id
+        for emoji in (BULL_EMOJI, NEUTRAL_EMOJI, BEAR_EMOJI):
+            try:
+                await msg.add_reaction(emoji)
+            except Exception:
+                log.exception("Failed to add reaction %s", emoji)
+        self.week_open_price = await self._fetch_quote_price("^GSPC")
+
+    async def post_weekly_results(self):
+        """Summarize weekly move and mention correct guesses."""
+        if self.poll_message_id is None or self.week_open_price is None:
+            return
+        channel = self.bot.get_channel(cfg.MONEY_TALK_CHANNEL)
+        if not channel:
+            log.error("Money Talk channel %s not found", cfg.MONEY_TALK_CHANNEL)
+            return
+        try:
+            poll_msg = await channel.fetch_message(self.poll_message_id)
+        except Exception:
+            log.exception("Failed to fetch poll message")
+            return
+        bull = set()
+        bear = set()
+        neutral = set()
+        for reaction in poll_msg.reactions:
+            if str(reaction.emoji) == BULL_EMOJI:
+                bull = {u async for u in reaction.users() if not u.bot}
+            elif str(reaction.emoji) == BEAR_EMOJI:
+                bear = {u async for u in reaction.users() if not u.bot}
+            elif str(reaction.emoji) == NEUTRAL_EMOJI:
+                neutral = {u async for u in reaction.users() if not u.bot}
+        close_price = await self._fetch_quote_price("^GSPC")
+        if close_price is None:
+            return
+        pct = (close_price - self.week_open_price) / self.week_open_price * 100
+        if pct > 0.25:
+            winners = bull
+        elif pct < -0.25:
+            winners = bear
+        else:
+            winners = neutral
+        winner_mentions = ", ".join(u.mention for u in winners) if winners else "No one"
+        embed = discord.Embed(
+            title="Weekly Market Wrap-Up",
+            description=f"S&P {pct:+.2f}% this week\nCorrect guesses: {winner_mentions}",
+            colour=0x3498DB,
+        )
+        embed.set_footer(text="Data: Alpha Vantage · FRED · Techmeme · Seeking Alpha – not financial advice")
+        await channel.send(embed=embed)
+        self.week_open_price = None
+        self.poll_message_id = None
+
     # ─── Scheduler ──────────────────────────────────────────────────────────
     @tasks.loop(time=time(9, 30, tzinfo=NY_TZ))
     async def mood_task(self):
@@ -175,9 +241,22 @@ class MarketMoodCog(commands.Cog):
         if now.weekday() >= 5:  # Skip weekends
             return
         await self.publish()
+        if now.weekday() == 0:
+            await self.post_sentiment_poll()
 
     @mood_task.before_loop
     async def before_mood(self):
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(time=time(16, 0, tzinfo=NY_TZ))
+    async def weekly_result_task(self):
+        now = datetime.now(NY_TZ)
+        if now.weekday() != 4:
+            return
+        await self.post_weekly_results()
+
+    @weekly_result_task.before_loop
+    async def before_weekly_result(self):
         await self.bot.wait_until_ready()
 
     # ─── Command ────────────────────────────────────────────────────────────
