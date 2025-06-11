@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 ALPHA_URL = "https://www.alphavantage.co/query"
 FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 TECHMEME_RSS = "https://www.techmeme.com/feed.xml"
-SEEKING_ALPHA_RSS = "https://seekingalpha.com/api/sa/combined/top-news.xml"
+SEEKING_ALPHA_RSS = "https://seekingalpha.com/market_currents.xml"
 BULL_EMOJI = "🐂"
 BEAR_EMOJI = "🐻"
 NEUTRAL_EMOJI = "😐"
@@ -102,6 +102,16 @@ class MarketMoodCog(commands.Cog):
             log.exception("Failed to fetch 10Y yield")
             return None
 
+    async def _fetch_vix(self) -> Optional[float]:
+        try:
+            resp = await asyncio.to_thread(self.session.get, FRED_URL, params={"id": "VIXCLS"}, timeout=10)
+            resp.raise_for_status()
+            line = resp.text.strip().splitlines()[-1]
+            return float(line.split(",")[1])
+        except Exception:
+            log.exception("Failed to fetch VIX")
+            return None
+
     async def _fetch_headline(self) -> Tuple[str, str]:
         try:
             feed = await asyncio.to_thread(feedparser.parse, TECHMEME_RSS)
@@ -137,8 +147,8 @@ class MarketMoodCog(commands.Cog):
 
     async def build_embed(self) -> discord.Embed:
         pct, vix, ten_y, (headline, link), (sa_title, sa_link) = await asyncio.gather(
-            self._fetch_quote_change("^GSPC"),
-            self._fetch_quote_price("^VIX"),
+            self._fetch_quote_change("SPY"),
+            self._fetch_vix(),
             self._fetch_yield(),
             self._fetch_headline(),
             self._fetch_sa_headline(),
@@ -188,7 +198,7 @@ class MarketMoodCog(commands.Cog):
                 await msg.add_reaction(emoji)
             except Exception:
                 log.exception("Failed to add reaction %s", emoji)
-        self.week_open_price = await self._fetch_quote_price("^GSPC")
+        self.week_open_price = await self._fetch_quote_price("SPY")
 
     async def post_weekly_results(self):
         """Summarize weekly move and mention correct guesses."""
@@ -213,7 +223,7 @@ class MarketMoodCog(commands.Cog):
                 bear = {u async for u in reaction.users() if not u.bot}
             elif str(reaction.emoji) == NEUTRAL_EMOJI:
                 neutral = {u async for u in reaction.users() if not u.bot}
-        close_price = await self._fetch_quote_price("^GSPC")
+        close_price = await self._fetch_quote_price("SPY")
         if close_price is None:
             return
         pct = (close_price - self.week_open_price) / self.week_open_price * 100
