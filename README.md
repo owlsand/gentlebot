@@ -4,7 +4,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 ## Features
 - **F1Cog** – `/nextf1` and `/f1standings` commands show upcoming Formula 1 sessions and current standings.
 - **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
-- **MarketMoodCog** – posts a daily "Market Mood Ring" with a Monday sentiment poll and Friday wrap-up.
+- **MarketMoodCog** – *(disabled)* posts a daily "Market Mood Ring" with a Monday sentiment poll and Friday wrap-up.
 - **RolesCog** – Manages vanity reaction roles and activity‑based roles.
 - **PromptCog** – Posts a daily prompt generated via the Hugging Face API.
 - **HuggingFaceCog** – Adds AI conversation and emoji reactions using Hugging Face models.
@@ -47,8 +47,9 @@ dev_run.sh         # auto-restart helper (dev)
    DISCORD_TOKEN=<your bot token>
    DISCORD_APPLICATION_ID=<app id>
    DISCORD_GUILD_ID=<guild id>
-   ALPHA_VANTAGE_KEY=<alpha vantage api key>
-   MONEY_TALK_CHANNEL=<market mood channel id>
+    ALPHA_VANTAGE_KEY=<alpha vantage api key>
+    MONEY_TALK_CHANNEL=<market mood channel id>
+    ENABLE_MARKET_MOOD=1  # set to 1 to enable the Market Mood Ring
    ```
 5. Run the bot:
    ```bash
