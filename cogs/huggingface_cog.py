@@ -90,6 +90,17 @@ class HuggingFaceCog(commands.Cog):
 
         return prompt
 
+    def friendly_hf_error(self, err: Exception) -> str:
+        """Return a user-friendly message for a HuggingFace error."""
+        msg = str(err)
+        if "Payment Required" in msg:
+            return "Apologies, my batteries are low and in need of a recharge."
+        if "Too Many Requests" in msg or "429" in msg:
+            return "Terribly sorry, I'm processing quite a few tasks. Please try again shortly."
+        if "Service Unavailable" in msg or "503" in msg:
+            return "My connection to the knowledge chamber faltered. A moment's patience, please."
+        return f"⚠️ HuggingFace error: {err}"
+
     async def call_hf(self, channel_id: int, user_prompt: str) -> str:
         """
         Build context with channel info + recent history + system directive, send to HF, update history.
@@ -259,7 +270,7 @@ class HuggingFaceCog(commands.Cog):
             try:
                 response = await self.call_hf(message.channel.id, sanitized)
             except Exception as e:
-                await message.reply(f"⚠️ HuggingFace error: {e}")
+                await message.reply(self.friendly_hf_error(e))
                 return
 
         # 12) Paginate if needed
@@ -279,7 +290,11 @@ class HuggingFaceCog(commands.Cog):
         sanitized = self.sanitize_prompt(prompt)
         if not sanitized:
             return await interaction.followup.send("❌ Prompt invalid: too long or contains disallowed mentions.")
-        response = await self.call_hf(interaction.channel_id, sanitized)
+        try:
+            response = await self.call_hf(interaction.channel_id, sanitized)
+        except Exception as e:
+            return await interaction.followup.send(self.friendly_hf_error(e))
+
         if len(response) <= 2000:
             await interaction.followup.send(response)
         else:
