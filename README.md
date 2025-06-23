@@ -48,8 +48,11 @@ dev_run.sh         # auto-restart helper (dev)
    DISCORD_APPLICATION_ID=<app id>
    DISCORD_GUILD_ID=<guild id>
     ALPHA_VANTAGE_KEY=<alpha vantage api key>
-    MONEY_TALK_CHANNEL=<market mood channel id>
-    ENABLE_MARKET_MOOD=1  # set to 1 to enable the Market Mood Ring
+   MONEY_TALK_CHANNEL=<market mood channel id>
+   ENABLE_MARKET_MOOD=1  # set to 1 to enable the Market Mood Ring
+   HF_API_TOKEN=<hugging face token>
+   # optional fallback if the primary token hits a billing error
+   HF_API_TOKEN_ALT=<secondary hugging face token>
    ```
 5. Run the bot:
    ```bash
@@ -79,7 +82,9 @@ docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
 
 ## Notes
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
-- The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
+ - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
+   You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
+   primary token hits a billing error.
 
 ## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
