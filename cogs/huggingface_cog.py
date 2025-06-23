@@ -24,6 +24,9 @@ class HuggingFaceCog(commands.Cog):
 
         # === Env/config ===
         self.hf_api_key = os.getenv("HF_API_TOKEN")
+        # Optional secondary token used if the primary hits a billing error
+        self.hf_api_key_alt = os.getenv("HF_API_TOKEN_ALT")
+        self._using_alt = False
         self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
         self.max_tokens = int(os.getenv("HF_MAX_TOKENS", 150))
         self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
@@ -101,6 +104,11 @@ class HuggingFaceCog(commands.Cog):
             return "My connection to the knowledge chamber faltered. A moment's patience, please."
         return f"⚠️ HuggingFace error: {err}"
 
+    def _is_billing_error(self, err: Exception) -> bool:
+        """Return True if the error appears to be billing-related."""
+        msg = str(err).lower()
+        return "payment required" in msg or "billing" in msg or "insufficient" in msg
+
     async def call_hf(self, channel_id: int, user_prompt: str) -> str:
         """
         Build context with channel info + recent history + system directive, send to HF, update history.
@@ -130,13 +138,32 @@ class HuggingFaceCog(commands.Cog):
         messages.append({"role": "system", "content": system_directive})
         messages.append({"role": "user", "content": user_prompt})
 
-        completion = self.hf_client.chat.completions.create(
-            model=self.model_id,
-            messages=messages,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            top_p=self.top_p
-        )
+        try:
+            completion = self.hf_client.chat.completions.create(
+                model=self.model_id,
+                messages=messages,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                top_p=self.top_p
+            )
+        except Exception as e:
+            if (
+                self.hf_api_key_alt
+                and not self._using_alt
+                and self._is_billing_error(e)
+            ):
+                log.warning("Primary HF token hit billing issue; retrying with alternate token")
+                self.hf_client = InferenceClient(api_key=self.hf_api_key_alt, provider="together")
+                self._using_alt = True
+                completion = self.hf_client.chat.completions.create(
+                    model=self.model_id,
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                    top_p=self.top_p
+                )
+            else:
+                raise
 
         reply = getattr(completion.choices[0].message, "content", "")
 

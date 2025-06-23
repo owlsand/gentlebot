@@ -14,7 +14,7 @@ Gentlebot is a modular Discord bot built with **discord.py** v2. Each feature li
 - Include a short docstring explaining any new commands.
 
 ## Interacting with APIs
-- API tokens and IDs are read from `.env` variables. Never commit actual tokens.
-- The Hugging Face cogs require `HF_API_TOKEN`; other cogs may use public APIs.
+ - API tokens and IDs are read from `.env` variables. Never commit actual tokens.
+ - The Hugging Face cogs require `HF_API_TOKEN` and optionally `HF_API_TOKEN_ALT` for billing fallback; other cogs may use public APIs.
 
 No automated test suite is present. Run `./dev_run.sh` and interact with the bot in a test guild to verify changes.
