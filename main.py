@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 import discord
@@ -16,7 +16,11 @@ level = getattr(logging, level_name, logging.INFO)
 logger.setLevel(level)
 log_format = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-file_handler = RotatingFileHandler("bot.log", maxBytes=1_000_000, backupCount=3)
+log_dir = Path("logs")
+log_dir.mkdir(exist_ok=True)
+file_handler = TimedRotatingFileHandler(
+    log_dir / "bot.log", when="midnight", backupCount=90
+)
 file_handler.setFormatter(log_format)
 logger.addHandler(file_handler)
 
