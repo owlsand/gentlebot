@@ -58,8 +58,8 @@ class HuggingFaceCog(commands.Cog):
         self.MENTION_CLEANUP = re.compile(r"<@!?(\d+)>")  # strip user mentions
 
         # === Emoji reaction settings ===
-        self.base_reaction_chance = 0.02  # 2% chance per message by default
-        self.mention_reaction_chance = 0.45  # 45% chance when content mentions "gentlebot"
+        self.base_reaction_chance = 0.01  # 2% chance per message by default
+        self.mention_reaction_chance = 0.25  # 45% chance when content mentions "gentlebot"
         # static fallback unicode emojis
         self.default_emojis = ["😂", "🤔", "😅", "🔥", "🙃", "😎"]
 
@@ -127,9 +127,9 @@ class HuggingFaceCog(commands.Cog):
         system_directive = (
             f"{channel_info}"
             "Please keep your response under 1900 characters to fit Discord's limits and finish your response with a complete sentence before stopping. "
-            "Speak like a helpful and concise British butler from the 1800's (but don't ever reference this directly) with a slight sardonic wit."
+            "Speak like a helpful British butler from the 1800's (but don't ever reference this directly) with some wit."
             "Adapt your formality to the channel: be more formal in informational channels and more casual in informal channels."
-            "Never start your response with filler words or interjections like 'Ah' or 'Well'."
+            "Never start your response with filler words or interjections like 'Ah' or 'Well' and never reference physical gestures like 'adjusts cravat'."
             "Be concise and never ask follow-up questions."
         )
 
@@ -183,7 +183,7 @@ class HuggingFaceCog(commands.Cog):
         emoji_list_str = ", ".join(available_emojis)
         prompt = (
             f"Here is a list of emojis available in the server: {emoji_list_str}. "
-            f"Select one emoji from this list that best expresses how a butler with a sardonic wit would react to the following message: '{message_content}'. Respond only with the emoji."
+            f"Select one emoji from this list that best expresses how a butler with an attitude prolem would react to the following message: '{message_content}'. Respond only with the emoji."
         )
         try:
             # Use dummy channel to avoid polluting histories
@@ -263,7 +263,7 @@ class HuggingFaceCog(commands.Cog):
             await asyncio.sleep(wait_time)
         self.cooldowns[message.author.id] = time.time()
 
-        # 9) Build user_prompt, including last 5 messages if ambient
+        # 9) Build user_prompt, including last 10 messages if ambient
         is_ambient = (
             prompt == content
             and 'gentlebot' not in content.lower()
@@ -272,11 +272,9 @@ class HuggingFaceCog(commands.Cog):
         )
         if is_ambient:
             recent_msgs = []
-            async for m in message.channel.history(limit=6):
+            async for m in message.channel.history(limit=10):
                 if m.id != message.id and not m.author.bot:
                     recent_msgs.append(m.content.strip())
-                if len(recent_msgs) >= 5:
-                    break
             recent_msgs.reverse()
             context_str = "\n".join(recent_msgs)
             user_prompt = (
