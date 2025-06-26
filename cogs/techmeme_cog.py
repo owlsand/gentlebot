@@ -49,9 +49,9 @@ class TechmemeCog(commands.Cog):
             title = e.title
             summary = re.sub(r"<[^>]+>", "", getattr(e, "summary", ""))
             summary = html.unescape(summary).replace("\n", " ").strip()
-            lines.append(f"**{i}.** [{title}]({e.link}) - {summary}")
+            lines.append(f"**{i}.** **[{title}]({e.link})** - {summary}")
 
-        text = "\n".join(lines)
+        text = "\n\n".join(lines)
 
         date_str = datetime.now(timezone.utc).strftime("%b %d")
         embed = discord.Embed(
