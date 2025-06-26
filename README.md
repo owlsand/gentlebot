@@ -59,6 +59,7 @@ dev_run.sh         # auto-restart helper (dev)
    ./run_bot.sh
    ```
 During development you can use `./dev_run.sh` for automatic restarts when files change (requires `watchdog`).
+For a quick offline sanity check you can run `python test_harness.py` which loads all cogs without connecting to Discord.
 
 ## Docker
 You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`

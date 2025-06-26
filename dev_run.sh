@@ -5,6 +5,13 @@ set -e
 
 cd "$(dirname "$0")"
 
+# Load environment variables from .env if present
+if [[ -f ".env" ]]; then
+    set -a
+    source .env
+    set +a
+fi
+
 # Activate virtual environment if present
 if [[ -f "venv/bin/activate" ]]; then
     source venv/bin/activate
@@ -13,6 +20,13 @@ fi
 # Ensure the bot loads the TEST config
 export env=TEST
 export BOT_ENV=TEST
+
+
+# Verify that a token is available; otherwise notify the user and exit
+if [[ -z "$DISCORD_TOKEN" ]]; then
+    echo "DISCORD_TOKEN not set. Create a .env file or export the token before running." >&2
+    exit 1
+fi
 
 cmd="python main.py"
 
