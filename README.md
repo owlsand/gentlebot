@@ -27,22 +27,13 @@ cogs/               # feature cogs
   stats_cog.py      # engagement statistics
 run_bot.sh         # run helper (prod)
 dev_run.sh         # auto-restart helper (dev)
+setup.sh           # install dependencies and create the venv
 ```
 
 ## Setup
 1. Install Python 3.10 or newer.
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   pip install python-dateutil pytz beautifulsoup4 yfinance matplotlib pandas \
-       timezonefinder huggingface-hub watchdog
-   ```
-4. Create a `.env` file with your bot token and other IDs (see `bot_config.py` for variables).  Example:
+2. Run `./setup.sh` to create a virtual environment and install the required packages.  You can re-run it at any time to ensure everything is up to date.
+3. Create a `.env` file with your bot token and other IDs (see `bot_config.py` for variables).  Example:
    ```ini
    DISCORD_TOKEN=<your bot token>
    DISCORD_APPLICATION_ID=<app id>
@@ -54,11 +45,12 @@ dev_run.sh         # auto-restart helper (dev)
    # optional fallback if the primary token hits a billing error
    HF_API_TOKEN_ALT=<secondary hugging face token>
    ```
-5. Run the bot:
+4. Run the bot:
    ```bash
    ./run_bot.sh
    ```
-During development you can use `./dev_run.sh` for automatic restarts when files change (requires `watchdog`).
+During development you can use `./dev_run.sh` for automatic restarts when files change. Install the optional `watchfiles` or `watchdog` package for this convenience.
+Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `test_harness.py` instead, which loads all cogs without connecting to Discord.
 
 ## Docker
 You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`
