@@ -258,13 +258,11 @@ class HuggingFaceCog(commands.Cog):
         prompt = None
         parts = content.split()
 
-        # 5) Direct mention: strip mention
-        if parts and parts[0] in self.mention_strs:
+        # 5) Direct mention anywhere: strip mention(s) but keep entire text
+        if any(m in content for m in self.mention_strs):
             raw = content
             for mention in self.mention_strs:
-                if raw.startswith(mention):
-                    raw = raw.replace(mention, "", 1).strip()
-                    break
+                raw = raw.replace(mention, "").strip()
             prompt = raw
         # 6) Reply to bot: treat as prompt
         elif message.reference and isinstance(message.reference.resolved, discord.Message):
