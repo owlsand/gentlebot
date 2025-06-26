@@ -208,7 +208,7 @@ class SportsCog(commands.Cog):
         data = resp.json()
         return data["stats"][0]["splits"][0]["stat"]
 
-    def find_last_homer(self) -> tuple[str, str]:
+    def find_last_homer(self) -> tuple[str, str, str]:
         today = datetime.now().date()
         for i in range(0, 180):  # look back up to ~6 months
             day = (today - timedelta(days=i)).strftime("%Y-%m-%d")
@@ -250,14 +250,19 @@ class SportsCog(commands.Cog):
                 for it in items:
                     headline = (it.get("headline") or "").lower()
                     if "raleigh" in headline and "home run" in headline:
-                        url = it.get("playbacks", [{}])[0].get("url")
-                        if url:
-                            return day, url
+                        video = it.get("playbacks", [{}])[0].get("url")
+                        cuts = it.get("image", {}).get("cuts", [])
+                        image = cuts[0].get("src") if cuts else ""
+                        if video:
+                            return day, video, image
                 if items:
-                    return day, items[0].get("playbacks", [{}])[0].get("url", "")
+                    video = items[0].get("playbacks", [{}])[0].get("url", "")
+                    cuts = items[0].get("image", {}).get("cuts", [])
+                    image = cuts[0].get("src") if cuts else ""
+                    return day, video, image
             except Exception as e:
                 log.warning("Failed to fetch homer info for %s: %s", day, e)
-        return "", ""
+        return "", "", ""
 
     # --- Cal Raleigh command -------------------------------------------------
     @app_commands.command(name="bigdumper", description="Cal Raleigh stats and latest homer")
@@ -283,24 +288,31 @@ class SportsCog(commands.Cog):
         ops = stats.get("ops", "N/A")
         hr = stats.get("homeRuns", "0")
         rbi = stats.get("rbi", "0")
-        year = datetime.now().year
+        gp = stats.get("gamesPlayed", "0")
+        ab = stats.get("atBats", "0")
+        runs = stats.get("runs", "0")
+        hits = stats.get("hits", "0")
+        bb = stats.get("baseOnBalls", "0")
+        so = stats.get("strikeOuts", "0")
+        sb = stats.get("stolenBases", "0")
         lines = [
-            f"**Avg:** {avg}",
-            f"**OBP:** {obp}",
-            f"**SLG:** {slg}",
-            f"**OPS:** {ops}",
-            f"**HR:** {hr}",
-            f"**RBI:** {rbi}",
+            f"**G:** {gp} **AB:** {ab} **R:** {runs} **H:** {hits}",
+            f"**HR:** {hr} **RBI:** {rbi} **SB:** {sb}",
+            f"**BB:** {bb} **SO:** {so}",
+            f"**AVG:** {avg} **OBP:** {obp} **SLG:** {slg} **OPS:** {ops}",
         ]
         desc = "\n".join(lines)
+        title_date = datetime.now().strftime("%b %d")
         embed = discord.Embed(
-            title=f"Cal Raleigh {year} Season Stats",
+            title=f"Big Dumper Stats ({title_date})",
             description=desc,
             color=discord.Color.blue(),
         )
-        date, video = hr_info
+        date, video, image = hr_info
         if video:
             embed.add_field(name="Latest Home Run", value=f"{date} [Video]({video})", inline=False)
+        if image:
+            embed.set_image(url=image)
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="nextf1", description="Show the next F1 race weekend preview with track map")
