@@ -7,6 +7,7 @@ import random
 import asyncio
 import logging
 from collections import defaultdict
+from requests.exceptions import HTTPError
 
 import discord
 from discord import app_commands
@@ -107,7 +108,21 @@ class HuggingFaceCog(commands.Cog):
     def _is_billing_error(self, err: Exception) -> bool:
         """Return True if the error appears to be billing-related."""
         msg = str(err).lower()
-        return "payment required" in msg or "billing" in msg or "insufficient" in msg
+        if (
+            "payment required" in msg
+            or "payment" in msg
+            or "billing" in msg
+            or "insufficient" in msg
+            or "402" in msg
+            or "credit" in msg
+            or "quota" in msg
+        ):
+            return True
+        if isinstance(err, HTTPError):
+            resp = getattr(err, "response", None)
+            if resp is not None and getattr(resp, "status_code", None) == 402:
+                return True
+        return False
 
     async def call_hf(self, channel_id: int, user_prompt: str) -> str:
         """
