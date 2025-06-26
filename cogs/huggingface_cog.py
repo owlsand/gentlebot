@@ -153,30 +153,43 @@ class HuggingFaceCog(commands.Cog):
         messages.append({"role": "system", "content": system_directive})
         messages.append({"role": "user", "content": user_prompt})
 
+        log.debug(
+            "Calling HF with %s token", "alternate" if self._using_alt else "primary"
+        )
+
         try:
             completion = self.hf_client.chat.completions.create(
                 model=self.model_id,
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                top_p=self.top_p
+                top_p=self.top_p,
             )
         except Exception as e:
+            log.exception("HF call failed with primary token: %s", e)
             if (
                 self.hf_api_key_alt
                 and not self._using_alt
                 and self._is_billing_error(e)
             ):
-                log.warning("Primary HF token hit billing issue; retrying with alternate token")
-                self.hf_client = InferenceClient(api_key=self.hf_api_key_alt, provider="together")
-                self._using_alt = True
-                completion = self.hf_client.chat.completions.create(
-                    model=self.model_id,
-                    messages=messages,
-                    max_tokens=self.max_tokens,
-                    temperature=self.temperature,
-                    top_p=self.top_p
+                log.warning(
+                    "Primary HF token hit billing issue; retrying with alternate token"
                 )
+                self.hf_client = InferenceClient(
+                    api_key=self.hf_api_key_alt, provider="together"
+                )
+                self._using_alt = True
+                try:
+                    completion = self.hf_client.chat.completions.create(
+                        model=self.model_id,
+                        messages=messages,
+                        max_tokens=self.max_tokens,
+                        temperature=self.temperature,
+                        top_p=self.top_p,
+                    )
+                except Exception as alt_e:
+                    log.exception("HF call failed with alternate token: %s", alt_e)
+                    raise
             else:
                 raise
 
