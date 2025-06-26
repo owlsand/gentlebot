@@ -1,12 +1,10 @@
 """
-F1Cog – Formula 1 schedule & standings for Gentlebot
-===================================================
-Fetches live schedule from a JSON API and shows upcoming sessions.
-Also scrapes current driver & constructor standings from formula1.com.
-
+SportsCog - Formula 1 schedule & standings plus Mariners stats
+================================================================
 Slash commands:
-  • /nextf1      – Show the next F1 race weekend preview with track map
-  • /f1standings – Show current driver & constructor standings (top 10)
+  • /nextf1      - Show the next F1 race weekend preview with track map
+  • /f1standings - Show current driver & constructor standings (top 10)
+  • /bigdumper   - Show Cal Raleigh season stats and latest home run video
 
 Requires:
   • discord.py v2+
@@ -17,9 +15,10 @@ Requires:
 
 from __future__ import annotations
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -50,11 +49,16 @@ SESSION_EMOJI = {
     "Grand Prix": "🏆",
 }
 
-class F1Cog(commands.Cog):
-    """Provides Formula 1 schedule and standings commands from live API."""
+# MLB constants
+PLAYER_ID = 663728
+TEAM_ID = 136
+
+class SportsCog(commands.Cog):
+    """Provides Formula 1 schedule & standings commands plus Mariners stats."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.session = requests.Session()
 
     def fetch_f1_schedule(self) -> list[dict]:
         """Fetch and parse F1 schedule sessions sorted by UTC time."""
@@ -194,6 +198,111 @@ class F1Cog(commands.Cog):
         embed.set_footer(text=f"Last updated: {updated_str}")
         return embed
 
+    # --- Cal Raleigh helpers -------------------------------------------------
+    def fetch_season_stats(self) -> dict:
+        year = datetime.now().year
+        url = f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}/stats"
+        params = {"stats": "season", "group": "hitting", "season": year}
+        resp = self.session.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["stats"][0]["splits"][0]["stat"]
+
+    def find_last_homer(self) -> tuple[str, str]:
+        today = datetime.now().date()
+        for i in range(0, 180):  # look back up to ~6 months
+            day = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+            params = {
+                "hydrate": f"stats(group=hitting,type=byDateRange,startDate={day},endDate={day})"
+            }
+            try:
+                resp = self.session.get(
+                    f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}",
+                    params=params,
+                    timeout=10,
+                )
+                stats = resp.json().get("people", [{}])[0].get("stats", [])
+                if not stats or not stats[0]["splits"]:
+                    continue
+                hr = int(stats[0]["splits"][0]["stat"].get("homeRuns", 0))
+                if hr < 1:
+                    continue
+                sched = self.session.get(
+                    "https://statsapi.mlb.com/api/v1/schedule",
+                    params={
+                        "sportId": 1,
+                        "teamId": TEAM_ID,
+                        "startDate": day,
+                        "endDate": day,
+                    },
+                    timeout=10,
+                )
+                game_pk = sched.json()["dates"][0]["games"][0]["gamePk"]
+                content = self.session.get(
+                    f"https://statsapi.mlb.com/api/v1/game/{game_pk}/content",
+                    timeout=10,
+                ).json()
+                items = (
+                    content.get("highlights", {})
+                    .get("highlights", {})
+                    .get("items", [])
+                )
+                for it in items:
+                    headline = (it.get("headline") or "").lower()
+                    if "raleigh" in headline and "home run" in headline:
+                        url = it.get("playbacks", [{}])[0].get("url")
+                        if url:
+                            return day, url
+                if items:
+                    return day, items[0].get("playbacks", [{}])[0].get("url", "")
+            except Exception as e:
+                log.warning("Failed to fetch homer info for %s: %s", day, e)
+        return "", ""
+
+    # --- Cal Raleigh command -------------------------------------------------
+    @app_commands.command(name="bigdumper", description="Cal Raleigh stats and latest homer")
+    async def bigdumper(self, interaction: discord.Interaction):
+        log.info("/bigdumper invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        await interaction.response.defer(thinking=True)
+        try:
+            stats, hr_info = await asyncio.gather(
+                asyncio.to_thread(self.fetch_season_stats),
+                asyncio.to_thread(self.find_last_homer),
+            )
+        except Exception:
+            log.exception("Failed to fetch Cal Raleigh info")
+            await interaction.followup.send("Could not fetch data right now.")
+            return
+
+        if not stats:
+            await interaction.followup.send("No stats available.")
+            return
+        avg = stats.get("avg", "N/A")
+        obp = stats.get("obp", "N/A")
+        slg = stats.get("slg", "N/A")
+        ops = stats.get("ops", "N/A")
+        hr = stats.get("homeRuns", "0")
+        rbi = stats.get("rbi", "0")
+        year = datetime.now().year
+        lines = [
+            f"**Avg:** {avg}",
+            f"**OBP:** {obp}",
+            f"**SLG:** {slg}",
+            f"**OPS:** {ops}",
+            f"**HR:** {hr}",
+            f"**RBI:** {rbi}",
+        ]
+        desc = "\n".join(lines)
+        embed = discord.Embed(
+            title=f"Cal Raleigh {year} Season Stats",
+            description=desc,
+            color=discord.Color.blue(),
+        )
+        date, video = hr_info
+        if video:
+            embed.add_field(name="Latest Home Run", value=f"{date} [Video]({video})", inline=False)
+        await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="nextf1", description="Show the next F1 race weekend preview with track map")
     async def nextf1(self, interaction: discord.Interaction):
         """Show embed for next race weekend."""
@@ -227,4 +336,4 @@ class F1Cog(commands.Cog):
         await interaction.followup.send(embed=embed)
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(F1Cog(bot))
+    await bot.add_cog(SportsCog(bot))

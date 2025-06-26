@@ -2,7 +2,7 @@
 Gentlebot is a modular Discord bot composed of several **cogs** that handle different features.  It uses `discord.py` v2 and integrates with third‑party APIs such as Hugging Face and Yahoo Finance.
 
 ## Features
-- **F1Cog** – `/nextf1` and `/f1standings` commands show upcoming Formula 1 sessions and current standings.
+- **SportsCog** – `/nextf1` and `/f1standings` plus `/bigdumper` for Mariners stats.
 - **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
 - **MarketMoodCog** – *(disabled)* posts a daily "Market Mood Ring" with a Monday sentiment poll and Friday wrap-up.
 - **RolesCog** – Manages vanity reaction roles and activity‑based roles.
@@ -18,7 +18,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 main.py            # bot entry point
 bot_config.py      # environment configuration and ID constants
 cogs/               # feature cogs
-  f1_cog.py         # Formula 1 commands
+  sports_cog.py     # F1 and baseball commands
   market_cog.py     # stock/earnings commands
   market_mood_cog.py # daily market sentiment
   roles_cog.py      # role automation
