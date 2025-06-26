@@ -86,6 +86,19 @@ class RoleCog(commands.Cog):
         self.minute_maintenance.start()
         self.daily_maintenance.start()
 
+    async def _get_member(self, guild: discord.Guild, user_id: int) -> discord.Member | None:
+        """Return a member from cache or fetch if missing."""
+        member = guild.get_member(user_id)
+        if member:
+            return member
+        try:
+            return await guild.fetch_member(user_id)
+        except discord.NotFound:
+            log.warning("Member %s not found in guild %s", user_id, guild.id)
+        except discord.HTTPException as exc:
+            log.error("Failed to fetch member %s: %s", user_id, exc)
+        return None
+
     # ── Vanity Reaction Handlers ───────────────────────────────────────────────
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
@@ -95,8 +108,9 @@ class RoleCog(commands.Cog):
         if emoji not in VANITY_ROLES:
             return
         guild = self.bot.get_guild(payload.guild_id)
-        member = guild.get_member(payload.user_id)
+        member = await self._get_member(guild, payload.user_id)
         if not member:
+            log.warning("Vanity add: member %s could not be fetched", payload.user_id)
             return
         for em, rid in VANITY_ROLES.items():
             if rid != VANITY_ROLES[emoji] and rid in [r.id for r in member.roles]:
@@ -113,8 +127,9 @@ class RoleCog(commands.Cog):
         if emoji not in VANITY_ROLES:
             return
         guild = self.bot.get_guild(payload.guild_id)
-        member = guild.get_member(payload.user_id)
+        member = await self._get_member(guild, payload.user_id)
         if not member:
+            log.warning("Vanity remove: member %s could not be fetched", payload.user_id)
             return
         await self._remove(member, VANITY_ROLES[emoji])
 
@@ -126,8 +141,10 @@ class RoleCog(commands.Cog):
         member_id = msg.author.id
         now = datetime.utcnow()
         self.last_activity[member_id] = now
-        # Immediately remove Ghost role when user becomes active
-        await self._remove(msg.author, ROLE_GHOST)
+        # Ensure we have a fresh member object before role removal
+        member = await self._get_member(msg.guild, member_id)
+        if member:
+            await self._remove(member, ROLE_GHOST)
 
         # Threadlord: long messages
         if len(msg.content) >= THREADLORD_MIN_LEN:
@@ -253,7 +270,19 @@ class RoleCog(commands.Cog):
             log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
             return
         if role not in member.roles:
-            return
+            log.debug("Member %s missing role %s on remove; fetching", member.id, role_id)
+            try:
+                refreshed = await member.guild.fetch_member(member.id)
+            except discord.NotFound:
+                log.warning("Member %s disappeared while removing role %s", member.id, role_id)
+                return
+            except discord.HTTPException as exc:
+                log.error("Failed to refresh member %s: %s", member.id, exc)
+                return
+            if role not in refreshed.roles:
+                log.info("Member %s no longer has role %s", member.id, role_id)
+                return
+            member = refreshed
         try:
             await member.remove_roles(role, reason="RoleCog auto-remove")
             log.info("Successfully removed role %s (%s) from member %s", role.name, role_id, member.id)
