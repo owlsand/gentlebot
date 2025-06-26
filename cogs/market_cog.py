@@ -169,10 +169,12 @@ class MarketCog(commands.Cog):
             log.exception("Error retrieving earnings for %s", symbol)
             await itx.followup.send("Could not retrieve earnings data right now.")
             return
-        if cal.empty or "Earnings Date" not in cal.index:
+        if not cal or "Earnings Date" not in cal or not cal["Earnings Date"]:
             await itx.followup.send("No upcoming earnings date found.")
             return
-        date = cal.loc["Earnings Date"][0].to_pydatetime()
+        date = cal["Earnings Date"][0]
+        if hasattr(date, "to_pydatetime"):
+            date = date.to_pydatetime()
         msg = f"Next earnings call for **{symbol.upper()}**: **{date:%Y-%m-%d}**"
         if not eps_est.empty and "avg" in eps_est.columns and "0q" in eps_est.index:
             eps_val = eps_est.loc["0q"]["avg"]
