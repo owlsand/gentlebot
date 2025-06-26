@@ -142,7 +142,7 @@ class HuggingFaceCog(commands.Cog):
         system_directive = (
             f"{channel_info}"
             "Please keep your response under 1900 characters to fit Discord's limits and finish your response with a complete sentence before stopping. "
-            "Speak like a helpful British butler from the 1800's (but don't ever reference this directly) with some wit."
+            "Speak like a helpful British butler from the 1800's (but don't ever reference this directly) with a helpful wit."
             "Adapt your formality to the channel: be more formal in informational channels and more casual in informal channels."
             "Never start your response with filler words or interjections like 'Ah' or 'Well' and never reference physical gestures like 'adjusts cravat'."
             "Be concise and never ask follow-up questions."
@@ -198,7 +198,7 @@ class HuggingFaceCog(commands.Cog):
         emoji_list_str = ", ".join(available_emojis)
         prompt = (
             f"Here is a list of emojis available in the server: {emoji_list_str}. "
-            f"Select one emoji from this list that best expresses how a butler with an attitude prolem would react to the following message: '{message_content}'. Respond only with the emoji."
+            f"Select one emoji from this list that best expresses how a friendly person would react to the following message: '{message_content}'. Respond only with the emoji."
         )
         try:
             # Use dummy channel to avoid polluting histories
@@ -329,7 +329,7 @@ class HuggingFaceCog(commands.Cog):
         await interaction.response.defer()
         sanitized = self.sanitize_prompt(prompt)
         if not sanitized:
-            return await interaction.followup.send("❌ Prompt invalid: too long or contains disallowed mentions.")
+            return await interaction.followup.send("My apologies, I cannot comment.")
         try:
             response = await self.call_hf(interaction.channel_id, sanitized)
         except Exception as e:
