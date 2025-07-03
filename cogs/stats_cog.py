@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 import random
 import io
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -18,6 +19,7 @@ import bot_config as cfg
 from util import chan_name
 
 log = logging.getLogger(__name__)
+
 
 class StatsCog(commands.Cog):
     """Slash command to show recent message activity stats."""
@@ -32,6 +34,7 @@ class StatsCog(commands.Cog):
         if window == "months":
             return date(dt.year, dt.month, 1)
         return dt.date()
+
     async def _gather_stats(self, window: str, per_channel: int = 1000):
         """Collect message, reaction and event stats for the given time window."""
         guild = self.bot.get_guild(cfg.GUILD_ID)
@@ -57,7 +60,9 @@ class StatsCog(commands.Cog):
         reactions_sent_curr: defaultdict[discord.Member, int] = defaultdict(int)
         reactions_received_curr: defaultdict[discord.Member, int] = defaultdict(int)
         longest_msg: tuple[discord.Member | None, int] = (None, 0)
-        per_period_msgs: defaultdict[date, defaultdict[discord.Member, int]] = defaultdict(lambda: defaultdict(int))
+        per_period_msgs: defaultdict[date, defaultdict[discord.Member, int]] = (
+            defaultdict(lambda: defaultdict(int))
+        )
         per_period_users: defaultdict[date, set[int]] = defaultdict(set)
 
         for channel in guild.text_channels:
@@ -81,18 +86,29 @@ class StatsCog(commands.Cog):
                     for reaction in msg.reactions:
                         try:
                             count = reaction.count
+                            users = [u async for u in reaction.users(limit=None)]
                         except Exception as e:
-                            log.exception("Reaction count failed for %s: %s", reaction.message.id, e)
+                            log.exception(
+                                "Reaction count failed for %s: %s",
+                                reaction.message.id,
+                                e,
+                            )
                             continue
                         if target_curr:
                             reactions_curr += count
                             reactions_received_curr[msg.author] += count
+                            for user in users:
+                                reactions_sent_curr[user] += 1
                         else:
                             reactions_prev += count
             except discord.Forbidden as e:
-                log.warning("History fetch failed for channel %s: %s", chan_name(channel), e)
+                log.warning(
+                    "History fetch failed for channel %s: %s", chan_name(channel), e
+                )
             except Exception as e:
-                log.exception("History fetch failed for channel %s: %s", chan_name(channel), e)
+                log.exception(
+                    "History fetch failed for channel %s: %s", chan_name(channel), e
+                )
 
         per_period_active = {d: len(u) for d, u in per_period_users.items()}
 
@@ -135,7 +151,9 @@ class StatsCog(commands.Cog):
         for day_counts in period_msgs.values():
             for user, cnt in day_counts.items():
                 totals[user] += cnt
-        top_users = [u for u, _ in sorted(totals.items(), key=lambda x: x[1], reverse=True)[:5]]
+        top_users = [
+            u for u, _ in sorted(totals.items(), key=lambda x: x[1], reverse=True)[:5]
+        ]
 
         plt.style.use("dark_background")
         fig, ax = plt.subplots(figsize=(7, 3.5))
@@ -182,7 +200,9 @@ class StatsCog(commands.Cog):
         buf.seek(0)
         return buf
 
-    def _users_chart_png(self, period_active: dict[date, int], periods: list[date], window: str) -> io.BytesIO:
+    def _users_chart_png(
+        self, period_active: dict[date, int], periods: list[date], window: str
+    ) -> io.BytesIO:
         """Bar chart of active user counts."""
         dates = periods
         counts = [period_active.get(d, 0) for d in dates]
@@ -200,7 +220,9 @@ class StatsCog(commands.Cog):
         buf.seek(0)
         return buf
 
-    def _channels_chart_png(self, channel_counts: dict[discord.TextChannel, int]) -> io.BytesIO:
+    def _channels_chart_png(
+        self, channel_counts: dict[discord.TextChannel, int]
+    ) -> io.BytesIO:
         """Bar chart of message counts per channel."""
         channels = sorted(channel_counts.items(), key=lambda x: x[1], reverse=True)
         names = [f"#{ch.name}" for ch, _ in channels]
@@ -272,7 +294,11 @@ class StatsCog(commands.Cog):
         ]
 
         top_channel = max(ch_curr.items(), key=lambda x: x[1]) if ch_curr else (None, 0)
-        quiet_channels = [c for c, cnt in ch_curr.items() if cnt == min(ch_curr.values())] if ch_curr else []
+        quiet_channels = (
+            [c for c, cnt in ch_curr.items() if cnt == min(ch_curr.values())]
+            if ch_curr
+            else []
+        )
         quiet_channel = random.choice(quiet_channels) if quiet_channels else (None)
 
         top_member = max(u_curr.items(), key=lambda x: x[1]) if u_curr else (None, 0)
@@ -295,17 +321,29 @@ class StatsCog(commands.Cog):
 
         highlights = []
         if top_channel[0]:
-            highlights.append(f"Loudest Channel: #{top_channel[0].name} – {top_channel[1]}")
+            highlights.append(
+                f"Loudest Channel: #{top_channel[0].name} – {top_channel[1]}"
+            )
         if quiet_channel:
-            highlights.append(f"Quietest Channel: #{quiet_channel.name} – {ch_curr[quiet_channel]}")
+            highlights.append(
+                f"Quietest Channel: #{quiet_channel.name} – {ch_curr[quiet_channel]}"
+            )
         if top_member[0]:
-            highlights.append(f"Most Messages Sent: {top_member[0].display_name} – {top_member[1]}")
+            highlights.append(
+                f"Most Messages Sent: {top_member[0].display_name} – {top_member[1]}"
+            )
         if top_reactor[0]:
-            highlights.append(f"Most Reactions Sent: {top_reactor[0].display_name} – {top_reactor[1]}")
+            highlights.append(
+                f"Most Reactive: {top_reactor[0].display_name} – {top_reactor[1]}"
+            )
         if longest_msg:
-            highlights.append(f"Biggest Overthinker: {longest_msg.display_name} – {longest_len} chars")
+            highlights.append(
+                f"Biggest Overthinker: {longest_msg.display_name} – {longest_len} chars"
+            )
         if bait_user:
-            highlights.append(f"Best Engagement Bait: {bait_user.display_name} – {round(bait_ratio, 1)} reactions/msg")
+            highlights.append(
+                f"Best Engagement Bait: {bait_user.display_name} – {round(bait_ratio, 1)} reactions/msg"
+            )
 
         title_map = {
             "days": "Engagement Stats (Last 30 days)",
@@ -313,17 +351,25 @@ class StatsCog(commands.Cog):
             "months": "Engagement Stats (Last 12 months)",
         }
 
-        embed = discord.Embed(title=title_map[time_window], color=discord.Color.orange())
+        embed = discord.Embed(
+            title=title_map[time_window], color=discord.Color.orange()
+        )
         embed.add_field(name="Metrics", value="\n".join(metrics), inline=False)
         if highlights:
-            embed.add_field(name="Highlights", value="\n".join(highlights), inline=False)
+            embed.add_field(
+                name="Highlights", value="\n".join(highlights), inline=False
+            )
 
         if chart and chart.value != "none":
             periods = sorted(stats["period_msgs"].keys())
             if chart.value == "messages":
-                buf = self._messages_chart_png(stats["period_msgs"], periods, time_window)
+                buf = self._messages_chart_png(
+                    stats["period_msgs"], periods, time_window
+                )
             elif chart.value == "users":
-                buf = self._users_chart_png(stats["period_active"], periods, time_window)
+                buf = self._users_chart_png(
+                    stats["period_active"], periods, time_window
+                )
             elif chart.value == "channels":
                 buf = self._channels_chart_png(ch_curr)
             file = discord.File(buf, filename="activity.png")
@@ -340,7 +386,9 @@ class StatsCog(commands.Cog):
                 if interaction.channel:
                     await interaction.channel.send(embed=embed)
 
-    @app_commands.command(name="engagement", description="Show recent guild engagement stats")
+    @app_commands.command(
+        name="engagement", description="Show recent guild engagement stats"
+    )
     @app_commands.describe(time_window="Time grouping", chart="Chart type")
     @app_commands.choices(
         time_window=[
@@ -367,7 +415,10 @@ class StatsCog(commands.Cog):
             chan_name(interaction.channel),
         )
         await interaction.response.send_message("Working on it...")
-        asyncio.create_task(self._engagement_background(interaction, time_window, chart))
+        asyncio.create_task(
+            self._engagement_background(interaction, time_window, chart)
+        )
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(StatsCog(bot))
