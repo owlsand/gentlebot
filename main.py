@@ -44,9 +44,6 @@ class GentleBot(commands.Bot):
         for file in cog_dir.glob("*_cog.py"):
             if file.stem == "test_logging_cog" and not cfg.IS_TEST:
                 continue
-            if file.stem == "market_mood_cog" and not cfg.ENABLE_MARKET_MOOD:
-                logger.info("Market mood ring disabled; skipping %s", file.stem)
-                continue
             await self.load_extension(f"cogs.{file.stem}")
 
 

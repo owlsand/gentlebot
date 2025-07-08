@@ -28,7 +28,6 @@ IS_TEST = env == "TEST"
 # ─── Tokens ───────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
-ENABLE_MARKET_MOOD = os.getenv("ENABLE_MARKET_MOOD", "0") == "1"
 
 # ─── IDs per environment ──────────────────────────────────────────────────
 if IS_TEST:
