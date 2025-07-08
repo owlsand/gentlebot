@@ -97,6 +97,14 @@ class MarketsCog(commands.Cog):
         conn.close()
         return [r[0] for r in rows]
 
+    def _reminder_enabled(self, user_id: int) -> bool:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT enabled FROM reminders WHERE user=?", (user_id,))
+        row = cur.fetchone()
+        conn.close()
+        return bool(row and row[0])
+
     def _record_scores(self, week: str, outcome: str):
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
@@ -218,20 +226,27 @@ class MarketsCog(commands.Cog):
         pcr = data["pcr"]
         breadth = data["breadth"]
         trending = data["trending"]
-        desc = [f"S&P 500: **{sp_pct:+.1f}%**" if sp_pct is not None else "S&P 500: N/A"]
-        desc.append(f"NASDAQ 100: **{ndx_pct:+.1f}%**" if ndx_pct is not None else "NASDAQ 100: N/A")
-        desc.append(f"VIX: {vix:.1f}" if isinstance(vix, (int, float)) else "VIX: N/A")
-        desc.append(f"Put/Call: {pcr:.2f}" if pcr is not None else "Put/Call: N/A")
-        desc.append(f"Breadth: {breadth:.0f}% advancers" if breadth is not None else "Breadth: N/A")
-        embed = discord.Embed(
-            title=f"Market Mood – {ts}",
-            description=" | ".join(desc[:2]) + "\n" + " | ".join(desc[2:]),
-            colour=0x2ecc71 if (sp_pct or 0) >= 0 else 0xe74c3c,
-        )
-        if trending:
-            embed.add_field(name="Trending tickers", value=", ".join(trending[:2]), inline=False)
-        embed.set_footer(text="Data: Yahoo Finance · CBOE · Finviz – not financial advice")
-        await itx.followup.send(embed=embed, ephemeral=ephemeral)
+        mood_emoji = "📈" if (sp_pct or 0) > 0 else "📉"
+        lines = [f"{mood_emoji} **Market Mood — {ts}**", ""]
+
+        if sp_pct is not None:
+            emo = "🔺" if sp_pct > 0 else "🔻"
+            lines.append(f"**S&P 500:** {emo} {sp_pct:+.1f}%")
+        if ndx_pct is not None:
+            emo = "🔺" if ndx_pct > 0 else "🔻"
+            lines.append(f"**NASDAQ 100:** {emo} {ndx_pct:+.1f}%")
+        if isinstance(vix, (int, float)):
+            lines.append(f"**VIX:** ⚠️ {vix:.1f}")
+        if pcr is not None:
+            lines.append(f"**Put/Call:** {pcr:.2f}")
+        if breadth is not None:
+            lines.append(f"**Breadth:** {breadth:.0f}% advancers")
+
+        lines.append("")
+        lines.append("📊 *Data: Yahoo Finance · CBOE · Finviz*")
+        lines.append("⚠️ *Not financial advice*")
+
+        await itx.followup.send("\n".join(lines), ephemeral=ephemeral)
 
     @app_commands.command(name="marketbet", description="Place a weekly bull/bear bet or set reminder")
     @app_commands.describe(direction="bullish or bearish", reminder="Enable DM reminder on Monday")
@@ -239,24 +254,45 @@ class MarketsCog(commands.Cog):
         log.info("/marketbet invoked by %s in %s", itx.user.id, chan_name(itx.channel))
         await itx.response.defer(thinking=True, ephemeral=True)
         now = datetime.now(NY_TZ)
-        week = _week_start(now).date().isoformat()
+        week_start = _week_start(now)
+        week = week_start.date().isoformat()
+
+        reminder_state = self._reminder_enabled(itx.user.id)
+        if reminder is not None:
+            self._toggle_reminder(itx.user.id, reminder)
+            reminder_state = reminder
+
         messages = []
         if direction:
             day_index = min(now.weekday(), 4)
             weight = int((5 - day_index) / 5 * 100)
             placed = self._place_bet(itx.user.id, week, direction, weight)
             if placed:
-                messages.append(
-                    f"{itx.user.mention}, your **{direction.title()}** bet for *Week of {week}* is locked!\nWeight: **{weight} pts** (placed on {now:%A})\nResults announced Friday 1 pm."
-                )
+                emoji = "📈" if direction == "bullish" else "📉"
+                label = "BULLISH" if direction == "bullish" else "BEARISH"
+                lines = [
+                    "🎯 **Bet Locked In!**",
+                    "",
+                    f"**{itx.user.mention}**, your **{emoji} {label}** bet for the **Week of {week_start:%b %d}** is **locked.**",
+                    "",
+                    "**Bet Details:**",
+                    f" **Weight:** {weight} pts (placed {now:%A})",
+                    " **Results:** Friday @ 1:00 PM PT",
+                    f" **Reminder:** DM {'enabled' if reminder_state else 'disabled'}",
+                ]
+                messages.append("\n".join(lines))
             else:
                 messages.append("You already placed a bet this week.")
-        if reminder is not None:
-            self._toggle_reminder(itx.user.id, reminder)
-            state = "enabled" if reminder else "disabled"
-            messages.append(f"DM reminder {state}.")
-        if not messages:
-            messages.append("Specify a direction or reminder option.")
+                if reminder is not None:
+                    state = "enabled" if reminder else "disabled"
+                    messages.append(f"DM reminder {state}.")
+        else:
+            if reminder is not None:
+                state = "enabled" if reminder else "disabled"
+                messages.append(f"DM reminder {state}.")
+            else:
+                messages.append("Specify a direction or reminder option.")
+
         await itx.followup.send("\n".join(messages), ephemeral=True)
 
     # ─── Tasks ────────────────────────────────────────────────────────────
