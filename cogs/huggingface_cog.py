@@ -230,6 +230,10 @@ class HuggingFaceCog(commands.Cog):
         if message.author.bot:
             return
 
+        # 1a) Ignore ephemeral messages to avoid reaction errors
+        if getattr(message.flags, "ephemeral", False):
+            return
+
         content = message.content.strip()
 
         # 2) Determine reaction probability
