@@ -4,7 +4,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 ## Features
 - **SportsCog** – `/nextf1` and `/f1standings` plus `/bigdumper` for Mariners stats.
 - **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
-- **MarketMoodCog** – *(disabled)* posts a daily "Market Mood Ring" with a Monday sentiment poll and Friday wrap-up.
+- **MarketsCog** – `/marketmood` shows a quick sentiment snapshot and `/marketbet` runs a weekly bull/bear game.
 - **RolesCog** – Manages vanity reaction roles and activity‑based roles.
 - **PromptCog** – Posts a daily prompt generated via the Hugging Face API.
 - **HuggingFaceCog** – Adds AI conversation and emoji reactions using Hugging Face models.
@@ -20,7 +20,7 @@ bot_config.py      # environment configuration and ID constants
 cogs/               # feature cogs
   sports_cog.py     # F1 and baseball commands
   market_cog.py     # stock/earnings commands
-  market_mood_cog.py # daily market sentiment
+  markets_cog.py     # market mood & weekly bet game
   roles_cog.py      # role automation
   prompt_cog.py     # daily prompts
   huggingface_cog.py # conversation + emoji reactions
@@ -39,8 +39,7 @@ setup.sh           # install dependencies and create the venv
    DISCORD_APPLICATION_ID=<app id>
    DISCORD_GUILD_ID=<guild id>
     ALPHA_VANTAGE_KEY=<alpha vantage api key>
-   MONEY_TALK_CHANNEL=<market mood channel id>
-   ENABLE_MARKET_MOOD=1  # set to 1 to enable the Market Mood Ring
+   MONEY_TALK_CHANNEL=<market channel id>
    HF_API_TOKEN=<hugging face token>
    # optional fallback if the primary token hits a billing error
    HF_API_TOKEN_ALT=<secondary hugging face token>
