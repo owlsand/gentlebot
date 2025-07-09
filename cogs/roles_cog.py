@@ -145,39 +145,44 @@ class RoleCog(commands.Cog):
 
     # ── Badge Helpers ─────────────────────────────────────────────────────
     async def _rotate_single(self, guild: discord.Guild, role_id: int, user_id: int | None):
+        """Rotate a single badge role to the specified user."""
         role = guild.get_role(role_id)
         if not role:
+            log.debug("Role ID %s not found in guild %s; skipping", role_id, guild.id)
             return
-        for m in guild.members:
-            if role in m.roles and m.id != user_id:
-                try:
-                    await m.remove_roles(role, reason="badge rotation")
-                except Exception:
-                    pass
+
+        changed = False
+        for member in guild.members:
+            if role in member.roles and member.id != user_id:
+                await self._remove(member, role_id)
+                changed = True
+
         if user_id:
-            target = guild.get_member(user_id)
-            if target and role not in target.roles:
-                try:
-                    await target.add_roles(role, reason="badge rotation")
-                except Exception:
-                    pass
+            target = await self._get_member(guild, user_id)
+            if target:
+                if role not in target.roles:
+                    await self._assign(target, role_id)
+                    changed = True
+            else:
+                log.warning("Member %s for role %s not found", user_id, role.name)
+        else:
+            log.info("No qualifying member for %s", role.name)
+
+        if not changed:
+            log.info("No changes for role %s", role.name)
 
     async def _assign_flag(self, guild: discord.Guild, member: discord.Member, role_id: int):
+        """Assign the appropriate inactivity flag to a member."""
         for r in (ROLE_GHOST, ROLE_SHADOW_FLAG, ROLE_LURKER_FLAG, ROLE_NPC_FLAG):
             if r == 0:
                 continue
             role = guild.get_role(r)
             if role and role in member.roles and r != role_id:
-                try:
-                    await member.remove_roles(role, reason="flag update")
-                except Exception:
-                    pass
+                await self._remove(member, r)
         role = guild.get_role(role_id)
-        if role and role_id and role not in member.roles:
-            try:
-                await member.add_roles(role, reason="flag update")
-            except Exception:
-                pass
+        if role and role_id:
+            if role not in member.roles:
+                await self._assign(member, role_id)
 
     # ── Badge Rotation Task ─────────────────────────────────────────────
     @tasks.loop(hours=24)
@@ -194,6 +199,7 @@ class RoleCog(commands.Cog):
 
         counts = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
         top_poster = counts.most_common(1)[0][0] if counts else None
+        log.info("Top Poster winner: %s", top_poster)
         await self._rotate_single(guild, ROLE_TOP_POSTER, top_poster)
 
         msg_counts = Counter()
@@ -212,6 +218,7 @@ class RoleCog(commands.Cog):
                 if avg > best_avg:
                     best_avg = avg
                     best = uid
+        log.info("Certified Banger winner: %s", best)
         await self._rotate_single(guild, ROLE_CERTIFIED_BANGER, best)
 
         reaction_map = Counter()
@@ -223,20 +230,25 @@ class RoleCog(commands.Cog):
             if m["ts"] >= cutoff14 and m["rich"] and reaction_map[m["id"]] >= 3:
                 curator[m["author"]] += 1
         top_curator = curator.most_common(1)[0][0] if curator else None
+        log.info("Top Curator winner: %s", top_curator)
         await self._rotate_single(guild, ROLE_TOP_CURATOR, top_curator)
 
+        log.info("First Drop winner: %s", self.first_drop_user)
         await self._rotate_single(guild, ROLE_FIRST_DROP, self.first_drop_user)
 
         summons = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff30 for _ in range(m["mentions"]))
         summoner = summons.most_common(1)[0][0] if summons else None
+        log.info("The Summoner winner: %s", summoner)
         await self._rotate_single(guild, ROLE_SUMMONER, summoner)
 
         referenced = Counter(m["reply_to"] for m in self.messages if m["ts"] >= cutoff30 and m["reply_to"])
         lore_creator = referenced.most_common(1)[0][0] if referenced else None
+        log.info("Lore Creator winner: %s", lore_creator)
         await self._rotate_single(guild, ROLE_LORE_CREATOR, lore_creator)
 
         creator_counts = Counter(r["creator"] for r in self.reactions if r["ts"] >= cutoff30 and r["creator"])
         reaction_engineer = creator_counts.most_common(1)[0][0] if creator_counts else None
+        log.info("Reaction Engineer winner: %s", reaction_engineer)
         await self._rotate_single(guild, ROLE_REACTION_ENGINEER, reaction_engineer)
 
         msg_count14 = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
