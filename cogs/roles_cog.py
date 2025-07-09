@@ -44,6 +44,7 @@ ROLE_NPC_FLAG: int = cfg.ROLE_NPC_FLAG
 
 # thresholds (override in bot_config if desired)
 INACTIVE_DAYS: int = cfg.INACTIVE_DAYS
+# Use Pacific time for daily role rotations
 LA = pytz.timezone("America/Los_Angeles")
 
 class RoleCog(commands.Cog):
@@ -183,7 +184,8 @@ class RoleCog(commands.Cog):
         todays = [m for m in self.messages if m["ts"] >= utc_start]
         if todays:
             first = min(todays, key=lambda m: m["ts"])
-            self.first_drop_day = la_now.date()
+            first_ts_la = first["ts"].astimezone(LA)
+            self.first_drop_day = first_ts_la.date()
             self.first_drop_user = first["author"]
 
     # -- Activity listeners --
@@ -210,9 +212,9 @@ class RoleCog(commands.Cog):
             "reply_to": msg.reference.resolved.author.id if msg.reference and msg.reference.resolved else None,
         }
         self.messages.append(info)
-        la_now = datetime.now(tz=LA)
-        if self.first_drop_day != la_now.date():
-            self.first_drop_day = la_now.date()
+        la_ts = msg.created_at.astimezone(LA)
+        if self.first_drop_day != la_ts.date():
+            self.first_drop_day = la_ts.date()
             self.first_drop_user = member_id
             await self._rotate_single(msg.guild, ROLE_FIRST_DROP, member_id)
 
