@@ -58,14 +58,19 @@ class RoleCog(commands.Cog):
         self.first_drop_user: int | None = None
         self.badge_task.start()
 
-    @app_commands.command(name="refreshroles", description="Force badge and flag updates")
+    @app_commands.command(name="refreshroles", description="Fetch history and rotate badges")
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.default_permissions(administrator=True)
     async def refresh_roles(self, interaction: discord.Interaction):
-        """Admins can manually trigger the role rotation."""
+        """Admins can manually trigger the role rotation.
+
+        This fetches the last 14 days of guild history so badges and flags are
+        computed even after a restart.
+        """
         log.info("/refreshroles invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
+            await self._fetch_recent_activity()
             await self.badge_task()
         except Exception as exc:
             log.exception("refreshroles failed: %s", exc)
@@ -89,6 +94,95 @@ class RoleCog(commands.Cog):
         except discord.HTTPException as exc:
             log.error("Failed to fetch member %s: %s", user_id, exc)
         return None
+
+    async def _fetch_recent_activity(self, days: int = 14) -> None:
+        """Populate message and reaction caches from recent guild history."""
+        guild = self.bot.get_guild(GUILD_ID)
+        if not guild:
+            return
+
+        cutoff = discord.utils.utcnow() - timedelta(days=days)
+        self.messages.clear()
+        self.reactions.clear()
+        self.last_online.clear()
+
+        for channel in guild.text_channels:
+            try:
+                async for msg in channel.history(limit=None, after=cutoff):
+                    if msg.author.bot:
+                        continue
+                    self.last_online[msg.author.id] = max(
+                        self.last_online.get(msg.author.id, cutoff), msg.created_at
+                    )
+                    info = {
+                        "id": msg.id,
+                        "author": msg.author.id,
+                        "ts": msg.created_at,
+                        "len": len(msg.content),
+                        "rich": bool(msg.attachments)
+                        or bool(msg.embeds)
+                        or ("http" in msg.content),
+                        "mentions": msg.content.count("@here")
+                        + msg.content.count("@everyone"),
+                        "reply_to": msg.reference.resolved.author.id
+                        if msg.reference and msg.reference.resolved
+                        else None,
+                    }
+                    self.messages.append(info)
+
+                    for reaction in msg.reactions:
+                        try:
+                            users = [u async for u in reaction.users(limit=None)]
+                        except Exception as exc:
+                            log.exception(
+                                "Reaction fetch failed for %s on %s: %s",
+                                reaction.emoji,
+                                msg.id,
+                                exc,
+                            )
+                            continue
+                        for user in users:
+                            if user.bot:
+                                continue
+                            self.last_online[user.id] = max(
+                                self.last_online.get(user.id, cutoff), msg.created_at
+                            )
+                            creator = None
+                            if isinstance(reaction.emoji, discord.Emoji):
+                                em = guild.get_emoji(reaction.emoji.id)
+                                if em and em.user:
+                                    creator = em.user.id
+                            self.reactions.append(
+                                {
+                                    "ts": msg.created_at,
+                                    "msg": msg.id,
+                                    "msg_author": msg.author.id,
+                                    "emoji": str(reaction.emoji),
+                                    "creator": creator,
+                                    "user": user.id,
+                                }
+                            )
+            except discord.Forbidden as exc:
+                log.warning(
+                    "History fetch failed for channel %s: %s",
+                    chan_name(channel),
+                    exc,
+                )
+            except Exception as exc:
+                log.exception(
+                    "History fetch failed for channel %s: %s",
+                    chan_name(channel),
+                    exc,
+                )
+
+        la_now = datetime.now(tz=LA)
+        start_today = la_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        utc_start = start_today.astimezone(timezone.utc)
+        todays = [m for m in self.messages if m["ts"] >= utc_start]
+        if todays:
+            first = min(todays, key=lambda m: m["ts"])
+            self.first_drop_day = la_now.date()
+            self.first_drop_user = first["author"]
 
     # -- Activity listeners --
     @commands.Cog.listener()
