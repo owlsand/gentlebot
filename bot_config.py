@@ -71,17 +71,17 @@ else:
     # -------- ROLES --------
     ROLE_GHOST = 1373545254497816626
     # ----- engagement badges (env vars)
-    ROLE_TOP_POSTER = int(os.getenv("ROLE_TOP_POSTER", 0))
-    ROLE_CERTIFIED_BANGER = int(os.getenv("ROLE_CERTIFIED_BANGER", 0))
-    ROLE_TOP_CURATOR = int(os.getenv("ROLE_TOP_CURATOR", 0))
-    ROLE_FIRST_DROP = int(os.getenv("ROLE_FIRST_DROP", 0))
-    ROLE_SUMMONER = int(os.getenv("ROLE_SUMMONER", 0))
-    ROLE_LORE_CREATOR = int(os.getenv("ROLE_LORE_CREATOR", 0))
-    ROLE_REACTION_ENGINEER = int(os.getenv("ROLE_REACTION_ENGINEER", 0))
+    ROLE_TOP_POSTER = int(os.getenv("ROLE_TOP_POSTER", 1391637786406289508))
+    ROLE_CERTIFIED_BANGER = int(os.getenv("ROLE_CERTIFIED_BANGER", 1391637939900907661))
+    ROLE_TOP_CURATOR = int(os.getenv("ROLE_TOP_CURATOR", 1391638247570149400))
+    ROLE_FIRST_DROP = int(os.getenv("ROLE_FIRST_DROP", 1391638519667228672))
+    ROLE_SUMMONER = int(os.getenv("ROLE_SUMMONER", 1391638673405116446))
+    ROLE_LORE_CREATOR = int(os.getenv("ROLE_LORE_CREATOR", 1391976400193327124))
+    ROLE_REACTION_ENGINEER = int(os.getenv("ROLE_REACTION_ENGINEER", 1391976121758908548))
     # ----- inactivity flags (env vars)
-    ROLE_SHADOW_FLAG = int(os.getenv("ROLE_SHADOW_FLAG", 0))
-    ROLE_LURKER_FLAG = int(os.getenv("ROLE_LURKER_FLAG", 0))
-    ROLE_NPC_FLAG = int(os.getenv("ROLE_NPC_FLAG", 0))
+    ROLE_SHADOW_FLAG = int(os.getenv("ROLE_SHADOW_FLAG", 1391977459850809425))
+    ROLE_LURKER_FLAG = int(os.getenv("ROLE_LURKER_FLAG", 1391978324510642258))
+    ROLE_NPC_FLAG = int(os.getenv("ROLE_NPC_FLAG", 1391978703566934087))
 
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
 INACTIVE_DAYS = int(os.getenv("INACTIVE_DAYS", 14))
