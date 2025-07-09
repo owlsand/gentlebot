@@ -16,7 +16,8 @@ from util import chan_name
 from huggingface_hub import InferenceClient
 
 
-log = logging.getLogger(__name__)
+# Use a hierarchical logger so messages propagate to the main gentlebot logger
+log = logging.getLogger(f"gentlebot.{__name__}")
 
 
 class HuggingFaceCog(commands.Cog):

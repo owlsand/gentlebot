@@ -30,7 +30,8 @@ from huggingface_hub import InferenceClient
 import bot_config as cfg
 from zoneinfo import ZoneInfo
 
-log = logging.getLogger(__name__)
+# Use a hierarchical logger so messages propagate to the main gentlebot logger
+log = logging.getLogger(f"gentlebot.{__name__}")
 
 # Timezone for scheduling
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
