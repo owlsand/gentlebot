@@ -71,6 +71,15 @@ async def on_error(event: str, *args, **kwargs):
 async def on_command_error(ctx: commands.Context, exc: commands.CommandError):
     logger.exception("Error in command '%s'", getattr(ctx.command, 'name', 'unknown'), exc_info=exc)
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, exc: discord.app_commands.AppCommandError):
+    cmd_name = getattr(interaction.command, "name", "unknown")
+    logger.exception("Error in slash command '%s'", cmd_name, exc_info=exc)
+    if interaction.response.is_done():
+        await interaction.followup.send("An error occurred.", ephemeral=True)
+    else:
+        await interaction.response.send_message("An error occurred.", ephemeral=True)
+
 async def main():
     async with bot:
         await bot.start(cfg.TOKEN)

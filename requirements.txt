@@ -3,3 +3,4 @@ requests
 feedparser
 python-dotenv>=1.0.0
 timezonefinder
+pytz

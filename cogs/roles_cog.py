@@ -65,8 +65,17 @@ class RoleCog(commands.Cog):
         """Admins can manually trigger the role rotation."""
         log.info("/refreshroles invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
         await interaction.response.defer(thinking=True, ephemeral=True)
-        await self.badge_task()
-        await interaction.followup.send("Role rotation complete.", ephemeral=True)
+        try:
+            await self.badge_task()
+        except Exception as exc:
+            log.exception("refreshroles failed: %s", exc)
+            await interaction.followup.send(
+                "Failed to refresh roles.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "Role rotation complete.", ephemeral=True
+            )
 
     async def _get_member(self, guild: discord.Guild, user_id: int) -> discord.Member | None:
         """Return a member from cache or fetch if missing."""
