@@ -56,6 +56,7 @@ class RoleCog(commands.Cog):
         self.last_online: defaultdict[int, datetime] = defaultdict(discord.utils.utcnow)
         self.first_drop_day: date | None = None
         self.first_drop_user: int | None = None
+        self.assign_counts: Counter[int] = Counter()
         self.badge_task.start()
 
     @app_commands.command(name="refreshroles", description="Fetch history and rotate badges")
@@ -255,6 +256,7 @@ class RoleCog(commands.Cog):
             target = await self._get_member(guild, user_id)
             if target:
                 if role not in target.roles:
+                    log.info("Targeting member %s for role %s", target.id, role.name)
                     await self._assign(target, role_id)
                     changed = True
             else:
@@ -276,6 +278,7 @@ class RoleCog(commands.Cog):
         role = guild.get_role(role_id)
         if role and role_id:
             if role not in member.roles:
+                log.info("Targeting member %s for inactivity role %s", member.id, role.name)
                 await self._assign(member, role_id)
 
     # ── Badge Rotation Task ─────────────────────────────────────────────
@@ -285,6 +288,7 @@ class RoleCog(commands.Cog):
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
             return
+        self.assign_counts.clear()
         now = discord.utils.utcnow()
         cutoff14 = now - timedelta(days=14)
         cutoff30 = now - timedelta(days=30)
@@ -374,6 +378,11 @@ class RoleCog(commands.Cog):
                 continue
             await self._assign_flag(guild, member, 0)
 
+        for role_id, count in self.assign_counts.items():
+            role = guild.get_role(role_id)
+            role_name = role.name if role else str(role_id)
+            log.info("Role %s targeted assignments: %d", role_name, count)
+
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
         log.info("Attempting to assign new role (%s) to member (%s)", role_id, member.id)
@@ -385,6 +394,7 @@ class RoleCog(commands.Cog):
             log.info("Member %s already has role %s", member.id, role_id)
             return
         try:
+            self.assign_counts[role_id] += 1
             await member.add_roles(role, reason="RoleCog auto-assign")
             log.info("Successfully assigned role %s (%s) to member %s", role.name, role_id, member.id)
         except discord.Forbidden:
