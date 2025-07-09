@@ -22,7 +22,8 @@ from huggingface_hub import InferenceClient
 from util import chan_name
 import bot_config as cfg
 
-log = logging.getLogger(__name__)
+# Use a hierarchical logger so messages propagate to the main gentlebot logger
+log = logging.getLogger(f"gentlebot.{__name__}")
 
 
 UNICODE_EMOJI_RE = re.compile(

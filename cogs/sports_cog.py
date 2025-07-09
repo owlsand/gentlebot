@@ -32,7 +32,8 @@ from bs4 import BeautifulSoup
 # ── time zones --------------------------------------------------------------
 import bot_config as cfg
 
-log = logging.getLogger(__name__)
+# Use a hierarchical logger so messages propagate to the main gentlebot logger
+log = logging.getLogger(f"gentlebot.{__name__}")
 
 # Local timezone for display (fallback to UTC)
 LOCAL_TZ = pytz.timezone(os.getenv("LOCAL_TZ", "UTC"))

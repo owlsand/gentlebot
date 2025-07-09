@@ -22,7 +22,8 @@ from discord.ext import commands, tasks
 
 from util import chan_name
 
-log = logging.getLogger(__name__)
+# Use a hierarchical logger so messages propagate to the main gentlebot logger
+log = logging.getLogger(f"gentlebot.{__name__}")
 
 import bot_config as cfg
 
