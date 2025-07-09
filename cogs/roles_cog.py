@@ -17,7 +17,10 @@ from datetime import datetime, timedelta, date
 import pytz
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
+
+from util import chan_name
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +57,16 @@ class RoleCog(commands.Cog):
         self.first_drop_day: date | None = None
         self.first_drop_user: int | None = None
         self.badge_task.start()
+
+    @app_commands.command(name="refreshroles", description="Force badge and flag updates")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
+    async def refresh_roles(self, interaction: discord.Interaction):
+        """Admins can manually trigger the role rotation."""
+        log.info("/refreshroles invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        await self.badge_task()
+        await interaction.followup.send("Role rotation complete.", ephemeral=True)
 
     async def _get_member(self, guild: discord.Guild, user_id: int) -> discord.Member | None:
         """Return a member from cache or fetch if missing."""
