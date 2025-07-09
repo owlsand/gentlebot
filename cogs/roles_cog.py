@@ -12,7 +12,7 @@ All IDs & thresholds come from **bot_config.py**.
 from __future__ import annotations
 import logging
 from collections import defaultdict, Counter
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 import pytz
 
@@ -53,7 +53,7 @@ class RoleCog(commands.Cog):
         # engagement/inactivity tracking
         self.messages: list[dict] = []
         self.reactions: list[dict] = []
-        self.last_online: defaultdict[int, datetime] = defaultdict(lambda: datetime.utcnow())
+        self.last_online: defaultdict[int, datetime] = defaultdict(discord.utils.utcnow)
         self.first_drop_day: date | None = None
         self.first_drop_user: int | None = None
         self.badge_task.start()
@@ -96,14 +96,14 @@ class RoleCog(commands.Cog):
         if after.guild.id != GUILD_ID:
             return
         if after.status != discord.Status.offline:
-            self.last_online[after.id] = datetime.utcnow()
+            self.last_online[after.id] = discord.utils.utcnow()
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
         if msg.author.bot or msg.guild is None or msg.guild.id != GUILD_ID:
             return
         member_id = msg.author.id
-        self.last_online[member_id] = datetime.utcnow()
+        self.last_online[member_id] = discord.utils.utcnow()
         info = {
             "id": msg.id,
             "author": member_id,
@@ -127,14 +127,14 @@ class RoleCog(commands.Cog):
             return
         if user.bot:
             return
-        self.last_online[user.id] = datetime.utcnow()
+        self.last_online[user.id] = discord.utils.utcnow()
         creator = None
         if isinstance(reaction.emoji, discord.Emoji):
             em = reaction.message.guild.get_emoji(reaction.emoji.id)
             if em and em.user:
                 creator = em.user.id
         entry = {
-            "ts": datetime.utcnow(),
+            "ts": discord.utils.utcnow(),
             "msg": reaction.message.id,
             "msg_author": reaction.message.author.id,
             "emoji": str(reaction.emoji),
@@ -191,7 +191,7 @@ class RoleCog(commands.Cog):
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
             return
-        now = datetime.utcnow()
+        now = discord.utils.utcnow()
         cutoff14 = now - timedelta(days=14)
         cutoff30 = now - timedelta(days=30)
         self.messages = [m for m in self.messages if m["ts"] >= cutoff30]
@@ -264,7 +264,7 @@ class RoleCog(commands.Cog):
         for member in guild.members:
             if member.bot:
                 continue
-            last = self.last_online.get(member.id, datetime.utcfromtimestamp(0))
+            last = self.last_online.get(member.id, datetime.fromtimestamp(0, tz=timezone.utc))
             if now - last > timedelta(days=14):
                 await self._assign_flag(guild, member, ROLE_GHOST)
                 continue
@@ -292,6 +292,13 @@ class RoleCog(commands.Cog):
         try:
             await member.add_roles(role, reason="RoleCog auto-assign")
             log.info("Successfully assigned role %s (%s) to member %s", role.name, role_id, member.id)
+        except discord.Forbidden:
+            log.error(
+                "Missing permissions to assign role %s to %s. "
+                "Ensure the bot's role is above the target role and has Manage Roles.",
+                role_id,
+                member.id,
+            )
         except Exception as e:
             log.error("Failed assigning role %s to %s: %s", role_id, member.id, e)
 
@@ -317,6 +324,13 @@ class RoleCog(commands.Cog):
         try:
             await member.remove_roles(role, reason="RoleCog auto-remove")
             log.info("Successfully removed role %s (%s) from member %s", role.name, role_id, member.id)
+        except discord.Forbidden:
+            log.error(
+                "Missing permissions to remove role %s from %s. "
+                "Ensure the bot's role is above the target role and has Manage Roles.",
+                role_id,
+                member.id,
+            )
         except Exception as e:
             log.error("Failed removing role %s from %s: %s", role_id, member.id, e)
 
