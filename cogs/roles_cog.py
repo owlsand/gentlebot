@@ -264,7 +264,8 @@ class RoleCog(commands.Cog):
         for member in guild.members:
             if member.bot:
                 continue
-            last = self.last_online.get(member.id, datetime.fromtimestamp(0, tz=timezone.utc))
+            # Default last online to now so new members aren't immediately flagged
+            last = self.last_online.get(member.id, now)
             if now - last > timedelta(days=14):
                 await self._assign_flag(guild, member, ROLE_GHOST)
                 continue
