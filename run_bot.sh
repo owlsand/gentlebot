@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 source venv/bin/activate
 export env=PROD
-export LOG_LEVEL=DEBUG
+# Console output defaults to INFO; override via LOG_LEVEL if needed
+export LOG_LEVEL=${LOG_LEVEL:-INFO}
 python main.py

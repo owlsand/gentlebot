@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # Copy source code
 COPY . .
 
-# Set default environment to production and enable debug logging
+# Set default environment to production and limit console logging to INFO
 ENV env=PROD
-ENV LOG_LEVEL=DEBUG
+ENV LOG_LEVEL=INFO
 
 CMD ["python", "main.py"]

@@ -75,7 +75,7 @@ docker pull ghcr.io/<owner>/<repo>:latest
 docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
 ```
 
-The container sets `LOG_LEVEL=DEBUG` so logs are verbose by default.
+The container sets `LOG_LEVEL=INFO` so console output is less verbose by default.
 
 ## Notes
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
