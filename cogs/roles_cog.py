@@ -3,9 +3,15 @@
 Rotating engagement badges and inactivity flags.
 
 Engagement badges: Top Poster, Certified Banger, Top Curator, First Drop,
-The Summoner, Lore Creator, Reaction Engineer.
+The Summoner, Lore Creator, Reaction Engineer, Galaxy Brain, Wordsmith,
+Sniper, Night Owl, Comeback Kid, Ghostbuster.
 
-Inactivity flags: Ghost, Shadow, Lurker, NPC.
+Inactivity flags:
+  - **Ghost** – 0 messages and 0 reactions given or received in the last 14d
+  - **Shadow** – 0 messages in last 14d but at least one mention or reaction
+    from others within 30d
+  - **Lurker** – 1–5 messages sent or 1–15 reactions given in the last 14d
+  - **NPC** – recently active but never posts anything long or rich
 
 All IDs & thresholds come from **bot_config.py**.
 """
@@ -38,6 +44,12 @@ ROLE_FIRST_DROP: int = cfg.ROLE_FIRST_DROP
 ROLE_SUMMONER: int = cfg.ROLE_SUMMONER
 ROLE_LORE_CREATOR: int = cfg.ROLE_LORE_CREATOR
 ROLE_REACTION_ENGINEER: int = cfg.ROLE_REACTION_ENGINEER
+ROLE_GALAXY_BRAIN: int = cfg.ROLE_GALAXY_BRAIN
+ROLE_WORDSMITH: int = cfg.ROLE_WORDSMITH
+ROLE_SNIPER: int = cfg.ROLE_SNIPER
+ROLE_NIGHT_OWL: int = cfg.ROLE_NIGHT_OWL
+ROLE_COMEBACK_KID: int = cfg.ROLE_COMEBACK_KID
+ROLE_GHOSTBUSTER: int = cfg.ROLE_GHOSTBUSTER
 ROLE_SHADOW_FLAG: int = cfg.ROLE_SHADOW_FLAG
 ROLE_LURKER_FLAG: int = cfg.ROLE_LURKER_FLAG
 ROLE_NPC_FLAG: int = cfg.ROLE_NPC_FLAG
@@ -58,6 +70,7 @@ class RoleCog(commands.Cog):
         self.last_online: defaultdict[int, datetime] = defaultdict(discord.utils.utcnow)
         self.first_drop_day: date | None = None
         self.first_drop_user: int | None = None
+        self.last_message_ts: datetime = discord.utils.utcnow()
         self.assign_counts: Counter[int] = Counter()
         self.badge_task.start()
 
@@ -122,11 +135,13 @@ class RoleCog(commands.Cog):
                         "author": msg.author.id,
                         "ts": msg.created_at,
                         "len": len(msg.content),
+                        "words": len(msg.content.split()),
                         "rich": bool(msg.attachments)
                         or bool(msg.embeds)
                         or ("http" in msg.content),
                         "mentions": msg.content.count("@here")
                         + msg.content.count("@everyone"),
+                        "mention_ids": [u.id for u in msg.mentions],
                         "reply_to": msg.reference.resolved.author.id
                         if msg.reference and msg.reference.resolved
                         else None,
@@ -187,6 +202,8 @@ class RoleCog(commands.Cog):
             first_ts_la = first["ts"].astimezone(LA)
             self.first_drop_day = first_ts_la.date()
             self.first_drop_user = first["author"]
+        if self.messages:
+            self.last_message_ts = max(m["ts"] for m in self.messages)
 
     # -- Activity listeners --
     @commands.Cog.listener()
@@ -207,11 +224,17 @@ class RoleCog(commands.Cog):
             "author": member_id,
             "ts": msg.created_at,
             "len": len(msg.content),
+            "words": len(msg.content.split()),
             "rich": bool(msg.attachments) or bool(msg.embeds) or ("http" in msg.content),
             "mentions": msg.content.count("@here") + msg.content.count("@everyone"),
+            "mention_ids": [u.id for u in msg.mentions],
             "reply_to": msg.reference.resolved.author.id if msg.reference and msg.reference.resolved else None,
         }
         self.messages.append(info)
+        if msg.created_at - self.last_message_ts >= timedelta(hours=24):
+            log.info("Ghostbuster winner: %s", member_id)
+            await self._rotate_single(msg.guild, ROLE_GHOSTBUSTER, member_id)
+        self.last_message_ts = msg.created_at
         la_ts = msg.created_at.astimezone(LA)
         if self.first_drop_day != la_ts.date():
             self.first_drop_day = la_ts.date()
@@ -352,8 +375,80 @@ class RoleCog(commands.Cog):
         log.info("Reaction Engineer winner: %s", reaction_engineer)
         await self._rotate_single(guild, ROLE_REACTION_ENGINEER, reaction_engineer)
 
+        cutoff1 = now - timedelta(days=1)
+        cutoff5 = now - timedelta(days=5)
+
+        daily_msgs = [m for m in self.messages if m["ts"] >= cutoff1]
+        if daily_msgs:
+            galaxy_brain = max(daily_msgs, key=lambda m: m.get("words", 0))["author"]
+        else:
+            galaxy_brain = None
+        log.info("Galaxy Brain winner: %s", galaxy_brain)
+        await self._rotate_single(guild, ROLE_GALAXY_BRAIN, galaxy_brain)
+
+        word_counts = defaultdict(list)
+        for m in daily_msgs:
+            word_counts[m["author"]].append(m.get("words", 0))
+        wordsmith = None
+        best_avg = 0.0
+        for uid, words in word_counts.items():
+            if len(words) >= 3:
+                avg = sum(words) / len(words)
+                if avg > best_avg:
+                    best_avg = avg
+                    wordsmith = uid
+        log.info("Wordsmith winner: %s", wordsmith)
+        await self._rotate_single(guild, ROLE_WORDSMITH, wordsmith)
+
+        reaction_map5 = Counter()
+        for r in self.reactions:
+            if r["ts"] >= cutoff5:
+                reaction_map5[r["msg"]] += 1
+        sniper_scores = defaultdict(list)
+        for m in self.messages:
+            if m["ts"] >= cutoff5:
+                ratio = reaction_map5[m["id"]] / max(m.get("words", 1), 1)
+                sniper_scores[m["author"]].append(ratio)
+        sniper = None
+        best_ratio = 0.0
+        for uid, ratios in sniper_scores.items():
+            avg = sum(ratios) / len(ratios)
+            if avg > best_ratio:
+                best_ratio = avg
+                sniper = uid
+        log.info("Sniper winner: %s", sniper)
+        await self._rotate_single(guild, ROLE_SNIPER, sniper)
+
+        night_counts = Counter()
+        for m in self.messages:
+            if m["ts"] >= cutoff14:
+                hour = m["ts"].astimezone(LA).hour
+                if hour >= 22 or hour < 6:
+                    night_counts[m["author"]] += 1
+        night_owl = night_counts.most_common(1)[0][0] if night_counts else None
+        log.info("Night Owl winner: %s", night_owl)
+        await self._rotate_single(guild, ROLE_NIGHT_OWL, night_owl)
+
+        mention_counts = Counter(
+            uid
+            for m in self.messages
+            if m["ts"] >= cutoff14
+            for uid in m.get("mention_ids", [])
+        )
+        comeback_kid = mention_counts.most_common(1)[0][0] if mention_counts else None
+        log.info("Comeback Kid winner: %s", comeback_kid)
+        await self._rotate_single(guild, ROLE_COMEBACK_KID, comeback_kid)
+
         msg_count14 = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
-        react_count14 = Counter(r["user"] for r in self.reactions if r["ts"] >= cutoff14)
+        react_given14 = Counter(r["user"] for r in self.reactions if r["ts"] >= cutoff14)
+        react_recv14 = Counter(r["msg_author"] for r in self.reactions if r["ts"] >= cutoff14)
+        react_recv30 = Counter(r["msg_author"] for r in self.reactions if r["ts"] >= cutoff30)
+        mention_recv30 = Counter(
+            uid
+            for m in self.messages
+            if m["ts"] >= cutoff30
+            for uid in m.get("mention_ids", [])
+        )
         long_msgs30 = defaultdict(int)
         rich_msgs30 = defaultdict(int)
         for m in self.messages:
@@ -367,13 +462,18 @@ class RoleCog(commands.Cog):
                 continue
             # Default last online to now so new members aren't immediately flagged
             last = self.last_online.get(member.id, now)
-            if now - last > timedelta(days=14):
+            msgs14 = msg_count14[member.id]
+            reacts14 = react_given14[member.id]
+            recv14 = react_recv14[member.id]
+            recv30 = react_recv30[member.id]
+            mentions30 = mention_recv30[member.id]
+            if msgs14 == 0 and reacts14 == 0 and recv14 == 0:
                 await self._assign_flag(guild, member, ROLE_GHOST)
                 continue
-            if msg_count14[member.id] == 0 and react_count14[member.id] == 0:
+            if msgs14 == 0 and (mentions30 > 0 or recv30 > 0):
                 await self._assign_flag(guild, member, ROLE_SHADOW_FLAG)
                 continue
-            if msg_count14[member.id] < 4 and react_count14[member.id] >= 1:
+            if 1 <= msgs14 <= 5 or 1 <= reacts14 <= 15:
                 await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
                 continue
             if now - last <= timedelta(days=30) and long_msgs30[member.id] == 0 and rich_msgs30[member.id] == 0:
