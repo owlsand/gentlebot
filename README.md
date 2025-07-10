@@ -51,7 +51,7 @@ setup.sh           # install dependencies and create the venv
    ```bash
    ./run_bot.sh
    ```
-During development you can use `./dev_run.sh` for automatic restarts when files change. Install the optional `watchfiles` or `watchdog` package for this convenience.
+During development you can use `./dev_run.sh` for automatic restarts when files change. Install the optional `watchfiles` or `watchdog` package for this convenience. Logs are written to `logs/bot.log` with daily rotation so you can review past activity.
 Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `test_harness.py` instead, which loads all cogs without connecting to Discord.
 
 ## Docker
