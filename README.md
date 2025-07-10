@@ -5,10 +5,11 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 - **SportsCog** – `/nextf1` and `/f1standings` plus `/bigdumper` for Mariners stats.
 - **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
 - **MarketsCog** – `/marketmood` shows a quick sentiment snapshot and `/marketbet` runs a weekly bull/bear game.
-- **RolesCog** – Manages vanity reaction roles and activity‑based roles. Admins
-  can run `/refreshroles` to fetch 14 days of history and refresh roles
-  manually (admin‑only).
-  Ensure the bot's role is above these vanity roles and has the **Manage Roles** permission so it can assign and remove them.
+**RolesCog** – Manages vanity reaction roles and activity-based roles. Roles are
+  refreshed automatically on startup so redeployments keep badges up to date.
+  Admins can still run `/refreshroles` to fetch 14 days of history and refresh
+  roles manually. Ensure the bot's role is above these vanity roles and has the
+  **Manage Roles** permission so it can assign and remove them.
 - **PromptCog** – Posts a daily prompt generated via the Hugging Face API.
 - **HuggingFaceCog** – Adds AI conversation and emoji reactions using Hugging Face models.
 - **StatsCog** – `/engagement` now replies "Working on it..." and then gathers
