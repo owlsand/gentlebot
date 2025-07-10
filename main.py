@@ -25,6 +25,8 @@ file_handler.setFormatter(log_format)
 
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_format)
+# Limit console output to INFO and above even when file logging is DEBUG
+console_handler.setLevel(logging.INFO)
 
 root_logger = logging.getLogger()
 root_logger.setLevel(level)
