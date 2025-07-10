@@ -2,6 +2,9 @@
 ================================
 Rotating engagement badges and inactivity flags.
 
+Roles are refreshed automatically on startup so a redeploy won't reset
+any of the vanity badges or inactivity flags.
+
 Engagement badges: Top Poster, Certified Banger, Top Curator, First Drop,
 The Summoner, Lore Creator, Reaction Engineer, Galaxy Brain, Wordsmith,
 Sniper, Night Owl, Comeback Kid, Ghostbuster.
@@ -72,7 +75,15 @@ class RoleCog(commands.Cog):
         self.first_drop_user: int | None = None
         self.last_message_ts: datetime = discord.utils.utcnow()
         self.assign_counts: Counter[int] = Counter()
+        self._startup_refreshed: bool = False
         self.badge_task.start()
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self._startup_refreshed:
+            await self._fetch_recent_activity()
+            await self.badge_task()
+            self._startup_refreshed = True
 
     @app_commands.command(name="refreshroles", description="Fetch history and rotate badges")
     @app_commands.checks.has_permissions(administrator=True)
