@@ -30,7 +30,7 @@ async def load_cogs() -> int:
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.getLogger().setLevel(logging.INFO)
     if not TOKEN:
         logging.warning("DISCORD_TOKEN not set; cogs will still be loaded")
     num = asyncio.run(load_cogs())

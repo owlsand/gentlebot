@@ -22,11 +22,14 @@ file_handler = TimedRotatingFileHandler(
     log_dir / "bot.log", when="midnight", backupCount=90
 )
 file_handler.setFormatter(log_format)
-logger.addHandler(file_handler)
 
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_format)
-logger.addHandler(console_handler)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(level)
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
 
 logger.info(
     "Starting GentleBot in %s environment with level %s",
