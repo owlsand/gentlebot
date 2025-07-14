@@ -73,7 +73,6 @@ def test_on_message(monkeypatch):
 
     asyncio.run(run_test())
 
-
 def test_on_ready_populates(monkeypatch):
     async def run_test():
         pool = DummyPool()
@@ -115,4 +114,3 @@ def test_on_ready_populates(monkeypatch):
         assert called == ["g", "c"]
 
     asyncio.run(run_test())
-
