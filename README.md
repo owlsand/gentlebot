@@ -51,6 +51,8 @@ setup.sh           # install dependencies and create the venv
    PG_USER=gentlebot
    PG_PASSWORD=<pg_password>
    PG_DB=gentlebot
+   # enable message archival tables
+   ARCHIVE_MESSAGES=1
    # or provide an explicit async connection URL
    DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
@@ -61,7 +63,14 @@ setup.sh           # install dependencies and create the venv
    ```bash
    alembic upgrade head
    ```
-5. Run the bot:
+5. Set `ARCHIVE_MESSAGES=1` to enable message archival. The archive cog
+   records all existing guilds and channels on startup and then logs new
+   messages and reactions. Run the migration again to create the tables
+   used by the archive cog.
+   ```bash
+   alembic upgrade head
+   ```
+6. Run the bot:
    ```bash
    ./run_bot.sh
    ```
