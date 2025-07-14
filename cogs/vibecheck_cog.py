@@ -17,7 +17,10 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord import app_commands
 from discord.ext import commands
-from huggingface_hub import InferenceClient
+try:
+    from huggingface_hub import InferenceClient
+except Exception:  # pragma: no cover - optional dependency may be missing
+    InferenceClient = None  # type: ignore
 
 from util import chan_name
 import bot_config as cfg
@@ -42,9 +45,10 @@ class VibeCheckCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         token = os.getenv("HF_API_TOKEN")
-        self.hf_client = (
-            InferenceClient(provider="together", api_key=token) if token else None
-        )
+        if InferenceClient and token:
+            self.hf_client = InferenceClient(provider="together", api_key=token)
+        else:
+            self.hf_client = None
         self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
         self.max_tokens = int(os.getenv("HF_MAX_TOKENS", 60))
         self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))

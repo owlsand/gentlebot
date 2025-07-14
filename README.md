@@ -53,6 +53,7 @@ setup.sh           # install dependencies and create the venv
    PG_DB=gentlebot
    # or provide an explicit async connection URL
    DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
+   # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
 4. Run the bot:
    ```bash
