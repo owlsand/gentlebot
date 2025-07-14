@@ -7,3 +7,4 @@ pytz
 asyncpg==0.29.0
 alembic==1.13.1
 SQLAlchemy==2.0.30
+psycopg2-binary==2.9.9
