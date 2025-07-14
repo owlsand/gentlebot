@@ -14,12 +14,23 @@ class PostgresHandler(logging.Handler):
         self.pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
-        self.pool = await asyncpg.create_pool(self.dsn)
+        url = self.dsn.replace("postgresql+asyncpg://", "postgresql://")
+        self.pool = await asyncpg.create_pool(url)
 
-    async def close(self) -> None:
+    async def aclose(self) -> None:
         if self.pool:
             await self.pool.close()
             self.pool = None
+
+    def close(self) -> None:
+        if self.pool:
+            try:
+                asyncio.run(self.pool.close())
+            except RuntimeError:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.pool.close())
+            self.pool = None
+        super().close()
 
     def emit(self, record: logging.LogRecord) -> None:
         if not self.pool:
