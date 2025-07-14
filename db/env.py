@@ -67,8 +67,13 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    section = config.get_section(config.config_ini_section, {}).copy()
+    url = section.get("sqlalchemy.url")
+    if url and url.startswith("postgresql+asyncpg://"):
+        section["sqlalchemy.url"] = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
