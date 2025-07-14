@@ -36,6 +36,24 @@ class MessageArchiveCog(commands.Cog):
             await self.pool.close()
             self.pool = None
 
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        """Record existing guild and channel info when the bot starts."""
+        if not self.enabled:
+            return
+        for guild in self.bot.guilds:
+            await self._upsert_guild(guild)
+            for ch in getattr(guild, "channels", []):
+                await self._upsert_channel(ch)
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        if not self.enabled:
+            return
+        await self._upsert_guild(guild)
+        for ch in guild.channels:
+            await self._upsert_channel(ch)
+
     @staticmethod
     def _build_db_url() -> str | None:
         url = os.getenv("DATABASE_URL")
