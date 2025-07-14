@@ -55,7 +55,12 @@ setup.sh           # install dependencies and create the venv
    DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
-4. Run the bot:
+4. If using Postgres logging, run the Alembic migration to create the
+   `bot_logs` table:
+   ```bash
+   alembic upgrade head
+   ```
+5. Run the bot:
    ```bash
    ./run_bot.sh
    ```
