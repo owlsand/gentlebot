@@ -293,7 +293,6 @@ class RoleCog(commands.Cog):
             target = await self._get_member(guild, user_id)
             if target:
                 if role not in target.roles:
-                    log.info("Targeting member %s for role %s", target.id, role.name)
                     await self._assign(target, role_id)
                     changed = True
             else:
@@ -315,7 +314,6 @@ class RoleCog(commands.Cog):
         role = guild.get_role(role_id)
         if role and role_id:
             if role not in member.roles:
-                log.info("Targeting member %s for inactivity role %s", member.id, role.name)
                 await self._assign(member, role_id)
 
     # ── Badge Rotation Task ─────────────────────────────────────────────
@@ -491,15 +489,8 @@ class RoleCog(commands.Cog):
                 await self._assign_flag(guild, member, ROLE_NPC_FLAG)
                 continue
             await self._assign_flag(guild, member, 0)
-
-        for role_id, count in self.assign_counts.items():
-            role = guild.get_role(role_id)
-            role_name = role.name if role else str(role_id)
-            log.info("Role %s targeted assignments: %d", role_name, count)
-
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
-        log.info("Attempting to assign new role (%s) to member (%s)", role_id, member.id)
         role = member.guild.get_role(role_id)
         if not role:
             log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
@@ -510,7 +501,6 @@ class RoleCog(commands.Cog):
         try:
             self.assign_counts[role_id] += 1
             await member.add_roles(role, reason="RoleCog auto-assign")
-            log.info("Successfully assigned role %s (%s) to member %s", role.name, role_id, member.id)
         except discord.Forbidden:
             log.error(
                 "Missing permissions to assign role %s to %s. "
@@ -542,7 +532,6 @@ class RoleCog(commands.Cog):
             member = refreshed
         try:
             await member.remove_roles(role, reason="RoleCog auto-remove")
-            log.info("Successfully removed role %s (%s) from member %s", role.name, role_id, member.id)
         except discord.Forbidden:
             log.error(
                 "Missing permissions to remove role %s from %s. "
