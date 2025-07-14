@@ -112,7 +112,7 @@ async def main():
             await bot.start(cfg.TOKEN)
     finally:
         if db_handler:
-            await db_handler.close()
+            await db_handler.aclose()
 
 if __name__ == "__main__":
     asyncio.run(main())
