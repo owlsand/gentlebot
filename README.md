@@ -56,7 +56,8 @@ setup.sh           # install dependencies and create the venv
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
 4. If using Postgres logging, run the Alembic migration to create the
-   `bot_logs` table:
+   `bot_logs` table. The handler logs only **INFO** and above, so DEBUG
+   messages stay in your local files:
    ```bash
    alembic upgrade head
    ```
