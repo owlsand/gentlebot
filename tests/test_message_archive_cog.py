@@ -73,3 +73,44 @@ def test_on_message(monkeypatch):
 
     asyncio.run(run_test())
 
+def test_on_ready_populates(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+
+        async def fake_create_pool(url):
+            return pool
+
+        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+
+        intents = discord.Intents.default()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = MessageArchiveCog(bot)
+        await cog.cog_load()
+
+        class Dummy:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        guild = Dummy(id=1, name="g", owner=Dummy(id=2), created_at=None)
+        chan = Dummy(id=10, guild=guild, name="c", type=discord.ChannelType.text, created_at=None)
+        guild.channels = [chan]
+        monkeypatch.setattr(type(bot), "guilds", property(lambda self: [guild]), raising=False)
+
+        called = []
+
+        async def fake_upsert_guild(g):
+            called.append("g")
+
+        async def fake_upsert_channel(c):
+            called.append("c")
+
+        monkeypatch.setattr(cog, "_upsert_guild", fake_upsert_guild)
+        monkeypatch.setattr(cog, "_upsert_channel", fake_upsert_channel)
+
+        await cog.on_ready()
+
+        assert called == ["g", "c"]
+
+    asyncio.run(run_test())
