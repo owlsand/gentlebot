@@ -47,6 +47,12 @@ setup.sh           # install dependencies and create the venv
    HF_API_TOKEN=<hugging face token>
    # optional fallback if the primary token hits a billing error
    HF_API_TOKEN_ALT=<secondary hugging face token>
+   # optional Postgres credentials for logging
+   PG_USER=gentlebot
+   PG_PASSWORD=<pg_password>
+   PG_DB=gentlebot
+   # or provide an explicit async connection URL
+   DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    ```
 4. Run the bot:
    ```bash
@@ -82,6 +88,7 @@ The container sets `LOG_LEVEL=INFO` so console output is less verbose by default
  - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
    You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
    primary token hits a billing error.
+ - Set `DATABASE_URL` (or PG_* creds) to enable writing bot logs to a Postgres database.
 
 ## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.

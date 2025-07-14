@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 
 import bot_config as cfg
+from postgres_handler import PostgresHandler
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
 logger = logging.getLogger("gentlebot")
@@ -85,9 +86,33 @@ async def on_app_command_error(interaction: discord.Interaction, exc: discord.ap
     else:
         await interaction.response.send_message("An error occurred.", ephemeral=True)
 
+def _build_db_url() -> str | None:
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return url
+    user = os.getenv("PG_USER")
+    pwd = os.getenv("PG_PASSWORD")
+    db = os.getenv("PG_DB")
+    if user and pwd and db:
+        return f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
+    return None
+
+
 async def main():
-    async with bot:
-        await bot.start(cfg.TOKEN)
+    db_url = _build_db_url()
+    db_handler = None
+    if db_url:
+        db_handler = PostgresHandler(db_url)
+        await db_handler.connect()
+        root_logger.addHandler(db_handler)
+        logger.info("Postgres logging enabled")
+
+    try:
+        async with bot:
+            await bot.start(cfg.TOKEN)
+    finally:
+        if db_handler:
+            await db_handler.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
