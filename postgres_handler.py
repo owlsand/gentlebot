@@ -12,6 +12,8 @@ class PostgresHandler(logging.Handler):
         self.dsn = dsn
         self.table = table
         self.pool: asyncpg.Pool | None = None
+        # Ignore DEBUG records so they are not written to the database
+        self.setLevel(logging.INFO)
 
     async def connect(self) -> None:
         url = self.dsn.replace("postgresql+asyncpg://", "postgresql://")
