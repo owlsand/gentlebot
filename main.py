@@ -9,6 +9,7 @@ from discord.ext import commands
 
 import bot_config as cfg
 from postgres_handler import PostgresHandler
+from util import build_db_url
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
 logger = logging.getLogger("gentlebot")
@@ -78,20 +79,8 @@ async def on_app_command_error(interaction: discord.Interaction, exc: discord.ap
     else:
         await interaction.response.send_message("An error occurred.", ephemeral=True)
 
-def _build_db_url() -> str | None:
-    url = os.getenv("DATABASE_URL")
-    if url:
-        return url
-    user = os.getenv("PG_USER")
-    pwd = os.getenv("PG_PASSWORD")
-    db = os.getenv("PG_DB")
-    if user and pwd and db:
-        return f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
-    return None
-
-
 async def main():
-    db_url = _build_db_url()
+    db_url = build_db_url()
     db_handler = None
     file_handler = None
     if db_url:

@@ -6,6 +6,7 @@ from discord.ext import commands
 import asyncpg
 
 from cogs.message_archive_cog import MessageArchiveCog
+from util import build_db_url
 
 
 class DummyPool:
@@ -29,7 +30,7 @@ def test_build_db_url_env(monkeypatch):
     monkeypatch.setenv("PG_USER", "u")
     monkeypatch.setenv("PG_PASSWORD", "p")
     monkeypatch.setenv("PG_DB", "db")
-    assert MessageArchiveCog._build_db_url() == "postgresql+asyncpg://u:p@db:5432/db"
+    assert build_db_url() == "postgresql+asyncpg://u:p@db:5432/db"
 
 
 def test_on_message(monkeypatch):
