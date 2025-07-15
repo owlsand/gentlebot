@@ -384,19 +384,18 @@ class RoleCog(commands.Cog):
         log.info("Reaction Engineer winner: %s", reaction_engineer)
         await self._rotate_single(guild, ROLE_REACTION_ENGINEER, reaction_engineer)
 
-        cutoff1 = now - timedelta(days=1)
         cutoff5 = now - timedelta(days=5)
 
-        daily_msgs = [m for m in self.messages if m["ts"] >= cutoff1]
-        if daily_msgs:
-            galaxy_brain = max(daily_msgs, key=lambda m: m.get("words", 0))["author"]
+        recent_msgs = [m for m in self.messages if m["ts"] >= cutoff5]
+        if recent_msgs:
+            galaxy_brain = max(recent_msgs, key=lambda m: m.get("words", 0))["author"]
         else:
             galaxy_brain = None
         log.info("Galaxy Brain winner: %s", galaxy_brain)
         await self._rotate_single(guild, ROLE_GALAXY_BRAIN, galaxy_brain)
 
         word_counts = defaultdict(list)
-        for m in daily_msgs:
+        for m in recent_msgs:
             word_counts[m["author"]].append(m.get("words", 0))
         wordsmith = None
         best_avg = 0.0
