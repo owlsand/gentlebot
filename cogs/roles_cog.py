@@ -243,7 +243,7 @@ class RoleCog(commands.Cog):
         }
         self.messages.append(info)
         if msg.created_at - self.last_message_ts >= timedelta(hours=24):
-            log.info("Ghostbuster winner: %s", member_id)
+            log.debug("Ghostbuster winner: %s", member_id)
             await self._rotate_single(msg.guild, ROLE_GHOSTBUSTER, member_id)
         self.last_message_ts = msg.created_at
         la_ts = msg.created_at.astimezone(LA)
@@ -298,10 +298,10 @@ class RoleCog(commands.Cog):
             else:
                 log.warning("Member %s for role %s not found", user_id, role.name)
         else:
-            log.info("No qualifying member for %s", role.name)
+            log.debug("No qualifying member for %s", role.name)
 
         if not changed:
-            log.info("No changes for role %s", role.name)
+            log.debug("No changes for role %s", role.name)
 
     async def _assign_flag(self, guild: discord.Guild, member: discord.Member, role_id: int):
         """Assign the appropriate inactivity flag to a member."""
@@ -332,7 +332,7 @@ class RoleCog(commands.Cog):
 
         counts = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
         top_poster = counts.most_common(1)[0][0] if counts else None
-        log.info("Top Poster winner: %s", top_poster)
+        log.debug("Top Poster winner: %s", top_poster)
         await self._rotate_single(guild, ROLE_TOP_POSTER, top_poster)
 
         msg_counts = Counter()
@@ -351,7 +351,7 @@ class RoleCog(commands.Cog):
                 if avg > best_avg:
                     best_avg = avg
                     best = uid
-        log.info("Certified Banger winner: %s", best)
+        log.debug("Certified Banger winner: %s", best)
         await self._rotate_single(guild, ROLE_CERTIFIED_BANGER, best)
 
         reaction_map = Counter()
@@ -363,40 +363,39 @@ class RoleCog(commands.Cog):
             if m["ts"] >= cutoff14 and m["rich"] and reaction_map[m["id"]] >= 3:
                 curator[m["author"]] += 1
         top_curator = curator.most_common(1)[0][0] if curator else None
-        log.info("Top Curator winner: %s", top_curator)
+        log.debug("Top Curator winner: %s", top_curator)
         await self._rotate_single(guild, ROLE_TOP_CURATOR, top_curator)
 
-        log.info("First Drop winner: %s", self.first_drop_user)
+        log.debug("First Drop winner: %s", self.first_drop_user)
         await self._rotate_single(guild, ROLE_FIRST_DROP, self.first_drop_user)
 
         summons = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff30 for _ in range(m["mentions"]))
         summoner = summons.most_common(1)[0][0] if summons else None
-        log.info("The Summoner winner: %s", summoner)
+        log.debug("The Summoner winner: %s", summoner)
         await self._rotate_single(guild, ROLE_SUMMONER, summoner)
 
         referenced = Counter(m["reply_to"] for m in self.messages if m["ts"] >= cutoff30 and m["reply_to"])
         lore_creator = referenced.most_common(1)[0][0] if referenced else None
-        log.info("Lore Creator winner: %s", lore_creator)
+        log.debug("Lore Creator winner: %s", lore_creator)
         await self._rotate_single(guild, ROLE_LORE_CREATOR, lore_creator)
 
         creator_counts = Counter(r["creator"] for r in self.reactions if r["ts"] >= cutoff30 and r["creator"])
         reaction_engineer = creator_counts.most_common(1)[0][0] if creator_counts else None
-        log.info("Reaction Engineer winner: %s", reaction_engineer)
+        log.debug("Reaction Engineer winner: %s", reaction_engineer)
         await self._rotate_single(guild, ROLE_REACTION_ENGINEER, reaction_engineer)
 
-        cutoff1 = now - timedelta(days=1)
         cutoff5 = now - timedelta(days=5)
 
-        daily_msgs = [m for m in self.messages if m["ts"] >= cutoff1]
-        if daily_msgs:
-            galaxy_brain = max(daily_msgs, key=lambda m: m.get("words", 0))["author"]
+        recent_msgs = [m for m in self.messages if m["ts"] >= cutoff5]
+        if recent_msgs:
+            galaxy_brain = max(recent_msgs, key=lambda m: m.get("words", 0))["author"]
         else:
             galaxy_brain = None
-        log.info("Galaxy Brain winner: %s", galaxy_brain)
+        log.debug("Galaxy Brain winner: %s", galaxy_brain)
         await self._rotate_single(guild, ROLE_GALAXY_BRAIN, galaxy_brain)
 
         word_counts = defaultdict(list)
-        for m in daily_msgs:
+        for m in recent_msgs:
             word_counts[m["author"]].append(m.get("words", 0))
         wordsmith = None
         best_avg = 0.0
@@ -406,7 +405,7 @@ class RoleCog(commands.Cog):
                 if avg > best_avg:
                     best_avg = avg
                     wordsmith = uid
-        log.info("Wordsmith winner: %s", wordsmith)
+        log.debug("Wordsmith winner: %s", wordsmith)
         await self._rotate_single(guild, ROLE_WORDSMITH, wordsmith)
 
         reaction_map5 = Counter()
@@ -425,7 +424,7 @@ class RoleCog(commands.Cog):
             if avg > best_ratio:
                 best_ratio = avg
                 sniper = uid
-        log.info("Sniper winner: %s", sniper)
+        log.debug("Sniper winner: %s", sniper)
         await self._rotate_single(guild, ROLE_SNIPER, sniper)
 
         night_counts = Counter()
@@ -435,7 +434,7 @@ class RoleCog(commands.Cog):
                 if hour >= 22 or hour < 6:
                     night_counts[m["author"]] += 1
         night_owl = night_counts.most_common(1)[0][0] if night_counts else None
-        log.info("Night Owl winner: %s", night_owl)
+        log.debug("Night Owl winner: %s", night_owl)
         await self._rotate_single(guild, ROLE_NIGHT_OWL, night_owl)
 
         mention_counts = Counter(
@@ -445,7 +444,7 @@ class RoleCog(commands.Cog):
             for uid in m.get("mention_ids", [])
         )
         comeback_kid = mention_counts.most_common(1)[0][0] if mention_counts else None
-        log.info("Comeback Kid winner: %s", comeback_kid)
+        log.debug("Comeback Kid winner: %s", comeback_kid)
         await self._rotate_single(guild, ROLE_COMEBACK_KID, comeback_kid)
 
         msg_count14 = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
@@ -496,7 +495,7 @@ class RoleCog(commands.Cog):
             log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
             return
         if role in member.roles:
-            log.info("Member %s already has role %s", member.id, role_id)
+            log.debug("Member %s already has role %s", member.id, role_id)
             return
         try:
             self.assign_counts[role_id] += 1
@@ -527,7 +526,7 @@ class RoleCog(commands.Cog):
                 log.error("Failed to refresh member %s: %s", member.id, exc)
                 return
             if role not in refreshed.roles:
-                log.info("Member %s no longer has role %s", member.id, role_id)
+                log.debug("Member %s no longer has role %s", member.id, role_id)
                 return
             member = refreshed
         try:
