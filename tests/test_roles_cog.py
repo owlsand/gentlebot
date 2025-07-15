@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import discord
 from discord.ext import commands
 
-import bot_config as cfg
-from cogs import roles_cog
+import gentlebot.config as cfg
+from gentlebot.cogs import roles_cog
 
 
 def test_lurker_skip_if_many_messages(monkeypatch):

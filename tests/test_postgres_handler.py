@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import asyncpg
-from postgres_handler import PostgresHandler
+from gentlebot.services.postgres import PostgresHandler
 
 class DummyPool:
     async def close(self):

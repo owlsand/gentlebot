@@ -12,7 +12,7 @@ from requests.exceptions import HTTPError
 import discord
 from discord import app_commands
 from discord.ext import commands
-from util import chan_name
+from gentlebot.utils import chan_name
 from huggingface_hub import InferenceClient
 
 

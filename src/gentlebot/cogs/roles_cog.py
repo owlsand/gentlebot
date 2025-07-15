@@ -16,7 +16,7 @@ Inactivity flags:
   - **Lurker** – 1–5 messages sent or 1–15 reactions given in the last 14d
   - **NPC** – recently active but never posts anything long or rich
 
-All IDs & thresholds come from **bot_config.py**.
+All IDs & thresholds come from **gentlebot.config.py**.
 """
 from __future__ import annotations
 import logging
@@ -29,12 +29,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from util import chan_name
+from gentlebot.utils import chan_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
 
-import bot_config as cfg
+import gentlebot.config as cfg
 
 # ── Behavioral Role Config ──────────────────────────────────────────────────
 GUILD_ID: int = cfg.GUILD_ID
@@ -57,7 +57,7 @@ ROLE_SHADOW_FLAG: int = cfg.ROLE_SHADOW_FLAG
 ROLE_LURKER_FLAG: int = cfg.ROLE_LURKER_FLAG
 ROLE_NPC_FLAG: int = cfg.ROLE_NPC_FLAG
 
-# thresholds (override in bot_config if desired)
+# thresholds (override in gentlebot.config if desired)
 INACTIVE_DAYS: int = cfg.INACTIVE_DAYS
 # Use Pacific time for daily role rotations
 LA = pytz.timezone("America/Los_Angeles")

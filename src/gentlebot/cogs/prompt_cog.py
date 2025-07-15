@@ -4,7 +4,7 @@ prompt_cog.py – Dynamic Daily‑Ping Prompt Generator for Gentlebot
 Generates a rotating, AI-powered prompt each day via Hugging Face inference,
 posts to DAILY_PING on schedule, and provides a command to skip to a new prompt.
 
-Configuration in bot_config.py:
+Configuration in gentlebot.config.py:
   • DAILY_PING_CHANNEL: channel ID for daily‑ping (must be an integer)
   • PROMPT_SCHEDULE_HOUR: (optional) local hour to schedule daily prompts
   • HF_API_TOKEN: required for HF inference
@@ -25,9 +25,9 @@ import logging
 from datetime import datetime, time, timedelta
 from collections import deque
 from discord.ext import commands
-from util import chan_name
+from gentlebot.utils import chan_name
 from huggingface_hub import InferenceClient
-import bot_config as cfg
+import gentlebot.config as cfg
 from zoneinfo import ZoneInfo
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger

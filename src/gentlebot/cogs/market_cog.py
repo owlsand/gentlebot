@@ -12,7 +12,7 @@ Slash commands shipped
 ``/marketmood`` – quick US market snapshot
 ``/marketbet``  – place a weekly bull/bear bet or toggle reminders
 
-All IDs, tokens, and embed colours live in **bot_config.py**.
+All IDs, tokens, and embed colours live in **gentlebot.config.py**.
 Requires: discord.py v2+, yfinance, matplotlib, pandas, python-dateutil,
 requests, sqlite3.
 """
@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
-from util import chan_name
+from gentlebot.utils import chan_name
 import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
@@ -41,7 +41,7 @@ from yfinance.exceptions import YFRateLimitError
 import requests
 import pandas as pd
 
-import bot_config as cfg
+import gentlebot.config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")

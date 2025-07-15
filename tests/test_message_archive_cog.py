@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 import asyncpg
 
-from cogs.message_archive_cog import MessageArchiveCog
+from gentlebot.cogs.message_archive_cog import MessageArchiveCog
 
 
 class DummyPool:

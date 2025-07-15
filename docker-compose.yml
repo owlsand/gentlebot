@@ -1,0 +1,6 @@
+services:
+  gentlebot:
+    build: .
+    env_file: .env
+    environment:
+      - BOT_ENV=prod

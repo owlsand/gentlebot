@@ -9,8 +9,8 @@ from datetime import timedelta
 import discord
 from discord.ext import commands
 
-import bot_config as cfg
-from cogs.message_archive_cog import MessageArchiveCog
+from gentlebot.config import settings
+from gentlebot.cogs.message_archive_cog import MessageArchiveCog
 
 log = logging.getLogger("gentlebot.backfill")
 
@@ -78,7 +78,7 @@ async def main() -> None:
     args = parse_args()
     bot = BackfillBot(days=args.days)
     async with bot:
-        await bot.start(cfg.TOKEN)
+        await bot.start(settings.discord_token)
 
 
 if __name__ == "__main__":

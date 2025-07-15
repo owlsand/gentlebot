@@ -31,4 +31,4 @@ COPY . .
 ENV env=PROD
 ENV LOG_LEVEL=INFO
 
-CMD ["python", "main.py"]
+CMD ["python", "-m", "gentlebot"]

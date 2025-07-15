@@ -18,23 +18,21 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 
 ## Repository Layout
 ```
-main.py            # bot entry point
-bot_config.py      # environment configuration and ID constants
-cogs/               # feature cogs
-  sports_cog.py     # F1 and baseball commands
-  market_cog.py     # market commands and weekly game
-  prompt_cog.py     # daily prompts
-  huggingface_cog.py # conversation + emoji reactions
-  stats_cog.py      # engagement statistics
-run_bot.sh         # run helper (prod)
-dev_run.sh         # auto-restart helper (dev)
-setup.sh           # install dependencies and create the venv
+src/gentlebot/__main__.py   # entry point
+src/gentlebot/config.py     # Pydantic settings
+src/gentlebot/cogs/         # feature cogs
+src/gentlebot/services/     # database and other services
+src/gentlebot/tasks/        # scripts and background jobs
+src/gentlebot/database/     # Alembic migrations
+run_bot.sh                  # run helper (prod)
+dev_run.sh                  # auto-restart helper (dev)
+setup.sh                    # install dependencies and create the venv
 ```
 
 ## Setup
 1. Install Python 3.10 or newer.
 2. Run `./setup.sh` to create a virtual environment and install the required packages.  You can re-run it at any time to ensure everything is up to date.
-3. Create a `.env` file with your bot token and other IDs (see `bot_config.py` for variables).  Example:
+3. Create a `.env` file with your bot token and other IDs (see `gentlebot/config.py` for variables).  Example:
    ```ini
    DISCORD_TOKEN=<your bot token>
    DISCORD_APPLICATION_ID=<app id>
@@ -77,7 +75,7 @@ setup.sh           # install dependencies and create the venv
    duplicates are created.
 8. Run the bot:
    ```bash
-   ./run_bot.sh
+   python -m gentlebot
    ```
 During development you can use `./dev_run.sh` for automatic restarts when files change. The `watchfiles` and `watchdog` packages are installed from `requirements.txt`, so autoreload works out of the box. Logs are written to `logs/bot.log` unless a Postgres connection is configured, in which case they are archived to the `bot_logs` table instead.
 Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `test_harness.py` instead, which loads all cogs without connecting to Discord.
@@ -105,7 +103,7 @@ docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
 The container sets `LOG_LEVEL=INFO` so console output is less verbose by default.
 
 ## Notes
-- `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
+ - `BOT_ENV` controls whether `gentlebot.config` loads **TEST** or **PROD** IDs.
  - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
    You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
    primary token hits a billing error.

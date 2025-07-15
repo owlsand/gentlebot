@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "gentlebot"
+version = "0.1.0"
+description = "Gentlebot Discord bot"
+authors = ["Gentlebot"]
+packages = [{ include = "gentlebot", from = "src" }]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "T20"]
+
+[tool.black]
+line-length = 120
