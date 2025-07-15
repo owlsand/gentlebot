@@ -10,7 +10,7 @@ class DummyPool:
     async def execute(self, *args, **kwargs):
         self.executed = True
 
-async def fake_create_pool(url):
+async def fake_create_pool(url, *args, **kwargs):
     assert url.startswith("postgresql://")
     return DummyPool()
 

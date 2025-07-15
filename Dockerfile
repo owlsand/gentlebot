@@ -22,9 +22,7 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir python-dateutil pytz beautifulsoup4 \
-        yfinance matplotlib pandas huggingface-hub watchdog
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
