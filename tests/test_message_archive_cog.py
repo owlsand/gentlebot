@@ -19,7 +19,7 @@ class DummyPool:
         self.executed.append(query)
 
 
-def fake_create_pool(url):
+def fake_create_pool(url, *args, **kwargs):
     assert url.startswith("postgresql://")
     return DummyPool()
 
@@ -35,7 +35,7 @@ def test_build_db_url_env(monkeypatch):
 def test_on_message(monkeypatch):
     async def run_test():
         pool = DummyPool()
-        async def fake_create_pool(url):
+        async def fake_create_pool(url, *args, **kwargs):
             assert url.startswith("postgresql://")
             return pool
         monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
@@ -77,7 +77,7 @@ def test_on_ready_populates(monkeypatch):
     async def run_test():
         pool = DummyPool()
 
-        async def fake_create_pool(url):
+        async def fake_create_pool(url, *args, **kwargs):
             return pool
 
         monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)

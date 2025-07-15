@@ -28,7 +28,11 @@ class MessageArchiveCog(commands.Cog):
             self.enabled = False
             return
         url = url.replace("postgresql+asyncpg://", "postgresql://")
-        self.pool = await asyncpg.create_pool(url)
+
+        async def _init(conn: asyncpg.Connection) -> None:
+            await conn.execute("SET search_path=discord,public")
+
+        self.pool = await asyncpg.create_pool(url, init=_init)
         log.info("Message archival enabled")
 
     async def cog_unload(self) -> None:
