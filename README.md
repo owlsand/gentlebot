@@ -3,8 +3,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 
 ## Features
 - **SportsCog** – `/nextf1` and `/f1standings` plus `/bigdumper` for Mariners stats.
-- **MarketCog** – `/stock` renders stock charts with Matplotlib and `/earnings` shows the next earnings date.
-- **MarketsCog** – `/marketmood` shows a quick sentiment snapshot and `/marketbet` runs a weekly bull/bear game.
+- **MarketCog** – `/stock`, `/earnings`, `/marketmood` and `/marketbet` combine charts with a weekly bull/bear game.
 **RolesCog** – Manages vanity reaction roles and activity-based roles. Roles are
   refreshed automatically on startup so redeployments keep badges up to date.
   Admins can still run `/refreshroles` to fetch 14 days of history and refresh
@@ -23,9 +22,7 @@ main.py            # bot entry point
 bot_config.py      # environment configuration and ID constants
 cogs/               # feature cogs
   sports_cog.py     # F1 and baseball commands
-  market_cog.py     # stock/earnings commands
-  markets_cog.py     # market mood & weekly bet game
-  roles_cog.py      # role automation
+  market_cog.py     # market commands and weekly game
   prompt_cog.py     # daily prompts
   huggingface_cog.py # conversation + emoji reactions
   stats_cog.py      # engagement statistics
@@ -57,26 +54,29 @@ setup.sh           # install dependencies and create the venv
    DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
-4. If using Postgres logging, run the Alembic migration to create the
+4. The weekly market game stores data in ``marketbet.db``. Tables ``bets``,
+   ``scores`` and ``reminders`` live in the ``market_game`` schema and are
+   created automatically.
+5. If using Postgres logging, run the Alembic migration to create the
    `bot_logs` table. The handler logs only **INFO** and above, so DEBUG
    messages stay in your local files:
    ```bash
    alembic upgrade head
    ```
-5. Set `ARCHIVE_MESSAGES=1` to enable message archival. The archive cog
+6. Set `ARCHIVE_MESSAGES=1` to enable message archival. The archive cog
    records all existing guilds and channels on startup and then logs new
    messages and reactions. Run the migration again to create the tables
    used by the archive cog.
    ```bash
    alembic upgrade head
    ```
-6. Optionally backfill up to 90 days of history before starting the bot:
+7. Optionally backfill up to 90 days of history before starting the bot:
    ```bash
    python backfill_archive.py --days 90
    ```
    The script may be re-run; inserts use `ON CONFLICT DO NOTHING` so no
    duplicates are created.
-7. Run the bot:
+8. Run the bot:
    ```bash
    ./run_bot.sh
    ```
