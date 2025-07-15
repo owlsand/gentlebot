@@ -26,7 +26,7 @@ def upgrade() -> None:
         "reaction_event",
         "user",
     ):
-        op.execute(f"ALTER TABLE {table} SET SCHEMA discord")
+        op.execute(f'ALTER TABLE "{table}" SET SCHEMA discord')
 
 
 def downgrade() -> None:
@@ -38,5 +38,5 @@ def downgrade() -> None:
         "reaction_event",
         "user",
     ):
-        op.execute(f"ALTER TABLE discord.{table} SET SCHEMA public")
+        op.execute(f'ALTER TABLE discord."{table}" SET SCHEMA public')
     op.execute("DROP SCHEMA IF EXISTS discord")
