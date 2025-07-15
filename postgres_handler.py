@@ -17,7 +17,11 @@ class PostgresHandler(logging.Handler):
 
     async def connect(self) -> None:
         url = self.dsn.replace("postgresql+asyncpg://", "postgresql://")
-        self.pool = await asyncpg.create_pool(url)
+
+        async def _init(conn: asyncpg.Connection) -> None:
+            await conn.execute("SET search_path=discord,public")
+
+        self.pool = await asyncpg.create_pool(url, init=_init)
 
     async def aclose(self) -> None:
         if self.pool:
