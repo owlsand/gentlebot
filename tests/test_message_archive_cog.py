@@ -114,3 +114,30 @@ def test_on_ready_populates(monkeypatch):
         assert called == ["g", "c"]
 
     asyncio.run(run_test())
+
+
+def test_upsert_user(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+        intents = discord.Intents.default()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = MessageArchiveCog(bot)
+        cog.pool = pool
+
+        class Dummy:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        member = Dummy(
+            id=1,
+            name="user",
+            discriminator="0001",
+            avatar=None,
+            bot=False,
+            display_name="User Display",
+        )
+        await cog._upsert_user(member)
+        assert pool.executed
+        assert "display_name" in pool.executed[0]
+
+    asyncio.run(run_test())

@@ -75,16 +75,26 @@ class MessageArchiveCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            INSERT INTO "user" (user_id, username, discriminator, avatar_hash, is_bot, first_seen_at, last_seen_at)
-            VALUES ($1,$2,$3,$4,$5, now(), now())
+            INSERT INTO "user" (
+                user_id, username, discriminator, avatar_hash, is_bot,
+                display_name, first_seen_at, last_seen_at
+            )
+            VALUES ($1,$2,$3,$4,$5,$6, now(), now())
             ON CONFLICT (user_id)
-            DO UPDATE SET username=$2, discriminator=$3, avatar_hash=$4, is_bot=$5, last_seen_at=EXCLUDED.last_seen_at
+            DO UPDATE SET
+                username=$2,
+                discriminator=$3,
+                avatar_hash=$4,
+                is_bot=$5,
+                display_name=$6,
+                last_seen_at=EXCLUDED.last_seen_at
             """,
             member.id,
             member.name,
             getattr(member, "discriminator", None),
             getattr(member, "avatar", None) and member.avatar.key,
             getattr(member, "bot", False),
+            getattr(member, "display_name", None),
         )
 
     async def _upsert_guild(self, guild: discord.Guild) -> None:
