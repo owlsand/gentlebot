@@ -7,6 +7,7 @@ import os
 import asyncpg
 import discord
 from discord.ext import commands
+from util import build_db_url
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -60,15 +61,7 @@ class MessageArchiveCog(commands.Cog):
 
     @staticmethod
     def _build_db_url() -> str | None:
-        url = os.getenv("DATABASE_URL")
-        if url:
-            return url
-        user = os.getenv("PG_USER")
-        pwd = os.getenv("PG_PASSWORD")
-        db = os.getenv("PG_DB")
-        if user and pwd and db:
-            return f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
-        return None
+        return build_db_url()
 
     async def _upsert_user(self, member: discord.abc.User) -> None:
         if not self.pool:
