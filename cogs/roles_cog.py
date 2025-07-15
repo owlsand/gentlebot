@@ -481,7 +481,10 @@ class RoleCog(commands.Cog):
             if msgs14 == 0 and (mentions30 > 0 or recv30 > 0):
                 await self._assign_flag(guild, member, ROLE_SHADOW_FLAG)
                 continue
-            if 1 <= msgs14 <= 5 or 1 <= reacts14 <= 15:
+            if 1 <= msgs14 <= 5:
+                await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
+                continue
+            if msgs14 == 0 and 1 <= reacts14 <= 15:
                 await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
                 continue
             if now - last <= timedelta(days=30) and long_msgs30[member.id] == 0 and rich_msgs30[member.id] == 0:
