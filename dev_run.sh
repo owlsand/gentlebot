@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 # dev_run.sh — auto-restarting bot for development
-# Requires: `watchdog` or `watchfiles` installed in your environment
+# Uses `watchfiles` or `watchdog` for autoreload (both installed via requirements)
 
 cd "$(dirname "$0")"
 
