@@ -121,7 +121,9 @@ class MessageArchiveCog(commands.Cog):
     async def _insert_message(self, message: discord.Message) -> None:
         if not self.pool:
             return
-        payload = json.loads(message.to_json()) if hasattr(message, "to_json") else {}
+        payload = (
+            json.loads(message.to_json()) if hasattr(message, "to_json") else {}
+        )
         await self.pool.execute(
             """
             INSERT INTO message (
@@ -141,7 +143,7 @@ class MessageArchiveCog(commands.Cog):
             message.pinned,
             message.tts,
             int(message.type.value),
-            payload,
+            json.dumps(payload),
         )
         for idx, att in enumerate(message.attachments):
             await self.pool.execute(
@@ -177,12 +179,21 @@ class MessageArchiveCog(commands.Cog):
             """UPDATE message SET content=$1, edited_at=$2, raw_payload=$3 WHERE message_id=$4""",
             after.content,
             after.edited_at,
-            json.loads(after.to_json()) if hasattr(after, "to_json") else {},
+            json.dumps(
+                json.loads(after.to_json()) if hasattr(after, "to_json") else {}
+            ),
             after.id,
         )
 
     async def _log_reaction(self, payload: discord.RawReactionActionEvent, action: int) -> None:
         if not self.pool:
+            return
+        # Ignore events for messages that are not archived yet
+        exists = await self.pool.fetchval(
+            "SELECT 1 FROM message WHERE message_id=$1",
+            payload.message_id,
+        )
+        if not exists:
             return
         await self.pool.execute(
             """
