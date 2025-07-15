@@ -8,3 +8,11 @@ asyncpg==0.29.0
 alembic==1.13.1
 SQLAlchemy==2.0.30
 psycopg2-binary==2.9.9
+python-dateutil
+beautifulsoup4
+yfinance
+matplotlib
+pandas
+huggingface-hub
+watchfiles
+watchdog

@@ -17,13 +17,6 @@ level = getattr(logging, level_name, logging.INFO)
 logger.setLevel(level)
 log_format = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-log_dir = Path("logs")
-log_dir.mkdir(exist_ok=True)
-file_handler = TimedRotatingFileHandler(
-    log_dir / "bot.log", when="midnight", backupCount=90
-)
-file_handler.setFormatter(log_format)
-
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_format)
 # Limit console output to INFO and above even when file logging is DEBUG
@@ -31,7 +24,6 @@ console_handler.setLevel(logging.INFO)
 
 root_logger = logging.getLogger()
 root_logger.setLevel(level)
-root_logger.addHandler(file_handler)
 root_logger.addHandler(console_handler)
 
 logger.info(
@@ -101,11 +93,20 @@ def _build_db_url() -> str | None:
 async def main():
     db_url = _build_db_url()
     db_handler = None
+    file_handler = None
     if db_url:
         db_handler = PostgresHandler(db_url)
         await db_handler.connect()
         root_logger.addHandler(db_handler)
-        logger.info("Postgres logging enabled")
+        logger.info("Postgres logging enabled; file logging disabled")
+    else:
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        file_handler = TimedRotatingFileHandler(
+            log_dir / "bot.log", when="midnight", backupCount=90
+        )
+        file_handler.setFormatter(log_format)
+        root_logger.addHandler(file_handler)
 
     try:
         async with bot:
@@ -113,6 +114,8 @@ async def main():
     finally:
         if db_handler:
             await db_handler.aclose()
+        if file_handler:
+            file_handler.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

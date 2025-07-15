@@ -58,8 +58,8 @@ setup.sh           # install dependencies and create the venv
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
 4. If using Postgres logging, run the Alembic migration to create the
-   `bot_logs` table. The handler logs only **INFO** and above, so DEBUG
-   messages stay in your local files:
+   `bot_logs` table. Database logging only stores **INFO** and above so
+   verbose debug messages remain in the console or log file:
    ```bash
    alembic upgrade head
    ```
@@ -80,7 +80,7 @@ setup.sh           # install dependencies and create the venv
    ```bash
    ./run_bot.sh
    ```
-During development you can use `./dev_run.sh` for automatic restarts when files change. Install the optional `watchfiles` or `watchdog` package for this convenience. Logs are written to `logs/bot.log` with daily rotation so you can review past activity.
+During development you can use `./dev_run.sh` for automatic restarts when files change. The `watchfiles` and `watchdog` packages are installed from `requirements.txt`, so autoreload works out of the box. Logs are written to `logs/bot.log` unless a Postgres connection is configured, in which case they are archived to the `bot_logs` table instead.
 Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `test_harness.py` instead, which loads all cogs without connecting to Discord.
 
 ## Docker
