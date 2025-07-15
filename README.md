@@ -70,7 +70,13 @@ setup.sh           # install dependencies and create the venv
    ```bash
    alembic upgrade head
    ```
-6. Run the bot:
+6. Optionally backfill up to 90 days of history before starting the bot:
+   ```bash
+   python backfill_archive.py --days 90
+   ```
+   The script may be re-run; inserts use `ON CONFLICT DO NOTHING` so no
+   duplicates are created.
+7. Run the bot:
    ```bash
    ./run_bot.sh
    ```
