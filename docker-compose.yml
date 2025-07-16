@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: gentlebot
+      POSTGRES_USER: gentlebot
+      POSTGRES_PASSWORD: example
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      DOCKER_PRUNE: '1'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - db
+volumes:
+  db-data:

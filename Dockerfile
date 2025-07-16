@@ -27,11 +27,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
-RUN chmod +x docker_start.sh
+RUN chmod +x scripts/start.sh
 
 # Set default environment to production and limit console logging to INFO
 ENV env=PROD
 ENV LOG_LEVEL=INFO
 ENV PYTHONPATH=/app/src
 
-ENTRYPOINT ["/app/docker_start.sh"]
+ENV DOCKER_PRUNE=0
+ENTRYPOINT ["/app/scripts/start.sh"]

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import argparse
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from discord.ext import commands
 import bot_config as cfg
 from postgres_handler import PostgresHandler
 from util import build_db_url
+from version import get_version
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
 logger = logging.getLogger("gentlebot")
@@ -42,7 +44,7 @@ class GentleBot(commands.Bot):
         # __main__ lives under src/gentlebot whereas the cogs folder sits at the
         # repository root next to main.py.  Walk one directory up to find it so
         # that loading works when running the package entry point.
-        cog_dir = Path(__file__).resolve().parent.parent / "cogs"
+        cog_dir = Path(__file__).resolve().parent.parent.parent / "cogs"
         for file in cog_dir.glob("*_cog.py"):
             if file.stem == "test_logging_cog" and not cfg.IS_TEST:
                 continue
@@ -110,10 +112,7 @@ async def main():
             file_handler.close()
 
 if __name__ == "__main__":
-    if os.getenv("USE_PKG_ENTRY"):
-        asyncio.run(main())
-    else:
-        from importlib import import_module
-
-        legacy = import_module("main")
-        asyncio.run(legacy.main())
+    parser = argparse.ArgumentParser(description="Run Gentlebot")
+    parser.add_argument("--version", action="version", version=get_version())
+    parser.parse_args()
+    asyncio.run(main())
