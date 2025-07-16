@@ -86,7 +86,9 @@ Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `te
 
 ## Docker
 You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`
-is provided. Build the image and pass your `.env` file at runtime:
+is provided. Build the image and pass your `.env` file at runtime. The container
+entrypoint waits for Postgres to accept connections, runs `alembic upgrade head`
+and prunes dangling images before launching the bot:
 
 ```bash
 docker build -t gentlebot .
