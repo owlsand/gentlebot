@@ -19,6 +19,9 @@ class DummyPool:
     async def execute(self, query, *args):
         self.executed.append(query)
 
+    async def fetchval(self, query, *args):
+        return True
+
 
 def fake_create_pool(url, *args, **kwargs):
     assert url.startswith("postgresql://")
@@ -140,5 +143,64 @@ def test_upsert_user(monkeypatch):
         await cog._upsert_user(member)
         assert pool.executed
         assert "display_name" in pool.executed[0]
+
+    asyncio.run(run_test())
+
+
+def test_reply_to_missing(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+
+        async def fake_create_pool(url, *args, **kwargs):
+            return pool
+
+        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+
+        intents = discord.Intents.default()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = MessageArchiveCog(bot)
+        await cog.cog_load()
+
+        async def fake_fetchval(query, *args):
+            return None
+
+        pool.fetchval = fake_fetchval
+
+        captured = {}
+
+        async def fake_execute(query, *args):
+            if "INSERT INTO discord.message" in query:
+                captured["reply"] = args[4]
+            pool.executed.append(query)
+
+        pool.execute = fake_execute
+
+        class Dummy:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        guild = Dummy(id=1, name="g", owner=Dummy(id=2), created_at=None)
+        channel = Dummy(id=10, guild=guild, name="c", type=discord.ChannelType.text, created_at=None)
+        author = Dummy(id=4, name="a", discriminator="1234", avatar=None, bot=False)
+        reference = Dummy(message_id=42)
+        message = Dummy(
+            id=123,
+            guild=guild,
+            channel=channel,
+            author=author,
+            content="hi",
+            created_at=discord.utils.utcnow(),
+            edited_at=None,
+            pinned=False,
+            tts=False,
+            type=discord.MessageType.reply,
+            attachments=[],
+            reference=reference,
+            to_json=lambda: "{}",
+        )
+        await cog.on_message(message)
+        assert captured.get("reply") is None
 
     asyncio.run(run_test())
