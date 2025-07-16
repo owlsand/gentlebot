@@ -44,6 +44,7 @@ class GentleBot(commands.Bot):
         # __main__ lives under src/gentlebot whereas the cogs folder sits at the
         # repository root next to main.py.  Walk one directory up to find it so
         # that loading works when running the package entry point.
+        # TODO: move cogs under src/gentlebot/cogs and drop this "../../../" hack
         cog_dir = Path(__file__).resolve().parent.parent.parent / "cogs"
         for file in cog_dir.glob("*_cog.py"):
             if file.stem == "test_logging_cog" and not cfg.IS_TEST:

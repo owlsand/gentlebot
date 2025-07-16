@@ -6,6 +6,10 @@
 # when GitHub Actions attempted to build for multiple platforms.
 FROM python:3.11-slim-bookworm
 
+# Install pg_isready
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install build tools and libraries required by Pillow and Matplotlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -16,7 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     libopenjp2-7 \
     libtiff6 \
-    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
