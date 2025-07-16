@@ -18,7 +18,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 
 ## Repository Layout
 ```
-main.py            # bot entry point
+src/gentlebot/__main__.py # package entry point
 bot_config.py      # environment configuration and ID constants
 cogs/               # feature cogs
   sports_cog.py     # F1 and baseball commands
@@ -78,6 +78,8 @@ setup.sh           # install dependencies and create the venv
 8. Run the bot:
    ```bash
    ./run_bot.sh
+   # or manually via Python
+   python -m gentlebot
    ```
 During development you can use `./dev_run.sh` for automatic restarts when files change. The `watchfiles` and `watchdog` packages are installed from `requirements.txt`, so autoreload works out of the box. Logs are written to `logs/bot.log` unless a Postgres connection is configured, in which case they are archived to the `bot_logs` table instead.
 Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `test_harness.py` instead, which loads all cogs without connecting to Discord.

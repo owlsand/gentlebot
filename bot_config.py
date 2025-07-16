@@ -8,7 +8,7 @@ Guild first, then flip the ENV var when you deploy.
 Usage
 -----
 $ export BOT_ENV=TEST  # or PROD (default PROD)
-$ python main.py
+$ python -m gentlebot
 
 * .env (git‑ignored) keeps only TOKEN values*
 DISCORD_TOKEN_TEST=xxx

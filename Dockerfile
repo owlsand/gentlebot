@@ -30,5 +30,6 @@ COPY . .
 # Set default environment to production and limit console logging to INFO
 ENV env=PROD
 ENV LOG_LEVEL=INFO
+ENV PYTHONPATH=/app/src
 
-CMD ["python", "main.py"]
+CMD ["python", "-m", "gentlebot"]
