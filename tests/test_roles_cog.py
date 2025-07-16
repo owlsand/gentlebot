@@ -142,4 +142,3 @@ def test_npc_removed_when_assigning_other_role(monkeypatch):
         assert other_id in added
 
     asyncio.run(run_test())
-
