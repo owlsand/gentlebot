@@ -14,7 +14,7 @@ Inactivity flags:
   - **Shadow** – 0 messages in last 14d but at least one mention or reaction
     from others within 30d
   - **Lurker** – 1–5 messages sent or 1–15 reactions given in the last 14d
-  - **NPC** – recently active but never posts anything long or rich
+  - **NPC** – default flag for members with no other engagement or inactivity role
 
 All IDs & thresholds come from **bot_config.py**.
 """
@@ -465,6 +465,8 @@ class RoleCog(commands.Cog):
                     long_msgs30[m["author"]] += 1
                 if m["rich"]:
                     rich_msgs30[m["author"]] += 1
+
+        flag_assigned: dict[int, int] = {}
         for member in guild.members:
             if member.bot:
                 continue
@@ -477,26 +479,39 @@ class RoleCog(commands.Cog):
             mentions30 = mention_recv30[member.id]
             if msgs14 == 0 and reacts14 == 0 and recv14 == 0:
                 await self._assign_flag(guild, member, ROLE_GHOST)
+                flag_assigned[member.id] = ROLE_GHOST
                 continue
             if msgs14 == 0 and (mentions30 > 0 or recv30 > 0):
                 await self._assign_flag(guild, member, ROLE_SHADOW_FLAG)
+                flag_assigned[member.id] = ROLE_SHADOW_FLAG
                 continue
             if 1 <= msgs14 <= 5:
                 await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
+                flag_assigned[member.id] = ROLE_LURKER_FLAG
                 continue
             if msgs14 == 0 and 1 <= reacts14 <= 15:
                 await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
-                continue
-            if now - last <= timedelta(days=30) and long_msgs30[member.id] == 0 and rich_msgs30[member.id] == 0:
-                await self._assign_flag(guild, member, ROLE_NPC_FLAG)
+                flag_assigned[member.id] = ROLE_LURKER_FLAG
                 continue
             await self._assign_flag(guild, member, 0)
+            flag_assigned[member.id] = 0
+
+        for member in guild.members:
+            if member.bot:
+                continue
+            if flag_assigned.get(member.id, 0) == 0:
+                if now - self.last_online.get(member.id, now) <= timedelta(days=30) and long_msgs30[member.id] == 0 and rich_msgs30[member.id] == 0:
+                    await self._assign_flag(guild, member, ROLE_NPC_FLAG)
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
         role = member.guild.get_role(role_id)
         if not role:
             log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
             return
+        if role_id != ROLE_NPC_FLAG:
+            npc = member.guild.get_role(ROLE_NPC_FLAG)
+            if npc and npc in member.roles:
+                await self._remove(member, ROLE_NPC_FLAG)
         if role in member.roles:
             log.debug("Member %s already has role %s", member.id, role_id)
             return
