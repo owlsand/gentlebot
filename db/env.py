@@ -11,9 +11,9 @@ from alembic import context
 config = context.config
 url = os.getenv("DATABASE_URL")
 if not url:
-    user = os.getenv("PG_USER")
-    pwd = os.getenv("PG_PASSWORD")
-    db = os.getenv("PG_DB")
+    user = os.getenv("PGUSER")
+    pwd = os.getenv("PGPASSWORD")
+    db = os.getenv("PGDATABASE")
     if user and pwd and db:
         url = f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
 if url:

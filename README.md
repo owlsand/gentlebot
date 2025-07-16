@@ -47,9 +47,11 @@ setup.sh           # install dependencies and create the venv
    # optional fallback if the primary token hits a billing error
    HF_API_TOKEN_ALT=<secondary hugging face token>
    # optional Postgres credentials for logging
-   PG_USER=gentlebot
-   PG_PASSWORD=<pg_password>
-   PG_DB=gentlebot
+   PGHOST=db
+   PGPORT=5432
+   PGUSER=gentlebot
+   PGPASSWORD=<pg_password>
+   PGDATABASE=gentlebot
    # enable message archival tables
    ARCHIVE_MESSAGES=1
    # or provide an explicit async connection URL

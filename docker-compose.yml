@@ -13,6 +13,11 @@ services:
     env_file: .env
     environment:
       DOCKER_PRUNE: '1'
+      PGHOST: db
+      PGPORT: '5432'
+      PGUSER: gentlebot
+      PGPASSWORD: example
+      PGDATABASE: gentlebot
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

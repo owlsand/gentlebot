@@ -6,9 +6,9 @@ def build_db_url() -> str | None:
     url = os.getenv("DATABASE_URL")
     if url:
         return url
-    user = os.getenv("PG_USER")
-    pwd = os.getenv("PG_PASSWORD")
-    db = os.getenv("PG_DB")
+    user = os.getenv("PGUSER")
+    pwd = os.getenv("PGPASSWORD")
+    db = os.getenv("PGDATABASE")
     if user and pwd and db:
         return f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
     return None

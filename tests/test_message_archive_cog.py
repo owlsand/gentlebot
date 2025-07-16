@@ -30,9 +30,9 @@ def fake_create_pool(url, *args, **kwargs):
 
 def test_build_db_url_env(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("PG_USER", "u")
-    monkeypatch.setenv("PG_PASSWORD", "p")
-    monkeypatch.setenv("PG_DB", "db")
+    monkeypatch.setenv("PGUSER", "u")
+    monkeypatch.setenv("PGPASSWORD", "p")
+    monkeypatch.setenv("PGDATABASE", "db")
     assert build_db_url() == "postgresql+asyncpg://u:p@db:5432/db"
 
 
