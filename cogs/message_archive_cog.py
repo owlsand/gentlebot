@@ -68,7 +68,7 @@ class MessageArchiveCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            INSERT INTO "user" (
+            INSERT INTO discord."user" (
                 user_id, username, discriminator, avatar_hash, is_bot,
                 display_name, first_seen_at, last_seen_at
             )
@@ -95,7 +95,7 @@ class MessageArchiveCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            INSERT INTO guild (guild_id, name, owner_id, created_at)
+            INSERT INTO discord.guild (guild_id, name, owner_id, created_at)
             VALUES ($1,$2,$3,$4)
             ON CONFLICT (guild_id)
             DO UPDATE SET name=$2, owner_id=$3, updated_at=now()
@@ -112,7 +112,7 @@ class MessageArchiveCog(commands.Cog):
         guild_id = getattr(channel.guild, "id", None)
         await self.pool.execute(
             """
-            INSERT INTO channel (channel_id, guild_id, name, type, created_at, last_message_at)
+            INSERT INTO discord.channel (channel_id, guild_id, name, type, created_at, last_message_at)
             VALUES ($1,$2,$3,$4,$5,$6)
             ON CONFLICT (channel_id)
             DO UPDATE SET name=$3, type=$4, last_message_at=$6
@@ -133,7 +133,7 @@ class MessageArchiveCog(commands.Cog):
         )
         await self.pool.execute(
             """
-            INSERT INTO message (
+            INSERT INTO discord.message (
                 message_id, guild_id, channel_id, author_id, reply_to_id,
                 content, created_at, edited_at, pinned, tts, type, raw_payload)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
@@ -155,7 +155,7 @@ class MessageArchiveCog(commands.Cog):
         for idx, att in enumerate(message.attachments):
             await self.pool.execute(
                 """
-                INSERT INTO message_attachment (
+                INSERT INTO discord.message_attachment (
                     message_id, attachment_id, filename, content_type, size_bytes, url, proxy_url)
                 VALUES ($1,$2,$3,$4,$5,$6,$7)
                 ON CONFLICT DO NOTHING
@@ -183,7 +183,7 @@ class MessageArchiveCog(commands.Cog):
         if not self.enabled or after.guild is None or not self.pool:
             return
         await self.pool.execute(
-            """UPDATE message SET content=$1, edited_at=$2, raw_payload=$3 WHERE message_id=$4""",
+            """UPDATE discord.message SET content=$1, edited_at=$2, raw_payload=$3 WHERE message_id=$4""",
             after.content,
             after.edited_at,
             json.dumps(
@@ -197,14 +197,14 @@ class MessageArchiveCog(commands.Cog):
             return
         # Ignore events for messages that are not archived yet
         exists = await self.pool.fetchval(
-            "SELECT 1 FROM message WHERE message_id=$1",
+            "SELECT 1 FROM discord.message WHERE message_id=$1",
             payload.message_id,
         )
         if not exists:
             return
         await self.pool.execute(
             """
-            INSERT INTO reaction_event (message_id, user_id, emoji, action, event_at)
+            INSERT INTO discord.reaction_event (message_id, user_id, emoji, action, event_at)
             VALUES ($1,$2,$3,$4,$5)
             """,
             payload.message_id,
