@@ -131,6 +131,15 @@ class MessageArchiveCog(commands.Cog):
         payload = (
             json.loads(message.to_json()) if hasattr(message, "to_json") else {}
         )
+        reply_to_id = getattr(message.reference, "message_id", None)
+        if reply_to_id:
+            exists = await self.pool.fetchval(
+                "SELECT 1 FROM discord.message WHERE message_id=$1",
+                reply_to_id,
+            )
+            if not exists:
+                reply_to_id = None
+
         await self.pool.execute(
             """
             INSERT INTO discord.message (
@@ -143,7 +152,7 @@ class MessageArchiveCog(commands.Cog):
             getattr(message.guild, "id", None),
             message.channel.id,
             message.author.id,
-            getattr(message.reference, "message_id", None),
+            reply_to_id,
             message.content,
             message.created_at,
             message.edited_at,
