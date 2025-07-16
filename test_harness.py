@@ -3,18 +3,21 @@ import logging
 import os
 
 import discord
+import sys
+from pathlib import Path
 
 os.environ.setdefault("env", "TEST")
 os.environ.setdefault("HF_API_TOKEN", "dummy")
 os.environ.setdefault("DISCORD_TOKEN", "dummy")
-os.environ.setdefault("DATABASE_URL", "")
+os.environ.setdefault("PG_DSN", "")
 os.environ.pop("PG_USER", None)
 os.environ.pop("PG_PASSWORD", None)
 os.environ.pop("PG_DB", None)
 
 from bot_config import TOKEN
 
-from main import GentleBot
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+from gentlebot.__main__ import GentleBot
 
 
 class HarnessBot(GentleBot):

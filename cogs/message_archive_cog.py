@@ -25,7 +25,7 @@ class MessageArchiveCog(commands.Cog):
             return
         url = self._build_db_url()
         if not url:
-            log.warning("ARCHIVE_MESSAGES set but DATABASE_URL is missing")
+            log.warning("ARCHIVE_MESSAGES set but PG_DSN is missing")
             self.enabled = False
             return
         url = url.replace("postgresql+asyncpg://", "postgresql://")

@@ -29,8 +29,7 @@ cogs/               # feature cogs
   prompt_cog.py     # daily prompts
   huggingface_cog.py # conversation + emoji reactions
   stats_cog.py      # engagement statistics
-run_bot.sh         # run helper (prod)
-dev_run.sh         # auto-restart helper (dev)
+scripts/start.sh   # container entrypoint
 setup.sh           # install dependencies and create the venv
 ```
 
@@ -48,13 +47,15 @@ setup.sh           # install dependencies and create the venv
    # optional fallback if the primary token hits a billing error
    HF_API_TOKEN_ALT=<secondary hugging face token>
    # optional Postgres credentials for logging
+   PG_HOST=db
+   PG_PORT=5432
    PG_USER=gentlebot
    PG_PASSWORD=<pg_password>
    PG_DB=gentlebot
    # enable message archival tables
    ARCHIVE_MESSAGES=1
    # or provide an explicit async connection URL
-   DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
+   PG_DSN=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
 4. If using Postgres logging, run the Alembic migration to create the
@@ -80,22 +81,24 @@ setup.sh           # install dependencies and create the venv
    duplicates are created.
 8. Run the bot:
    ```bash
-   ./run_bot.sh
-   # or manually via Python
    python -m gentlebot
    ```
-During development you can use `./dev_run.sh` for automatic restarts when files change. The `watchfiles` and `watchdog` packages are installed from `requirements.txt`, so autoreload works out of the box. Logs are written to `logs/bot.log` unless a Postgres connection is configured, in which case they are archived to the `bot_logs` table instead.
-Pass `--offline` to `dev_run.sh` (or set `BOT_OFFLINE=1`) to run the bundled `test_harness.py` instead, which loads all cogs without connecting to Discord.
+During development you can set up autoreload with `watchfiles` or similar tools.
+Logs are written to `logs/bot.log` unless a Postgres connection is configured,
+in which case they are archived to the `bot_logs` table instead. To load all
+cogs without connecting to Discord use:
+```bash
+BOT_OFFLINE=1 python test_harness.py
+```
 
 ## Docker
 You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`
-is provided. Build the image and pass your `.env` file at runtime. The container
-entrypoint waits for Postgres to accept connections, runs `alembic upgrade head`
-and prunes dangling images before launching the bot:
+and `docker-compose.yml` are provided. Build the image and pass your `.env` file
+at runtime. The container entrypoint waits for Postgres, applies migrations and
+can prune old images if `DOCKER_PRUNE=1`:
 
 ```bash
-docker build -t gentlebot .
-docker run --env-file .env --rm gentlebot
+docker compose up -d --build
 ```
 
 ### GitHub Actions
@@ -111,12 +114,20 @@ docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
 
 The container sets `LOG_LEVEL=INFO` so console output is less verbose by default.
 
+### Rollback
+If a deployment fails you can revert and redeploy the previous image:
+```bash
+git revert <merge-commit-sha>
+docker compose build bot
+docker compose up -d bot
+```
+
 ## Notes
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
  - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
    You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
    primary token hits a billing error.
- - Set `DATABASE_URL` (or PG_* creds) to enable writing bot logs to a Postgres database.
+ - Set `PG_DSN` (or PG_* creds) to enable writing bot logs to a Postgres database.
 
 ## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
