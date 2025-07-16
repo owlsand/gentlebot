@@ -23,6 +23,25 @@ class PostgresHandler(logging.Handler):
 
         self.pool = await asyncpg.create_pool(url, init=_init)
 
+        create_sql = (
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.table} (
+                id SERIAL PRIMARY KEY,
+                logger_name TEXT NOT NULL,
+                log_level TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(create_sql)
+        except AttributeError:
+            # tests may supply a simplified pool without 'acquire'
+            await self.pool.execute(create_sql)
+
     async def aclose(self) -> None:
         if self.pool:
             await self.pool.close()
