@@ -29,10 +29,10 @@ def fake_create_pool(url, *args, **kwargs):
 
 
 def test_build_db_url_env(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("PGUSER", "u")
-    monkeypatch.setenv("PGPASSWORD", "p")
-    monkeypatch.setenv("PGDATABASE", "db")
+    monkeypatch.delenv("PG_DSN", raising=False)
+    monkeypatch.setenv("PG_USER", "u")
+    monkeypatch.setenv("PG_PASSWORD", "p")
+    monkeypatch.setenv("PG_DB", "db")
     assert build_db_url() == "postgresql+asyncpg://u:p@db:5432/db"
 
 
@@ -44,7 +44,7 @@ def test_on_message(monkeypatch):
             return pool
         monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
         monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
-        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+        monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
         intents = discord.Intents.default()
         bot = commands.Bot(command_prefix="!", intents=intents)
         cog = MessageArchiveCog(bot)
@@ -86,7 +86,7 @@ def test_on_ready_populates(monkeypatch):
 
         monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
         monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
-        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+        monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 
         intents = discord.Intents.default()
         bot = commands.Bot(command_prefix="!", intents=intents)
@@ -156,7 +156,7 @@ def test_reply_to_missing(monkeypatch):
 
         monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
         monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
-        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+        monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 
         intents = discord.Intents.default()
         bot = commands.Bot(command_prefix="!", intents=intents)

@@ -2,13 +2,13 @@
 set -e
 
 # Wait for Postgres to accept connections
-PGHOST=${PGHOST:-db}
-PGPORT=${PGPORT:-5432}
-PGUSER=${PGUSER:-postgres}
-PGDATABASE=${PGDATABASE:-postgres}
+PG_HOST=${PG_HOST:-db}
+PG_PORT=${PG_PORT:-5432}
+PG_USER=${PG_USER:-postgres}
+PG_DB=${PG_DB:-postgres}
 
-until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" >/dev/null 2>&1; do
-  echo "Waiting for Postgres at $PGHOST:$PGPORT..."
+until pg_isready -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; do
+  echo "Waiting for Postgres at $PG_HOST:$PG_PORT..."
   sleep 2
 done
 

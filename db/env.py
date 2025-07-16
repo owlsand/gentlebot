@@ -9,11 +9,11 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-url = os.getenv("DATABASE_URL")
+url = os.getenv("PG_DSN")
 if not url:
-    user = os.getenv("PGUSER")
-    pwd = os.getenv("PGPASSWORD")
-    db = os.getenv("PGDATABASE")
+    user = os.getenv("PG_USER")
+    pwd = os.getenv("PG_PASSWORD")
+    db = os.getenv("PG_DB")
     if user and pwd and db:
         url = f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
 if url:

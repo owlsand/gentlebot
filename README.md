@@ -47,15 +47,15 @@ setup.sh           # install dependencies and create the venv
    # optional fallback if the primary token hits a billing error
    HF_API_TOKEN_ALT=<secondary hugging face token>
    # optional Postgres credentials for logging
-   PGHOST=db
-   PGPORT=5432
-   PGUSER=gentlebot
-   PGPASSWORD=<pg_password>
-   PGDATABASE=gentlebot
+   PG_HOST=db
+   PG_PORT=5432
+   PG_USER=gentlebot
+   PG_PASSWORD=<pg_password>
+   PG_DB=gentlebot
    # enable message archival tables
    ARCHIVE_MESSAGES=1
    # or provide an explicit async connection URL
-   DATABASE_URL=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
+   PG_DSN=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
    ```
 4. If using Postgres logging, run the Alembic migration to create the
@@ -127,7 +127,7 @@ docker compose up -d bot
  - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
    You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
    primary token hits a billing error.
- - Set `DATABASE_URL` (or PG_* creds) to enable writing bot logs to a Postgres database.
+ - Set `PG_DSN` (or PG_* creds) to enable writing bot logs to a Postgres database.
 
 ## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
