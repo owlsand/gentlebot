@@ -5,7 +5,7 @@ Gentlebot is a modular Discord bot built with **discord.py** v2. Each feature li
 ## Running the bot
 1. Create a virtual environment and install the libraries listed in the README.
 2. Create a `.env` file containing `DISCORD_TOKEN` and other IDs (see `bot_config.py`).
-3. Use `./dev_run.sh` during development for auto‑restart when files change. For production use `./run_bot.sh` or run `python main.py` with `env=PROD`.
+3. Use `./dev_run.sh` during development for auto‑restart when files change. For production use `./run_bot.sh` or run `python -m gentlebot` with `env=PROD`.
 
 ## Adding new features
 - Write each feature as a `commands.Cog` subclass in a new file ending with `_cog.py` under `cogs/`.

@@ -50,7 +50,8 @@ if ! python -c "import discord" >/dev/null 2>&1; then
     exit 1
 fi
 
-cmd="python main.py"
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}src"
+cmd="python -m gentlebot"
 
 if command -v watchmedo >/dev/null 2>&1; then
     watchmedo auto-restart \
