@@ -64,3 +64,5 @@ cython_debug/
 
 # PyPI configuration
 .pypirc
+prompt_state.json
+marketbet.db

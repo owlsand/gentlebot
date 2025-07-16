@@ -10,6 +10,9 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
   roles manually. Ensure the bot's role is above these vanity roles and has the
   **Manage Roles** permission so it can assign and remove them.
 - **PromptCog** – Posts a daily prompt generated via the Hugging Face API.
+  Categories rotate randomly without repeating recent types, and the
+  rotation state persists in `prompt_state.json` so redeployments keep
+  things fresh.
 - **HuggingFaceCog** – Adds AI conversation and emoji reactions using Hugging Face models.
 - **StatsCog** – `/engagement` now replies "Working on it..." and then gathers
   unlimited history in the background before posting the stats and optional
