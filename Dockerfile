@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     libopenjp2-7 \
     libtiff6 \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -26,10 +27,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
+RUN chmod +x docker_start.sh
 
 # Set default environment to production and limit console logging to INFO
 ENV env=PROD
 ENV LOG_LEVEL=INFO
 ENV PYTHONPATH=/app/src
 
-CMD ["python", "-m", "gentlebot"]
+ENTRYPOINT ["/app/docker_start.sh"]
