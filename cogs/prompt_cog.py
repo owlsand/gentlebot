@@ -22,6 +22,8 @@ import os
 import random
 import asyncio
 import logging
+import json
+from pathlib import Path
 from datetime import datetime, time, timedelta
 from collections import deque
 from discord.ext import commands
@@ -36,6 +38,11 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 # Timezone for scheduling
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 8)
+
+# Path for persisting prompt rotation state
+STATE_FILE = Path('prompt_state.json')
+# How many recent prompt types to avoid repeating
+RECENT_TYPE_COUNT = 3
 
 # Fallback prompts
 FALLBACK_PROMPTS = [
@@ -153,6 +160,10 @@ PROMPT_TYPES = [
     "Recommendation – asks for advice, tips, or endorsements",
     "Nostalgia – memory-based or childhood-related prompts",
     "Hot Take – bold, opinionated, or contrarian statements",
+    "Mindfulness – focusing on the present or self-awareness",
+    "Creativity – exploring artistic or imaginative ideas",
+    "Tech & AI – the impact of emerging technology",
+    "Culture & Travel – experiences with places or traditions",
 ]
 
 class PromptCog(commands.Cog):
@@ -162,8 +173,10 @@ class PromptCog(commands.Cog):
         self.bot = bot
         size = getattr(cfg, 'PROMPT_HISTORY_SIZE', 5)
         self.history = deque(maxlen=size)
-        # Start with a random prompt type index
-        self.rotation_index = random.randrange(len(PROMPT_TYPES))
+        # load recent type history and choose next index
+        self.recent_types = self._load_state()
+        self.rotation_index = 0
+        self._choose_next_type()
         self._scheduler_task = None
         self._unused_fallback = list(FALLBACK_PROMPTS)
         random.shuffle(self._unused_fallback)
@@ -171,7 +184,9 @@ class PromptCog(commands.Cog):
     def fetch_prompt(self) -> str:
         """Generate a new prompt via HF inference, including rotation and history."""
         prompt_type = PROMPT_TYPES[self.rotation_index]
-        self.rotation_index = (self.rotation_index + 1) % len(PROMPT_TYPES)
+        self.recent_types.append(self.rotation_index)
+        self._save_state()
+        self._choose_next_type()
         messages = [
             {'role': 'system', 'content': 'You generate creative discussion prompts for a friendly Discord group. Your personality should be that of a robot butler with an almost imperceptibly subtle sardonic wit.'}
         ]
@@ -205,6 +220,28 @@ class PromptCog(commands.Cog):
         prompt = self._unused_fallback.pop()
         self.history.append(prompt)
         return prompt
+
+    def _load_state(self) -> deque:
+        if STATE_FILE.exists():
+            try:
+                data = json.loads(STATE_FILE.read_text())
+                return deque(data.get('recent_types', []), maxlen=RECENT_TYPE_COUNT)
+            except Exception as exc:
+                log.warning("Failed to load prompt state: %s", exc)
+        return deque(maxlen=RECENT_TYPE_COUNT)
+
+    def _save_state(self) -> None:
+        try:
+            STATE_FILE.write_text(json.dumps({'recent_types': list(self.recent_types)}))
+        except Exception as exc:
+            log.warning("Failed to save prompt state: %s", exc)
+
+    def _choose_next_type(self) -> None:
+        remaining = [i for i in range(len(PROMPT_TYPES)) if i not in self.recent_types]
+        if not remaining:
+            self.recent_types.clear()
+            remaining = list(range(len(PROMPT_TYPES)))
+        self.rotation_index = random.choice(remaining)
 
     async def _send_prompt(self):
         # Retrieve and cast channel ID
