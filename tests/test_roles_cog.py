@@ -103,3 +103,42 @@ def test_npc_assigned_if_no_other_flag(monkeypatch):
 
     asyncio.run(run_test())
 
+
+def test_npc_removed_when_assigning_other_role(monkeypatch):
+    async def run_test():
+        monkeypatch.setattr(roles_cog.RoleCog.badge_task, "start", lambda self: None)
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = roles_cog.RoleCog(bot)
+
+        npc_id = 20
+        other_id = 30
+
+        npc_role = SimpleNamespace(id=npc_id, name="npc")
+        other_role = SimpleNamespace(id=other_id, name="other")
+
+        guild = SimpleNamespace(id=1)
+        guild.get_role = lambda rid: npc_role if rid == npc_id else other_role if rid == other_id else None
+
+        member = SimpleNamespace(id=1, guild=guild, roles=[npc_role])
+
+        removed = []
+        added = []
+
+        async def fake_remove(m, rid):
+            removed.append(rid)
+
+        async def fake_add_roles(role, reason=None):
+            added.append(role.id)
+
+        monkeypatch.setattr(cog, "_remove", fake_remove)
+        member.add_roles = fake_add_roles
+        monkeypatch.setattr(roles_cog, "ROLE_NPC_FLAG", npc_id)
+        monkeypatch.setattr(cfg, "ROLE_NPC_FLAG", npc_id)
+
+        await cog._assign(member, other_id)
+
+        assert npc_id in removed
+        assert other_id in added
+
+    asyncio.run(run_test())

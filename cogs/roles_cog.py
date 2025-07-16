@@ -508,6 +508,10 @@ class RoleCog(commands.Cog):
         if not role:
             log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
             return
+        if role_id != ROLE_NPC_FLAG:
+            npc = member.guild.get_role(ROLE_NPC_FLAG)
+            if npc and npc in member.roles:
+                await self._remove(member, ROLE_NPC_FLAG)
         if role in member.roles:
             log.debug("Member %s already has role %s", member.id, role_id)
             return
