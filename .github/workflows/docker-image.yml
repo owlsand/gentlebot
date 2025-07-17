@@ -25,7 +25,7 @@ jobs:
         run: |
           cp .env.example .env
           docker build -t gentlebot:test .
-          docker run --env-file .env --rm gentlebot:test --help
+          docker run --env-file .env -e SKIP_DB=1 --rm gentlebot:test --help
 
       - uses: docker/setup-qemu-action@v3
 
