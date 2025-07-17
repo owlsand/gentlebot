@@ -12,7 +12,7 @@ from requests.exceptions import HTTPError
 import discord
 from discord import app_commands
 from discord.ext import commands
-from util import chan_name
+from util import chan_name, int_env
 from huggingface_hub import InferenceClient
 
 
@@ -30,7 +30,7 @@ class HuggingFaceCog(commands.Cog):
         self.hf_api_key_alt = os.getenv("HF_API_TOKEN_ALT")
         self._using_alt = False
         self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.max_tokens = int(os.getenv("HF_MAX_TOKENS", 150))
+        self.max_tokens = int_env("HF_MAX_TOKENS", 150)
         self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
         self.top_p = float(os.getenv("HF_TOP_P", 0.9))
 

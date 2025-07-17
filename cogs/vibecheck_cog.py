@@ -22,7 +22,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency may be missing
     InferenceClient = None  # type: ignore
 
-from util import chan_name
+from util import chan_name, int_env
 import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
@@ -50,7 +50,7 @@ class VibeCheckCog(commands.Cog):
         else:
             self.hf_client = None
         self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.max_tokens = int(os.getenv("HF_MAX_TOKENS", 60))
+        self.max_tokens = int_env("HF_MAX_TOKENS", 60)
         self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
         self.top_p = float(os.getenv("HF_TOP_P", 0.9))
         self._cache: tuple[float, discord.Embed] | None = None
