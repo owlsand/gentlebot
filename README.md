@@ -95,7 +95,8 @@ BOT_OFFLINE=1 python test_harness.py
 You can also run the bot inside a container on a Raspberry Pi. A `Dockerfile`
 and `docker-compose.yml` are provided. Build the image and pass your `.env` file
 at runtime. The container entrypoint waits for Postgres, applies migrations and
-can prune old images if `DOCKER_PRUNE=1`:
+can prune old images if `DOCKER_PRUNE=1`. Set `SKIP_DB=1` to bypass the
+wait-loop and migrations:
 
 ```bash
 docker compose up -d --build
@@ -109,7 +110,7 @@ You can pull and run the prebuilt container instead of building locally:
 
 ```bash
 docker pull ghcr.io/<owner>/<repo>:latest
-docker run --env-file .env --rm ghcr.io/<owner>/<repo>:latest
+docker run --env-file .env -e SKIP_DB=1 --rm ghcr.io/<owner>/<repo>:latest
 ```
 
 The container sets `LOG_LEVEL=INFO` so console output is less verbose by default.
