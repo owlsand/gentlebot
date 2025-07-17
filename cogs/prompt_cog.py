@@ -27,7 +27,7 @@ from pathlib import Path
 from datetime import datetime, time, timedelta
 from collections import deque
 from discord.ext import commands
-from util import chan_name
+from util import chan_name, int_env
 from huggingface_hub import InferenceClient
 import bot_config as cfg
 from zoneinfo import ZoneInfo
@@ -201,7 +201,7 @@ class PromptCog(commands.Cog):
             client = InferenceClient(provider="together", api_key=token)
             model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
             params = {
-                'max_tokens': int(os.getenv('HF_MAX_TOKENS', 50)),
+                'max_tokens': int_env('HF_MAX_TOKENS', 50),
                 'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
                 'top_p': float(os.getenv('HF_TOP_P', 0.9)),
             }

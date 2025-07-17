@@ -1,4 +1,5 @@
 import os
+import logging
 import discord
 
 def build_db_url() -> str | None:
@@ -22,3 +23,17 @@ def chan_name(channel: discord.abc.Connectable | None) -> str:
         return name
     channel_id = getattr(channel, "id", None)
     return str(channel_id) if channel_id is not None else "unknown"
+
+
+def int_env(var: str, default: int = 0) -> int:
+    """Return int value from ENV or default if unset or invalid."""
+    value = os.getenv(var)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        logging.getLogger(__name__).warning(
+            "Invalid integer for %s: %s; using %s", var, value, default
+        )
+        return default
