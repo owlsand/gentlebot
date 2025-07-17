@@ -4,10 +4,10 @@ set -e
 # Skip Postgres checks when running in CI
 if [[ "${SKIP_DB:-0}" != "1" ]]; then
   # Wait for Postgres to accept connections
-  PG_HOST=${PG_HOST:-db}
-  PG_PORT=${PG_PORT:-5432}
-  PG_USER=${PG_USER:-postgres}
-  PG_DB=${PG_DB:-postgres}
+  PG_HOST=${PGHOST:-db}
+  PG_PORT=${PGPORT:-5432}
+  PG_USER=${PGUSER:-postgres}
+  PG_DB=${PGDB:-postgres}
 
   until pg_isready -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; do
     echo "Waiting for Postgres at $PG_HOST:$PG_PORT..."
