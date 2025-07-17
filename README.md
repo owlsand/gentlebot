@@ -57,6 +57,7 @@ setup.sh           # install dependencies and create the venv
    # or provide an explicit async connection URL
    PG_DSN=postgresql+asyncpg://gentlebot:<pg_password>@db:5432/gentlebot
    # PostgresHandler converts this to ``postgresql://`` when using ``asyncpg``
+   # DATABASE_URL can also be used for hosts that provide it
    ```
 4. If using Postgres logging, run the Alembic migration to create the
    `bot_logs` table. Database logging only stores **INFO** and above so
