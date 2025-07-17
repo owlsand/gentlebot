@@ -21,12 +21,6 @@ jobs:
           export PYTHONPATH="$PWD/src"
           python -m gentlebot --help
 
-      - name: Build and run image
-        run: |
-          cp .env.example .env
-          docker build -t gentlebot:test .
-          docker run --env-file .env -e SKIP_DB=1 --rm gentlebot:test --help
-
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
@@ -46,4 +40,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
