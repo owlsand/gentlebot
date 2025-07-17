@@ -36,6 +36,15 @@ def test_build_db_url_env(monkeypatch):
     assert build_db_url() == "postgresql+asyncpg://u:p@db:5432/db"
 
 
+def test_build_db_url_database_url(monkeypatch):
+    monkeypatch.delenv("PG_DSN", raising=False)
+    monkeypatch.delenv("PG_USER", raising=False)
+    monkeypatch.delenv("PG_PASSWORD", raising=False)
+    monkeypatch.delenv("PG_DB", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@db:5432/db")
+    assert build_db_url() == "postgresql+asyncpg://u:p@db:5432/db"
+
+
 def test_on_message(monkeypatch):
     async def run_test():
         pool = DummyPool()

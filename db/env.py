@@ -9,7 +9,7 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-url = os.getenv("PG_DSN")
+url = os.getenv("PG_DSN") or os.getenv("DATABASE_URL")
 if not url:
     user = os.getenv("PG_USER")
     pwd = os.getenv("PG_PASSWORD")

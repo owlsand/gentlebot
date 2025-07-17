@@ -4,7 +4,7 @@ import discord
 
 def build_db_url() -> str | None:
     """Return a Postgres DSN built from env vars."""
-    url = os.getenv("PG_DSN")
+    url = os.getenv("PG_DSN") or os.getenv("DATABASE_URL")
     if url:
         return url
     user = os.getenv("PG_USER")
