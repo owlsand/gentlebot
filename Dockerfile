@@ -1,14 +1,8 @@
 # Dockerfile for Gentlebot on Raspberry Pi
-# Uses Python 3 on Debian and installs system build deps
+# Uses Python 3 on Debian with a multi-stage build
 
-# Use the official multi-arch Python image so the Docker build works for both
-# amd64 and arm64 targets. The previous arm64v8-only image caused build errors
-# when GitHub Actions attempted to build for multiple platforms.
-FROM python:3.11-slim-bookworm
-
-# Install pg_isready
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+# Stage 1: build wheels and lock dependencies with hashes
+FROM python:3.11-slim-bookworm AS builder
 
 # Install build tools and libraries required by Pillow and Matplotlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,13 +14,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     libopenjp2-7 \
     libtiff6 \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies
+# Create hashed requirements and wheelhouse
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir pip==24.0 pip-tools<7.0 \
+    && pip-compile --generate-hashes --output-file=requirements.lock requirements.txt \
+    && pip wheel --wheel-dir=/wheels -r requirements.lock
+
+# Stage 2: minimal runtime image
+FROM python:3.11-slim-bookworm
+
+# Install only runtime libraries and pg_isready
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    libatlas3-base \
+    libffi8 \
+    libssl3 \
+    libjpeg62-turbo \
+    libopenjp2-7 \
+    libtiff6 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python packages from wheels using hashes
+COPY --from=builder /wheels /wheels
+COPY --from=builder /app/requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes --no-index --find-links=/wheels -r requirements.lock
 
 # Copy source code
 COPY . .
