@@ -24,7 +24,7 @@ import asyncio
 import logging
 import json
 from pathlib import Path
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from collections import deque
 from discord.ext import commands
 from ..util import chan_name, int_env

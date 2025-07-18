@@ -158,7 +158,8 @@ class MarketCog(commands.Cog):
         lines = []
         for key, label in desc_map.items():
             val = info.get(key)
-            if val is None: continue
+            if val is None:
+                continue
             if isinstance(val, (int, float)):
                 val = f"{val:,.2f}" if key != "marketCap" else f"{val/1e9:,.1f} B"
             lines.append(f"**{label}:** {val}")
@@ -391,7 +392,6 @@ class MarketCog(commands.Cog):
         vix = data["vix"]
         pcr = data["pcr"]
         breadth = data["breadth"]
-        trending = data["trending"]
         mood_emoji = "📈" if (sp_pct or 0) > 0 else "📉"
         lines = [f"{mood_emoji} **Market Mood — {ts}**", ""]
 

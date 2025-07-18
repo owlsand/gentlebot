@@ -1,3 +1,4 @@
+"""Message statistics and engagement charts."""
 from __future__ import annotations
 import logging
 import asyncio
@@ -36,7 +37,7 @@ class StatsCog(commands.Cog):
             return date(dt.year, dt.month, 1)
         return dt.date()
 
-    async def _gather_stats(self, window: str, per_channel: int = 1000):
+    async def _gather_stats(self, window: str, per_channel: int = 1000) -> dict | None:
         """Collect message, reaction and event stats for the given time window."""
         guild = self.bot.get_guild(cfg.GUILD_ID)
         if not guild:

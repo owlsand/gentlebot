@@ -1,5 +1,5 @@
-from __future__ import annotations
 """One-off utility to backfill message history into archive tables."""
+from __future__ import annotations
 
 import argparse
 import asyncio

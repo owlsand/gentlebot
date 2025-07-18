@@ -1,3 +1,4 @@
+"""Entry point to run the Gentlebot Discord bot."""
 import asyncio
 import logging
 import os
@@ -40,7 +41,7 @@ intents.message_content = True
 intents.members = True  # RoleCog needs this
 
 class GentleBot(commands.Bot):
-    async def setup_hook(self):
+    async def setup_hook(self) -> None:
         # Load cogs bundled with the package
         cog_dir = Path(__file__).resolve().parent / "cogs"
         for file in cog_dir.glob("*_cog.py"):
@@ -54,7 +55,7 @@ bot = GentleBot(command_prefix="!", intents=intents)
 _synced = False
 
 @bot.event
-async def on_ready():
+async def on_ready() -> None:
     global _synced
     logger.info("%s is now online in this guild", bot.user)
     if not _synced:
@@ -66,15 +67,19 @@ async def on_ready():
         _synced = True
 
 @bot.event
-async def on_error(event: str, *args, **kwargs):
+async def on_error(event: str, *args, **kwargs) -> None:
     logger.exception("Unhandled exception in event %s", event)
 
 @bot.event
-async def on_command_error(ctx: commands.Context, exc: commands.CommandError):
+async def on_command_error(
+    ctx: commands.Context, exc: commands.CommandError
+) -> None:
     logger.exception("Error in command '%s'", getattr(ctx.command, 'name', 'unknown'), exc_info=exc)
 
 @bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, exc: discord.app_commands.AppCommandError):
+async def on_app_command_error(
+    interaction: discord.Interaction, exc: discord.app_commands.AppCommandError
+) -> None:
     cmd_name = getattr(interaction.command, "name", "unknown")
     logger.exception("Error in slash command '%s'", cmd_name, exc_info=exc)
     if interaction.response.is_done():
@@ -82,7 +87,7 @@ async def on_app_command_error(interaction: discord.Interaction, exc: discord.ap
     else:
         await interaction.response.send_message("An error occurred.", ephemeral=True)
 
-async def main():
+async def main() -> None:
     db_url = build_db_url()
     db_handler = None
     file_handler = None

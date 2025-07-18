@@ -30,11 +30,10 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from ..util import chan_name
+from .. import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
-
-from .. import bot_config as cfg
 
 # ── Behavioral Role Config ──────────────────────────────────────────────────
 GUILD_ID: int = cfg.GUILD_ID
@@ -471,7 +470,6 @@ class RoleCog(commands.Cog):
             if member.bot:
                 continue
             # Default last online to now so new members aren't immediately flagged
-            last = self.last_online.get(member.id, now)
             msgs14 = msg_count14[member.id]
             reacts14 = react_given14[member.id]
             recv14 = react_recv14[member.id]

@@ -1,4 +1,3 @@
-from __future__ import annotations
 """
 Source of truth for IDs & tokens
 ======================================================
@@ -16,6 +15,7 @@ DISCORD_TOKEN_PROD=yyy
 
 You can also inject IDs via env‑vars if you’d rather not commit them.
 """
+from __future__ import annotations
 import os
 import logging
 from .util import int_env
