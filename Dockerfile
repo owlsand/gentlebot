@@ -21,7 +21,8 @@ WORKDIR /app
 
 # Create hashed requirements and wheelhouse
 COPY requirements.txt ./
-RUN pip install --no-cache-dir pip==24.0 pip-tools<7.0 \
+
+RUN pip install --no-cache-dir pip==24.0 'pip-tools<7.0' \
     && pip-compile --generate-hashes --output-file=requirements.lock requirements.txt \
     && pip wheel --wheel-dir=/wheels -r requirements.lock
 
