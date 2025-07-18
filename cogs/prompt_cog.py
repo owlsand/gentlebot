@@ -24,7 +24,7 @@ import asyncio
 import logging
 import json
 from pathlib import Path
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from collections import deque
 from discord.ext import commands
 from util import chan_name, int_env
@@ -247,7 +247,8 @@ class PromptCog(commands.Cog):
             remaining = list(range(len(PROMPT_TYPES)))
         self.rotation_index = random.choice(remaining)
 
-    async def _send_prompt(self):
+    async def _send_prompt(self) -> None:
+        """Send a new prompt to the configured daily channel."""
         # Retrieve and cast channel ID
         raw_channel = getattr(cfg, 'DAILY_PING_CHANNEL', None)
         try:
@@ -265,7 +266,8 @@ class PromptCog(commands.Cog):
         prompt = self.fetch_prompt()
         await channel.send(f"{prompt}")
 
-    async def _scheduler(self):
+    async def _scheduler(self) -> None:
+        """Background task that posts a prompt once per day."""
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             now = datetime.now(LOCAL_TZ)
@@ -285,14 +287,16 @@ class PromptCog(commands.Cog):
             # Loop continues to schedule next day
 
     @commands.Cog.listener()
-    async def on_ready(self):
+    async def on_ready(self) -> None:
+        """Start the scheduler task when the bot is ready."""
         # Start scheduler once
         if self._scheduler_task is None:
             log.info("Starting scheduler task.")
             self._scheduler_task = self.bot.loop.create_task(self._scheduler())
 
     @commands.command(name='skip_prompt')
-    async def skip_prompt(self, ctx: commands.Context):
+    async def skip_prompt(self, ctx: commands.Context) -> None:
+        """Immediately send a new prompt to the invoking channel."""
         log.info("skip_prompt invoked by %s in %s", ctx.author.id, chan_name(ctx.channel))
         prompt = self.fetch_prompt()
         await ctx.send(f"{prompt}")

@@ -158,9 +158,12 @@ class MarketCog(commands.Cog):
         lines = []
         for key, label in desc_map.items():
             val = info.get(key)
-            if val is None: continue
+            if val is None:
+                continue
             if isinstance(val, (int, float)):
-                val = f"{val:,.2f}" if key != "marketCap" else f"{val/1e9:,.1f} B"
+                val = (
+                    f"{val:,.2f}" if key != "marketCap" else f"{val/1e9:,.1f} B"
+                )
             lines.append(f"**{label}:** {val}")
 
         embed = discord.Embed(title=f"{symbol} Snapshot", colour=0x2081C3, description="\n".join(lines))
@@ -215,7 +218,8 @@ class MarketCog(commands.Cog):
         await itx.followup.send(msg)
 
     # ─── DB Helpers ──────────────────────────────────────────────────────
-    def _init_db(self):
+    def _init_db(self) -> None:
+        """Create tables if they do not exist."""
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
@@ -231,6 +235,7 @@ class MarketCog(commands.Cog):
         conn.close()
 
     def _place_bet(self, user_id: int, week: str, direction: str, weight: int) -> bool:
+        """Record a bet for the given week. Return False if one already exists."""
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(f"SELECT 1 FROM {SCHEMA}.bets WHERE week=? AND user=?", (week, user_id))
@@ -245,7 +250,8 @@ class MarketCog(commands.Cog):
         conn.close()
         return True
 
-    def _toggle_reminder(self, user_id: int, enable: bool):
+    def _toggle_reminder(self, user_id: int, enable: bool) -> None:
+        """Enable or disable weekly reminder DMs for a user."""
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
@@ -256,6 +262,7 @@ class MarketCog(commands.Cog):
         conn.close()
 
     def _get_reminder_users(self) -> list[int]:
+        """Return a list of user IDs that have reminders enabled."""
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(f"SELECT user FROM {SCHEMA}.reminders WHERE enabled=1")
@@ -264,6 +271,7 @@ class MarketCog(commands.Cog):
         return [r[0] for r in rows]
 
     def _reminder_enabled(self, user_id: int) -> bool:
+        """Return True if the user has reminders enabled."""
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(f"SELECT enabled FROM {SCHEMA}.reminders WHERE user=?", (user_id,))
@@ -271,7 +279,8 @@ class MarketCog(commands.Cog):
         conn.close()
         return bool(row and row[0])
 
-    def _record_scores(self, week: str, outcome: str):
+    def _record_scores(self, week: str, outcome: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+        """Record winners for the given week and return winners and leaderboard."""
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
@@ -391,7 +400,6 @@ class MarketCog(commands.Cog):
         vix = data["vix"]
         pcr = data["pcr"]
         breadth = data["breadth"]
-        trending = data["trending"]
         mood_emoji = "📈" if (sp_pct or 0) > 0 else "📉"
         lines = [f"{mood_emoji} **Market Mood — {ts}**", ""]
 
@@ -482,7 +490,8 @@ class MarketCog(commands.Cog):
             return None, None
 
     @tasks.loop(time=time(13, 0, tzinfo=PT_TZ))
-    async def summary_task(self):
+    async def summary_task(self) -> None:
+        """Calculate weekly results and post them to MONEY_TALK_CHANNEL."""
         now = datetime.now(PT_TZ)
         if now.weekday() != 4:
             return
@@ -509,11 +518,13 @@ class MarketCog(commands.Cog):
         await channel.send(embed=embed)
 
     @summary_task.before_loop
-    async def before_summary(self):
+    async def before_summary(self) -> None:
+        """Wait for the bot to be ready before starting the summary task."""
         await self.bot.wait_until_ready()
 
     @tasks.loop(time=time(7, 0, tzinfo=PT_TZ))
-    async def reminder_task(self):
+    async def reminder_task(self) -> None:
+        """Send Monday DM reminders to users with reminders enabled."""
         now = datetime.now(PT_TZ)
         if now.weekday() != 0:
             return
@@ -536,10 +547,12 @@ class MarketCog(commands.Cog):
                 log.exception("Failed to DM reminder to %s", uid)
 
     @reminder_task.before_loop
-    async def before_reminder(self):
+    async def before_reminder(self) -> None:
+        """Wait for the bot to be ready before starting the reminder task."""
         await self.bot.wait_until_ready()
 
-    def cog_unload(self):
+    def cog_unload(self) -> None:
+        """Cancel tasks and close the HTTP session on cog unload."""
         self.summary_task.cancel()
         self.reminder_task.cancel()
         self.session.close()

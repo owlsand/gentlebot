@@ -30,7 +30,6 @@ from timezonefinder import TimezoneFinder
 from bs4 import BeautifulSoup
 
 # ── time zones --------------------------------------------------------------
-import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
