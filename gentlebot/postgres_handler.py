@@ -50,9 +50,10 @@ class PostgresHandler(logging.Handler):
     def close(self) -> None:
         if self.pool:
             try:
-                asyncio.run(self.pool.close())
-            except RuntimeError:
                 loop = asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(self.pool.close())
+            else:
                 loop.create_task(self.pool.close())
             self.pool = None
         super().close()

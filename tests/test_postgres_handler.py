@@ -4,8 +4,11 @@ import asyncpg
 from gentlebot.postgres_handler import PostgresHandler
 
 class DummyPool:
+    def __init__(self):
+        self.closed = False
+
     async def close(self):
-        pass
+        self.closed = True
 
     async def execute(self, *args, **kwargs):
         self.executed = True
@@ -36,5 +39,29 @@ def test_debug_logs_filtered(monkeypatch):
         logger.removeHandler(handler)
         await asyncio.sleep(0)
         assert not getattr(pool, "executed", False)
+
+    asyncio.run(run_test())
+
+
+def test_close_asyncio_run_not_called(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+        handler = PostgresHandler("postgresql+asyncpg://u:p@localhost/db")
+        handler.pool = pool
+
+        called = False
+
+        def fake_run(*args, **kwargs):
+            nonlocal called
+            called = True
+            raise RuntimeError("unexpected call")
+
+        monkeypatch.setattr(asyncio, "run", fake_run)
+
+        handler.close()
+        await asyncio.sleep(0)
+
+        assert pool.closed
+        assert not called
 
     asyncio.run(run_test())
