@@ -5,7 +5,7 @@ import asyncio
 import logging
 import html
 import re
-from datetime import datetime, timezone
+from datetime import timezone
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 

@@ -4,7 +4,6 @@ import logging
 import discord
 from discord.ext import commands
 from ..util import chan_name
-from .. import bot_config as cfg
 
 # Use the same logger as main.py so handlers are attached
 log = logging.getLogger("gentlebot")
