@@ -15,8 +15,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import bot_config as cfg
-from util import chan_name
+from .. import bot_config as cfg
+from ..util import chan_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")

@@ -15,7 +15,7 @@ from discord.ext import commands
 import feedparser
 from bs4 import BeautifulSoup
 
-from util import chan_name
+from ..util import chan_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")

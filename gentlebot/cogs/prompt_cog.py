@@ -27,9 +27,9 @@ from pathlib import Path
 from datetime import datetime, time, timedelta
 from collections import deque
 from discord.ext import commands
-from util import chan_name, int_env
+from ..util import chan_name, int_env
 from huggingface_hub import InferenceClient
-import bot_config as cfg
+from .. import bot_config as cfg
 from zoneinfo import ZoneInfo
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger

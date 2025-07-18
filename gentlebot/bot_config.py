@@ -18,7 +18,7 @@ You can also inject IDs via env‑vars if you’d rather not commit them.
 """
 import os
 import logging
-from util import int_env
+from .util import int_env
 from dotenv import load_dotenv
 load_dotenv()
 

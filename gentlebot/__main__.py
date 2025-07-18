@@ -8,10 +8,10 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-import bot_config as cfg
-from postgres_handler import PostgresHandler
-from util import build_db_url
-from version import get_version
+from . import bot_config as cfg
+from .postgres_handler import PostgresHandler
+from .util import build_db_url
+from .version import get_version
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
 logger = logging.getLogger("gentlebot")
@@ -41,15 +41,12 @@ intents.members = True  # RoleCog needs this
 
 class GentleBot(commands.Bot):
     async def setup_hook(self):
-        # __main__ lives under src/gentlebot whereas the cogs folder sits at the
-        # repository root next to main.py.  Walk one directory up to find it so
-        # that loading works when running the package entry point.
-        # TODO: move cogs under src/gentlebot/cogs and drop this "../../../" hack
-        cog_dir = Path(__file__).resolve().parent.parent.parent / "cogs"
+        # Load cogs bundled with the package
+        cog_dir = Path(__file__).resolve().parent / "cogs"
         for file in cog_dir.glob("*_cog.py"):
             if file.stem == "test_logging_cog" and not cfg.IS_TEST:
                 continue
-            await self.load_extension(f"cogs.{file.stem}")
+            await self.load_extension(f"gentlebot.cogs.{file.stem}")
 
 
 bot = GentleBot(command_prefix="!", intents=intents)

@@ -29,12 +29,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from util import chan_name
+from ..util import chan_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
 
-import bot_config as cfg
+from .. import bot_config as cfg
 
 # ── Behavioral Role Config ──────────────────────────────────────────────────
 GUILD_ID: int = cfg.GUILD_ID

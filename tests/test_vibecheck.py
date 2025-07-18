@@ -1,5 +1,5 @@
 import pytest
-from cogs.vibecheck_cog import VibeCheckCog
+from gentlebot.cogs.vibecheck_cog import VibeCheckCog
 
 @pytest.mark.parametrize(
     "score,label",

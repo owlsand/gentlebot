@@ -7,7 +7,7 @@ import os
 import asyncpg
 import discord
 from discord.ext import commands
-from util import build_db_url
+from ..util import build_db_url
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 

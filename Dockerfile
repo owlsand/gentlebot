@@ -35,7 +35,6 @@ RUN chmod +x scripts/start.sh
 # Set default environment to production and limit console logging to INFO
 ENV env=PROD
 ENV LOG_LEVEL=INFO
-ENV PYTHONPATH=/app/src
 
 ENV DOCKER_PRUNE=0
 ENTRYPOINT ["/app/scripts/start.sh"]
