@@ -121,7 +121,12 @@ class TechmemeCog(commands.Cog):
 
         last_updated = feed.feed.get("lastBuildDate", "")
         message = "\n\n".join(blocks) + f"\n\nLast updated: {last_updated}"
-        await interaction.followup.send(message, ephemeral=ephemeral)
+        if len(message) <= 2000:
+            await interaction.followup.send(message, ephemeral=ephemeral)
+        else:
+            # Discord enforces a hard 2000 character limit on messages.
+            for chunk in [message[i : i + 1900] for i in range(0, len(message), 1900)]:
+                await interaction.followup.send(chunk, ephemeral=ephemeral)
 
 
 async def setup(bot: commands.Bot):
