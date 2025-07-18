@@ -62,8 +62,9 @@ async def on_ready():
     logger.info("%s is now online in this guild", bot.user)
     if not _synced:
         try:
-            cmds = await bot.tree.sync()
-            logger.info("Synced %d commands.", len(cmds))
+            payload = [cmd.to_dict() for cmd in bot.tree.get_commands()]
+            cmds = await bot.http.bulk_upsert_global_commands(bot.application_id, payload)
+            logger.info("Bulk synced %d commands.", len(cmds))
         except Exception as e:
             logger.exception("Failed to sync commands: %s", e)
         _synced = True

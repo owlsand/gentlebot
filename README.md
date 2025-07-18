@@ -129,7 +129,8 @@ docker compose up -d bot
  - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
    You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
    primary token hits a billing error.
- - Set `PG_DSN` (or PG_* creds) to enable writing bot logs to a Postgres database.
+- Set `PG_DSN` (or PG_* creds) to enable writing bot logs to a Postgres database.
+- Slash commands are registered via a single bulk request on startup to avoid rate limits.
 
 ## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.
