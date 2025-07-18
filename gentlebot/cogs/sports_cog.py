@@ -22,7 +22,7 @@ import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
-from util import chan_name
+from ..util import chan_name
 import requests
 from dateutil import parser
 import pytz
@@ -30,7 +30,7 @@ from timezonefinder import TimezoneFinder
 from bs4 import BeautifulSoup
 
 # ── time zones --------------------------------------------------------------
-import bot_config as cfg
+from .. import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")

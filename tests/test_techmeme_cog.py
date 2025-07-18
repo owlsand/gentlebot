@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 import feedparser
 
-from cogs.techmeme_cog import TechmemeCog
+from gentlebot.cogs.techmeme_cog import TechmemeCog
 
 
 class DummyResponse:

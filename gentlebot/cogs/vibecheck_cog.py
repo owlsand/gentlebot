@@ -22,8 +22,8 @@ try:
 except Exception:  # pragma: no cover - optional dependency may be missing
     InferenceClient = None  # type: ignore
 
-from util import chan_name, int_env
-import bot_config as cfg
+from ..util import chan_name, int_env
+from .. import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")

@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
-from util import chan_name
+from ..util import chan_name
 import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
@@ -41,7 +41,7 @@ from yfinance.exceptions import YFRateLimitError
 import requests
 import pandas as pd
 
-import bot_config as cfg
+from .. import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")

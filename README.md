@@ -21,9 +21,9 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
 
 ## Repository Layout
 ```
-src/gentlebot/__main__.py # package entry point
-bot_config.py      # environment configuration and ID constants
-cogs/               # feature cogs
+gentlebot/__main__.py # package entry point
+gentlebot/bot_config.py      # environment configuration and ID constants
+gentlebot/cogs/               # feature cogs
   sports_cog.py     # F1 and baseball commands
   market_cog.py     # market commands and weekly game
   prompt_cog.py     # daily prompts

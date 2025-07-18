@@ -18,7 +18,6 @@ jobs:
       - name: Smoke test
         run: |
           pip install -r requirements.txt
-          export PYTHONPATH="$PWD/src"
           python -m gentlebot --help
 
       - uses: docker/setup-qemu-action@v3
