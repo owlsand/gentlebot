@@ -15,46 +15,50 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY requirements.txt ./
 
-# Compile dependencies: first lock without hashes, build all wheels, then lock with hashes
-RUN pip install --no-cache-dir pip==24.0 wheel 'pip-tools<7.0' \
- && pip-compile --allow-unsafe --output-file=requirements.unhashed.txt requirements.txt \
- && pip wheel --wheel-dir=/wheels --only-binary=:all: -r requirements.unhashed.txt \
- && pip-compile --allow-unsafe --generate-hashes --output-file=requirements.lock requirements.unhashed.txt
+# 1. Install pip-tools for locking
+RUN pip install --no-cache-dir pip==24.0 wheel 'pip-tools<7.0'
 
-# Debug: inspect wheelhouse before moving to runtime
-RUN echo "[DEBUG] Contents of /wheels:" && ls -AlR /wheels \
-    && echo "[DEBUG] Peewee wheel SHA256:" && sha256sum /wheels/peewee-3.18.2-py3-none-any.whl
+# 2. Generate unhashed dependency list
+RUN pip-compile --allow-unsafe --output-file=requirements.unhashed.txt requirements.txt
 
-# Stage 2: minimal runtime image
+# 3. Build wheels for all dependencies
+RUN pip wheel --wheel-dir=/wheels --only-binary=:all: -r requirements.unhashed.txt
+
+# 4. Generate hashed lockfile using local wheels
+RUN PIP_FIND_LINKS=/wheels pip-compile --allow-unsafe --generate-hashes \
+    --find-links /wheels --output-file=requirements.lock requirements.unhashed.txt
+
+# Debug: inspect wheelhouse
+RUN echo "[DEBUG] /wheels contents:" && ls -AlR /wheels && \
+    echo "[DEBUG] Peewee SHA256:" && sha256sum /wheels/peewee-3.18.2-py3-none-any.whl
+
+# Stage 2: runtime
 FROM python:3.11-slim-bookworm AS runtime
 
-# Install only runtime libs and postgres client
+# Install only runtime libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client libatlas3-base libffi8 libssl3 \
     libjpeg62-turbo libopenjp2-7 libtiff6 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# Copy lockfile first (cache bust), then wheelhouse
 COPY --from=builder /app/requirements.lock ./
 COPY --from=builder /wheels /wheels
 
-# Install from wheelhouse with hashes
-RUN pip install --no-cache-dir --require-hashes --no-index --find-links=/wheels -r requirements.lock
+# Install from wheelhouse with hash verification
+RUN pip install --no-cache-dir --require-hashes --no-index --find-links=/wheels \
+    -r requirements.lock
 
-# Copy application code
 COPY . .
 RUN chmod +x scripts/start.sh
 
-# Production env and minimal pip noise
 ENV env=PROD
 ENV LOG_LEVEL=INFO
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV DOCKER_PRUNE=1
 
-# Healthcheck for container orchestration
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD python -m gentlebot.version || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
+    CMD python -m gentlebot.version || exit 1
 
 ENTRYPOINT ["/app/scripts/start.sh"]
