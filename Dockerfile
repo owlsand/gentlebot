@@ -17,7 +17,7 @@ COPY requirements.txt ./
 # Compile hashed-lock and wheelhouse
 RUN pip install --no-cache-dir pip==24.0 'pip-tools<7.0' \
  && pip-compile --allow-unsafe --generate-hashes --output-file=requirements.lock requirements.txt \
- && pip wheel --wheel-dir=/wheels -r requirements.lock
+ && pip wheel --wheel-dir=/wheels --only-binary=:all: -r requirements.lock
 
 # Stage 2: minimal runtime image
 FROM python:3.11-slim-bookworm
