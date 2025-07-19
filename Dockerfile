@@ -18,8 +18,12 @@ COPY requirements.txt ./
 # Compile dependencies: first lock without hashes, build all wheels, then lock with hashes
 RUN pip install --no-cache-dir pip==24.0 wheel 'pip-tools<7.0' \
  && pip-compile --allow-unsafe --output-file=requirements.unhashed.txt requirements.txt \
- && pip wheel --wheel-dir=/wheels -r requirements.unhashed.txt \
+ && pip wheel --wheel-dir=/wheels --only-binary=:all: -r requirements.unhashed.txt \
  && pip-compile --allow-unsafe --generate-hashes --output-file=requirements.lock requirements.unhashed.txt
+
+# Debug: inspect wheelhouse before moving to runtime
+RUN echo "[DEBUG] Contents of /wheels:" && ls -AlR /wheels \
+    && echo "[DEBUG] Peewee wheel SHA256:" && sha256sum /wheels/peewee-3.18.2-py3-none-any.whl
 
 # Stage 2: minimal runtime image
 FROM python:3.11-slim-bookworm AS runtime
