@@ -8,16 +8,17 @@ FROM --platform=$BUILDPLATFORM python:3.11-slim-bookworm AS builder
 # Install build tools and libs needed to compile wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3-dev libatlas-base-dev libffi-dev \
-    libssl-dev libjpeg-dev libopenjp2-7 libtiff6 postgresql-client \
+    libssl-dev libjpeg-dev libopenjp2-7 libtiff6 libpq-dev postgresql-client \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY requirements.txt ./
 
-# Compile hashed-lock and wheelhouse
-RUN pip install --no-cache-dir pip==24.0 'pip-tools<7.0' \
- && pip-compile --allow-unsafe --generate-hashes --output-file=requirements.lock requirements.txt \
- && pip wheel --wheel-dir=/wheels --only-binary=:all: -r requirements.lock
+# Compile dependencies: first lock without hashes, build all wheels, then lock with hashes
+RUN pip install --no-cache-dir pip==24.0 wheel 'pip-tools<7.0' \
+ && pip-compile --allow-unsafe --output-file=requirements.unhashed.txt requirements.txt \
+ && pip wheel --wheel-dir=/wheels -r requirements.unhashed.txt \
+ && pip-compile --allow-unsafe --generate-hashes --prefer-binary --output-file=requirements.lock requirements.unhashed.txt
 
 # Stage 2: minimal runtime image
 FROM python:3.11-slim-bookworm
