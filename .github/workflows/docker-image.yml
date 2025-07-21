@@ -43,3 +43,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Extract debug info
+        if: failure()   # only run on failure
+        run: |
+          # Copy the unhashed list and lockfile out of the builder image
+          docker create --name dbg builder-image:latest >/dev/null
+          docker cp dbg:/app/requirements.unhashed.txt .
+          docker cp dbg:/app/requirements.lock .
+          docker cp dbg:/wheels ./wheels
+          docker rm dbg >/dev/null
+      - name: Upload debug artifacts
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-info
+          path: |
+            requirements.unhashed.txt
+            requirements.lock
+            wheels/
+
