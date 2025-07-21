@@ -19,8 +19,8 @@ if [[ "${SKIP_DB:-0}" != "1" ]]; then
 
   # Run backfill scripts after migrations
   BACKFILL_DAYS=${BACKFILL_DAYS:-90}
-  python gentlebot/backfill_commands.py --days "$BACKFILL_DAYS" || true
-  python gentlebot/backfill_archive.py --days "$BACKFILL_DAYS" || true
+  python -m gentlebot.backfill_commands --days "$BACKFILL_DAYS" || true
+  python -m gentlebot.backfill_archive --days "$BACKFILL_DAYS" || true
 else
   echo "SKIP_DB=1 - skipping Postgres availability checks"
 fi
