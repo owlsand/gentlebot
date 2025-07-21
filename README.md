@@ -83,6 +83,8 @@ setup.sh           # install dependencies and create the venv
    ```bash
    alembic upgrade head
    ```
+   You can re-run `python -m gentlebot.backfill_commands` whenever needed;
+   inserts use `ON CONFLICT DO NOTHING` to avoid duplicates.
 7. Run the bot:
    ```bash
    python -m gentlebot
