@@ -20,7 +20,7 @@ log = logging.getLogger("gentlebot.backfill_commands")
 def _extract_cmd(msg: discord.Message) -> str:
     """Return slash command name from a history message."""
     return (
-        getattr(getattr(msg, "interaction", None), "name", None)
+        getattr(getattr(msg, "interaction_metadata", None), "name", None)
         or msg.content.split()[0].lstrip("/")
     )
 
