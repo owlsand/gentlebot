@@ -74,20 +74,17 @@ setup.sh           # install dependencies and create the venv
    ```bash
    alembic upgrade head
    ```
+   A backfill of up to 90 days of history is automatically performed
+   after migrations complete. You can re-run `python backfill_archive.py`
+   at any time; inserts use `ON CONFLICT DO NOTHING` so no duplicates are
+   created.
 6. Set `LOG_COMMANDS=1` to record slash command usage. Run the migration
-   to create the `command_invocations` table and optionally backfill
-   recent history:
+   to create the `command_invocations` table. Historical usage is also
+   backfilled automatically after the migration:
    ```bash
    alembic upgrade head
-   python backfill_commands.py --days 90  # optional
    ```
-7. Optionally backfill up to 90 days of history before starting the bot:
-   ```bash
-   python backfill_archive.py --days 90
-   ```
-   The script may be re-run; inserts use `ON CONFLICT DO NOTHING` so no
-   duplicates are created.
-8. Run the bot:
+7. Run the bot:
    ```bash
    python -m gentlebot
    ```
