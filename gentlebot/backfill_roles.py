@@ -8,8 +8,8 @@ import asyncpg
 import discord
 from discord.ext import commands
 
-from . import bot_config as cfg
-from .util import build_db_url
+from gentlebot import bot_config as cfg
+from gentlebot.util import build_db_url
 
 log = logging.getLogger("gentlebot.backfill_roles")
 

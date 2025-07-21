@@ -10,8 +10,8 @@ from datetime import timedelta
 import discord
 from discord.ext import commands
 
-from . import bot_config as cfg
-from .cogs.message_archive_cog import MessageArchiveCog
+from gentlebot import bot_config as cfg
+from gentlebot.cogs.message_archive_cog import MessageArchiveCog
 
 log = logging.getLogger("gentlebot.backfill")
 
