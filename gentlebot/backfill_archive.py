@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from datetime import timedelta
 
 import discord
@@ -68,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--days",
         type=int,
-        default=90,
+        default=int(os.getenv("BACKFILL_DAYS", "90")),
         help="Number of days of history to fetch",
     )
     return parser.parse_args()

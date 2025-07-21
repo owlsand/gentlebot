@@ -75,12 +75,14 @@ setup.sh           # install dependencies and create the venv
    alembic upgrade head
    ```
    A backfill of up to 90 days of history is automatically performed
-   after migrations complete. You can re-run `python backfill_archive.py`
+   after migrations complete. Set `BACKFILL_DAYS` to override the default
+   number of days. You can re-run `python backfill_archive.py --days N`
    at any time; inserts use `ON CONFLICT DO NOTHING` so no duplicates are
    created.
 6. Set `LOG_COMMANDS=1` to record slash command usage. Run the migration
    to create the `command_invocations` table. Historical usage is also
-   backfilled automatically after the migration:
+   backfilled automatically after the migration using the same
+   `BACKFILL_DAYS` value:
    ```bash
    alembic upgrade head
    ```
