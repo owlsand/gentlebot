@@ -74,6 +74,13 @@ setup.sh           # install dependencies and create the venv
    ```bash
    alembic upgrade head
    ```
+6. Set `LOG_COMMANDS=1` to record slash command usage. Run the migration
+   to create the `command_invocations` table and optionally backfill
+   recent history:
+   ```bash
+   alembic upgrade head
+   python backfill_commands.py --days 90  # optional
+   ```
 7. Optionally backfill up to 90 days of history before starting the bot:
    ```bash
    python backfill_archive.py --days 90
