@@ -17,6 +17,14 @@ from gentlebot.util import build_db_url
 log = logging.getLogger("gentlebot.backfill_commands")
 
 
+def _extract_cmd(msg: discord.Message) -> str:
+    """Return slash command name from a history message."""
+    return (
+        getattr(getattr(msg, "interaction", None), "name", None)
+        or msg.content.split()[0].lstrip("/")
+    )
+
+
 class BackfillBot(commands.Bot):
     def __init__(self, days: int = 90):
         intents = discord.Intents.default()
@@ -52,7 +60,7 @@ class BackfillBot(commands.Bot):
                 try:
                     async for msg in channel.history(limit=None, after=cutoff):
                         if msg.type is discord.MessageType.chat_input_command:
-                            cmd = msg.content.split()[0].lstrip("/")
+                            cmd = _extract_cmd(msg)
                             await self.pool.execute(
                                 """INSERT INTO discord.command_invocations (
                                         guild_id, channel_id, user_id, command, created_at
