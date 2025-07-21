@@ -18,8 +18,8 @@ if [[ "${SKIP_DB:-0}" != "1" ]]; then
   alembic upgrade head
 
   # Run backfill scripts after migrations
-  python gentlebot/backfill_commands.py --days 90 || true
-  python gentlebot/backfill_archive.py --days 90 || true
+  python -m gentlebot.backfill_commands --days 90 || true
+  python -m gentlebot.backfill_archive --days 90 || true
 else
   echo "SKIP_DB=1 - skipping Postgres availability checks"
 fi
