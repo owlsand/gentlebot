@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from datetime import timedelta
 
 import asyncpg
@@ -72,7 +73,7 @@ class BackfillBot(commands.Bot):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backfill command log")
     parser.add_argument(
-        "--days", type=int, default=90, help="Number of days of history to fetch"
+        "--days", type=int, default=int(os.getenv("BACKFILL_DAYS", "90")), help="Number of days of history to fetch"
     )
     return parser.parse_args()
 
