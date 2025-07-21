@@ -41,7 +41,7 @@ jobs:
           context: .
           file: Dockerfile
           target: builder
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           load: true                       # load this intermediate image so its logs appear
           cache-from: type=gha
           cache-to: type=gha,mode=max
