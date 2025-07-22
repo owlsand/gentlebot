@@ -18,7 +18,7 @@ if [[ "${SKIP_DB:-0}" != "1" ]]; then
   alembic upgrade head
 
   # Run backfill scripts after migrations
-  BACKFILL_DAYS=${BACKFILL_DAYS:-360}
+  BACKFILL_DAYS=${BACKFILL_DAYS:-30}
   python -m gentlebot.backfill_commands --days "$BACKFILL_DAYS" || true
   python -m gentlebot.backfill_archive --days "$BACKFILL_DAYS" || true
 else
