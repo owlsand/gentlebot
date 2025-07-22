@@ -28,6 +28,7 @@ def _extract_cmd(msg: discord.Message) -> str:
 class BackfillBot(commands.Bot):
     def __init__(self, days: int = 90):
         intents = discord.Intents.default()
+        intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
         self.days = days
         self.pool: asyncpg.Pool | None = None
