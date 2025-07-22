@@ -16,6 +16,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    op.execute(
+        """
+        DELETE FROM discord.command_invocations
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                    row_number() OVER (
+                        PARTITION BY guild_id, channel_id, user_id, command, created_at
+                        ORDER BY id
+                    ) AS rn
+                FROM discord.command_invocations
+            ) dup
+            WHERE dup.rn > 1
+        )
+        """
+    )
     op.create_unique_constraint(
         'uniq_cmd_inv_guild_chan_user_cmd_ts',
         'command_invocations',
