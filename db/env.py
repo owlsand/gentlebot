@@ -5,6 +5,12 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool, text
 
 from alembic import context
+import logging
+
+# show everything Alembic logs
+logging.getLogger('alembic').setLevel(logging.DEBUG)
+# optionally, see full SQLAlchemy engine debugging
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
