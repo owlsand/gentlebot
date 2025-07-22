@@ -81,7 +81,12 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         connection.execute(text("SET search_path=discord"))
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, 
+            target_metadata=target_metadata,
+            version_table_schema="discord",  
+            include_schemas=True,
+            compare_type=True,
+            compare_server_default=True,
         )
 
         with context.begin_transaction():
