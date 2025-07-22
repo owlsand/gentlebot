@@ -66,7 +66,7 @@ class MessageArchiveCog(commands.Cog):
     async def _upsert_user(self, member: discord.abc.User) -> int:
         if not self.pool:
             return 0
-        tag = await self.pool.execute(
+        inserted = await self.pool.fetchval(
             """
             INSERT INTO discord."user" (
                 user_id, username, discriminator, avatar_hash, is_bot,
@@ -81,6 +81,7 @@ class MessageArchiveCog(commands.Cog):
                 is_bot=$5,
                 display_name=$6,
                 last_seen_at=EXCLUDED.last_seen_at
+            RETURNING xmax = 0
             """,
             member.id,
             member.name,
@@ -89,35 +90,37 @@ class MessageArchiveCog(commands.Cog):
             getattr(member, "bot", False),
             getattr(member, "display_name", None),
         )
-        return rows_from_tag(tag)
+        return int(bool(inserted))
 
     async def _upsert_guild(self, guild: discord.Guild) -> int:
         if not self.pool:
             return 0
-        tag = await self.pool.execute(
+        inserted = await self.pool.fetchval(
             """
             INSERT INTO discord.guild (guild_id, name, owner_id, created_at)
             VALUES ($1,$2,$3,$4)
             ON CONFLICT (guild_id)
             DO UPDATE SET name=$2, owner_id=$3, updated_at=now()
+            RETURNING xmax = 0
             """,
             guild.id,
             guild.name,
             getattr(guild.owner, "id", None),
             guild.created_at,
         )
-        return rows_from_tag(tag)
+        return int(bool(inserted))
 
     async def _upsert_channel(self, channel: discord.abc.GuildChannel) -> int:
         if not self.pool:
             return 0
         guild_id = getattr(channel.guild, "id", None)
-        tag = await self.pool.execute(
+        inserted = await self.pool.fetchval(
             """
             INSERT INTO discord.channel (channel_id, guild_id, name, type, created_at, last_message_at)
             VALUES ($1,$2,$3,$4,$5,$6)
             ON CONFLICT (channel_id)
             DO UPDATE SET name=$3, type=$4, last_message_at=$6
+            RETURNING xmax = 0
             """,
             channel.id,
             guild_id,
@@ -126,7 +129,7 @@ class MessageArchiveCog(commands.Cog):
             getattr(channel, "created_at", None),
             discord.utils.utcnow(),
         )
-        return rows_from_tag(tag)
+        return int(bool(inserted))
 
     async def _insert_message(self, message: discord.Message) -> tuple[int, int]:
         if not self.pool:
