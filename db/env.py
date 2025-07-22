@@ -76,6 +76,7 @@ def run_migrations_online() -> None:
         section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        echo=True
     )
 
     with connectable.connect() as connection:
@@ -86,7 +87,7 @@ def run_migrations_online() -> None:
             version_table_schema="discord",  
             include_schemas=True,
             compare_type=True,
-            compare_server_default=True,
+            compare_server_default=True
         )
 
         with context.begin_transaction():
