@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 
 from gentlebot import bot_config as cfg
-from gentlebot.util import build_db_url
+from gentlebot.util import build_db_url, rows_from_tag
 
 log = logging.getLogger("gentlebot.backfill_commands")
 
@@ -39,6 +39,7 @@ class BackfillBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
         self.days = days
         self.pool: asyncpg.Pool | None = None
+        self.inserted = 0
 
     async def setup_hook(self) -> None:
         url = build_db_url()
@@ -57,6 +58,7 @@ class BackfillBot(commands.Bot):
         log.info("Backfill bot logged in as %s", self.user)
         if self.pool:
             await self.backfill_history(self.days)
+            log.info("Inserted %d command_invocation records", self.inserted)
             await self.pool.close()
         await self.close()
 
@@ -71,7 +73,7 @@ class BackfillBot(commands.Bot):
                             cmd = _extract_cmd(msg)
                             if not cmd:
                                 continue
-                            await self.pool.execute(
+                            result = await self.pool.execute(
                                 """INSERT INTO discord.command_invocations (
                                         guild_id, channel_id, user_id, command, created_at
                                     ) VALUES ($1,$2,$3,$4,$5)
@@ -82,6 +84,7 @@ class BackfillBot(commands.Bot):
                                 cmd,
                                 msg.created_at,
                             )
+                            self.inserted += rows_from_tag(result)
                 except discord.Forbidden:
                     log.warning("History fetch forbidden for %s", channel)
                 except Exception as exc:  # pragma: no cover - logging only

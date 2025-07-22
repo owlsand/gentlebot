@@ -7,7 +7,7 @@ import os
 import asyncpg
 import discord
 from discord.ext import commands
-from ..util import build_db_url
+from ..util import build_db_url, rows_from_tag
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -63,10 +63,10 @@ class MessageArchiveCog(commands.Cog):
     def _build_db_url() -> str | None:
         return build_db_url()
 
-    async def _upsert_user(self, member: discord.abc.User) -> None:
+    async def _upsert_user(self, member: discord.abc.User) -> int:
         if not self.pool:
-            return
-        await self.pool.execute(
+            return 0
+        tag = await self.pool.execute(
             """
             INSERT INTO discord."user" (
                 user_id, username, discriminator, avatar_hash, is_bot,
@@ -89,11 +89,12 @@ class MessageArchiveCog(commands.Cog):
             getattr(member, "bot", False),
             getattr(member, "display_name", None),
         )
+        return rows_from_tag(tag)
 
-    async def _upsert_guild(self, guild: discord.Guild) -> None:
+    async def _upsert_guild(self, guild: discord.Guild) -> int:
         if not self.pool:
-            return
-        await self.pool.execute(
+            return 0
+        tag = await self.pool.execute(
             """
             INSERT INTO discord.guild (guild_id, name, owner_id, created_at)
             VALUES ($1,$2,$3,$4)
@@ -105,12 +106,13 @@ class MessageArchiveCog(commands.Cog):
             getattr(guild.owner, "id", None),
             guild.created_at,
         )
+        return rows_from_tag(tag)
 
-    async def _upsert_channel(self, channel: discord.abc.GuildChannel) -> None:
+    async def _upsert_channel(self, channel: discord.abc.GuildChannel) -> int:
         if not self.pool:
-            return
+            return 0
         guild_id = getattr(channel.guild, "id", None)
-        await self.pool.execute(
+        tag = await self.pool.execute(
             """
             INSERT INTO discord.channel (channel_id, guild_id, name, type, created_at, last_message_at)
             VALUES ($1,$2,$3,$4,$5,$6)
@@ -124,10 +126,11 @@ class MessageArchiveCog(commands.Cog):
             getattr(channel, "created_at", None),
             discord.utils.utcnow(),
         )
+        return rows_from_tag(tag)
 
-    async def _insert_message(self, message: discord.Message) -> None:
+    async def _insert_message(self, message: discord.Message) -> tuple[int, int]:
         if not self.pool:
-            return
+            return 0, 0
         payload = (
             json.loads(message.to_json()) if hasattr(message, "to_json") else {}
         )
@@ -140,7 +143,7 @@ class MessageArchiveCog(commands.Cog):
             if not exists:
                 reply_to_id = None
 
-        await self.pool.execute(
+        msg_tag = await self.pool.execute(
             """
             INSERT INTO discord.message (
                 message_id, guild_id, channel_id, author_id, reply_to_id,
@@ -161,8 +164,10 @@ class MessageArchiveCog(commands.Cog):
             int(message.type.value),
             json.dumps(payload),
         )
+        msg_count = rows_from_tag(msg_tag)
+        att_count = 0
         for idx, att in enumerate(message.attachments):
-            await self.pool.execute(
+            att_tag = await self.pool.execute(
                 """
                 INSERT INTO discord.message_attachment (
                     message_id, attachment_id, filename, content_type, size_bytes, url, proxy_url)
@@ -177,6 +182,8 @@ class MessageArchiveCog(commands.Cog):
                 att.url,
                 att.proxy_url,
             )
+            att_count += rows_from_tag(att_tag)
+        return msg_count, att_count
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
