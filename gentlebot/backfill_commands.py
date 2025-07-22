@@ -17,12 +17,19 @@ from gentlebot.util import build_db_url
 log = logging.getLogger("gentlebot.backfill_commands")
 
 
-def _extract_cmd(msg: discord.Message) -> str:
-    """Return slash command name from a history message."""
-    return (
-        getattr(getattr(msg, "interaction_metadata", None), "name", None)
-        or msg.content.split()[0].lstrip("/")
-    )
+def _extract_cmd(msg: discord.Message) -> str | None:
+    """Return slash command name from a history message.
+
+    Messages without a command will return ``None`` rather than raising
+    ``IndexError`` when the content is empty.
+    """
+    cmd = getattr(getattr(msg, "interaction_metadata", None), "name", None)
+    if cmd:
+        return cmd
+    content = (msg.content or "").strip()
+    if not content:
+        return None
+    return content.split()[0].lstrip("/")
 
 
 class BackfillBot(commands.Bot):
@@ -62,6 +69,8 @@ class BackfillBot(commands.Bot):
                     async for msg in channel.history(limit=None, after=cutoff):
                         if msg.type is discord.MessageType.chat_input_command:
                             cmd = _extract_cmd(msg)
+                            if not cmd:
+                                continue
                             await self.pool.execute(
                                 """INSERT INTO discord.command_invocations (
                                         guild_id, channel_id, user_id, command, created_at
