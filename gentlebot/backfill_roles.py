@@ -45,18 +45,19 @@ class BackfillBot(commands.Bot):
         assert self.pool
         for guild in self.guilds:
             for role in guild.roles:
-                tag = await self.pool.execute(
+                inserted = await self.pool.fetchval(
                     """
                     INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb)
                     VALUES ($1,$2,$3,$4)
                     ON CONFLICT (role_id) DO UPDATE SET name=$3, color_rgb=$4
+                    RETURNING xmax = 0
                     """,
                     role.id,
                     guild.id,
                     role.name,
                     role.color.value if role.color else None,
                 )
-                self.counts["guild_role"] += rows_from_tag(tag)
+                self.counts["guild_role"] += int(bool(inserted))
             for member in guild.members:
                 for role in member.roles:
                     tag = await self.pool.execute(

@@ -20,6 +20,7 @@ class DummyPool:
         self.executed.append(query)
 
     async def fetchval(self, query, *args):
+        self.executed.append(query)
         return True
 
 
