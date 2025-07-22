@@ -74,7 +74,7 @@ setup.sh           # install dependencies and create the venv
    ```bash
    alembic upgrade head
    ```
-   A backfill of up to 90 days of history is automatically performed
+   A backfill of up to 360 days of history is automatically performed
    after migrations complete. Set `BACKFILL_DAYS` to override the default
    number of days. You can re-run `python backfill_archive.py --days N`
    at any time; inserts use `ON CONFLICT DO NOTHING` so no duplicates are
