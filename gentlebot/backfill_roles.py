@@ -9,7 +9,7 @@ import discord
 from discord.ext import commands
 
 from gentlebot import bot_config as cfg
-from gentlebot.util import build_db_url
+from gentlebot.util import build_db_url, rows_from_tag
 
 log = logging.getLogger("gentlebot.backfill_roles")
 
@@ -21,6 +21,11 @@ class BackfillBot(commands.Bot):
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
         self.pool: asyncpg.Pool | None = None
+        self.counts = {
+            "guild_role": 0,
+            "role_assignment": 0,
+            "role_event": 0,
+        }
 
     async def setup_hook(self) -> None:
         url = build_db_url()
@@ -40,7 +45,7 @@ class BackfillBot(commands.Bot):
         assert self.pool
         for guild in self.guilds:
             for role in guild.roles:
-                await self.pool.execute(
+                tag = await self.pool.execute(
                     """
                     INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb)
                     VALUES ($1,$2,$3,$4)
@@ -51,9 +56,10 @@ class BackfillBot(commands.Bot):
                     role.name,
                     role.color.value if role.color else None,
                 )
+                self.counts["guild_role"] += rows_from_tag(tag)
             for member in guild.members:
                 for role in member.roles:
-                    await self.pool.execute(
+                    tag = await self.pool.execute(
                         """
                         INSERT INTO discord.role_assignment (guild_id, role_id, user_id)
                         VALUES ($1,$2,$3)
@@ -63,7 +69,8 @@ class BackfillBot(commands.Bot):
                         role.id,
                         member.id,
                     )
-                    await self.pool.execute(
+                    self.counts["role_assignment"] += rows_from_tag(tag)
+                    tag = await self.pool.execute(
                         """
                         INSERT INTO discord.role_event (guild_id, role_id, user_id, action)
                         VALUES ($1,$2,$3,1)
@@ -72,7 +79,14 @@ class BackfillBot(commands.Bot):
                         role.id,
                         member.id,
                     )
+                    self.counts["role_event"] += rows_from_tag(tag)
         await self.pool.close()
+        log.info(
+            "Inserted %d guild roles, %d assignments, %d events",
+            self.counts["guild_role"],
+            self.counts["role_assignment"],
+            self.counts["role_event"],
+        )
         await self.close()
 
 

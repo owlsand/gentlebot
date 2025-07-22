@@ -37,3 +37,11 @@ def int_env(var: str, default: int = 0) -> int:
             "Invalid integer for %s: %s; using %s", var, value, default
         )
         return default
+
+
+def rows_from_tag(tag: str) -> int:
+    """Return the affected row count from an asyncpg status tag."""
+    try:
+        return int(str(tag).split()[-1])
+    except (IndexError, ValueError):
+        return 0
