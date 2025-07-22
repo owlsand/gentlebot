@@ -55,6 +55,7 @@ class CommandLogCog(commands.Cog):
             INSERT INTO discord.command_invocations (
                 guild_id, channel_id, user_id, command, args_json
             ) VALUES ($1,$2,$3,$4,$5)
+            ON CONFLICT ON CONSTRAINT uniq_cmd_inv_guild_chan_user_cmd_ts DO NOTHING
             """,
             interaction.guild_id,
             interaction.channel_id,

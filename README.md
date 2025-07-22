@@ -82,7 +82,8 @@ setup.sh           # install dependencies and create the venv
 6. Set `LOG_COMMANDS=1` to record slash command usage. Run the migration
    to create the `command_invocations` table. Historical usage is also
    backfilled automatically after the migration using the same
-   `BACKFILL_DAYS` value:
+   `BACKFILL_DAYS` value. Inserts are deduplicated via a unique
+   constraint so the backfill can be safely re-run:
    ```bash
    alembic upgrade head
    ```
