@@ -75,7 +75,7 @@ class BackfillBot(commands.Bot):
                                 """INSERT INTO discord.command_invocations (
                                         guild_id, channel_id, user_id, command, created_at
                                     ) VALUES ($1,$2,$3,$4,$5)
-                                    ON CONFLICT DO NOTHING""",
+                                    ON CONFLICT ON CONSTRAINT uniq_cmd_inv_guild_chan_user_cmd_ts DO NOTHING""",
                                 guild.id,
                                 channel.id,
                                 msg.author.id,
