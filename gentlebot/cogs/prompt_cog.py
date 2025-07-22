@@ -7,6 +7,7 @@ posts to DAILY_PING on schedule, and provides a command to skip to a new prompt.
 Configuration in bot_config.py:
   • DAILY_PING_CHANNEL: channel ID for daily‑ping (must be an integer)
   • PROMPT_SCHEDULE_HOUR: (optional) local hour to schedule daily prompts
+  • PROMPT_SCHEDULE_MINUTE: (optional) local minute for prompt scheduling
   • HF_API_TOKEN: required for HF inference
   • HF_MODEL: model ID for HF text-generation API
   • PROMPT_HISTORY_SIZE: how many past prompts to send as context
@@ -37,7 +38,8 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 
 # Timezone for scheduling
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
-SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 8)
+SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 12)
+SCHEDULE_MINUTE = getattr(cfg, 'PROMPT_SCHEDULE_MINUTE', 30)
 
 # Path for persisting prompt rotation state
 STATE_FILE = Path('prompt_state.json')
@@ -247,6 +249,12 @@ class PromptCog(commands.Cog):
             remaining = list(range(len(PROMPT_TYPES)))
         self.rotation_index = random.choice(remaining)
 
+    def _next_run_time(self, now: datetime) -> datetime:
+        next_run = now.replace(hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        return next_run
+
     async def _send_prompt(self):
         # Retrieve and cast channel ID
         raw_channel = getattr(cfg, 'DAILY_PING_CHANNEL', None)
@@ -269,10 +277,7 @@ class PromptCog(commands.Cog):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             now = datetime.now(LOCAL_TZ)
-            # Calculate next run at SCHEDULE_HOUR:00 local
-            next_run = now.replace(hour=SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
-            if next_run <= now:
-                next_run += timedelta(days=1)
+            next_run = self._next_run_time(now)
             # Log next scheduled time
             formatted = next_run.strftime("%I:%M:%S %p %Z").lstrip('0')
             log.info("Next prompt scheduled at %s", formatted)
