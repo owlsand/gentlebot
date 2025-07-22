@@ -12,3 +12,8 @@ def test_extract_cmd_interaction_metadata():
 def test_extract_cmd_fallback():
     msg = types.SimpleNamespace(content="/bar baz", interaction=None)
     assert _extract_cmd(msg) == "bar"
+
+
+def test_extract_cmd_empty():
+    msg = types.SimpleNamespace(content="", interaction=None)
+    assert _extract_cmd(msg) is None
