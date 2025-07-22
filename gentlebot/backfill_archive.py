@@ -17,7 +17,7 @@ log = logging.getLogger("gentlebot.backfill")
 
 
 class BackfillBot(commands.Bot):
-    def __init__(self, days: int = 90):
+    def __init__(self, days: int = 360):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--days",
         type=int,
-        default=int(os.getenv("BACKFILL_DAYS", "90")),
+        default=int(os.getenv("BACKFILL_DAYS", "360")),
         help="Number of days of history to fetch",
     )
     return parser.parse_args()

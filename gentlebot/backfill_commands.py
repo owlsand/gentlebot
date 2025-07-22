@@ -33,7 +33,7 @@ def _extract_cmd(msg: discord.Message) -> str | None:
 
 
 class BackfillBot(commands.Bot):
-    def __init__(self, days: int = 90):
+    def __init__(self, days: int = 360):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
@@ -91,7 +91,7 @@ class BackfillBot(commands.Bot):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backfill command log")
     parser.add_argument(
-        "--days", type=int, default=int(os.getenv("BACKFILL_DAYS", "90")), help="Number of days of history to fetch"
+        "--days", type=int, default=int(os.getenv("BACKFILL_DAYS", "360")), help="Number of days of history to fetch"
     )
     return parser.parse_args()
 
