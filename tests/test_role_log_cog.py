@@ -3,6 +3,7 @@ from discord.ext import commands
 import asyncpg
 
 from gentlebot.cogs.role_log_cog import RoleLogCog
+import json
 
 
 class DummyPool:
@@ -32,6 +33,11 @@ def test_role_add_logged(monkeypatch):
         cog = RoleLogCog(bot)
         await cog.cog_load()
         pool = cog.pool
+        class Tags:
+            __slots__ = ("bot_id",)
+
+            def __init__(self):
+                self.bot_id = 4
         guild = type(
             "G",
             (),
@@ -45,7 +51,7 @@ def test_role_add_logged(monkeypatch):
                         "guild": self,
                         "name": "r",
                         "color": discord.Colour.default(),
-                        "tags": None,
+                        "tags": Tags(),
                         "permissions": discord.Permissions.none(),
                         "hoist": False,
                         "mentionable": False,
@@ -62,5 +68,8 @@ def test_role_add_logged(monkeypatch):
         after = type("M", (), {"id": 10, "guild": guild, "roles": [guild.get_role(5)]})()
         await cog.on_member_update(before, after)
         assert pool.executed
+        role_query, role_args = pool.executed[0]
+        assert "INSERT INTO discord.role" in role_query
+        assert isinstance(role_args[-1], str)
     import asyncio
     asyncio.run(run_test())
