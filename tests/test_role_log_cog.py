@@ -32,7 +32,32 @@ def test_role_add_logged(monkeypatch):
         cog = RoleLogCog(bot)
         await cog.cog_load()
         pool = cog.pool
-        guild = type("G", (), {"id": 1, "get_role": lambda self, rid: type("R", (), {"id": rid, "guild": self, "name": "r", "color": discord.Colour.default()})()})()
+        guild = type(
+            "G",
+            (),
+            {
+                "id": 1,
+                "get_role": lambda self, rid: type(
+                    "R",
+                    (),
+                    {
+                        "id": rid,
+                        "guild": self,
+                        "name": "r",
+                        "color": discord.Colour.default(),
+                        "tags": None,
+                        "permissions": discord.Permissions.none(),
+                        "hoist": False,
+                        "mentionable": False,
+                        "managed": False,
+                        "icon": None,
+                        "unicode_emoji": None,
+                        "flags": discord.RoleFlags(),
+                        "position": 0,
+                    },
+                )(),
+            },
+        )()
         before = type("M", (), {"id": 10, "guild": guild, "roles": []})()
         after = type("M", (), {"id": 10, "guild": guild, "roles": [guild.get_role(5)]})()
         await cog.on_member_update(before, after)

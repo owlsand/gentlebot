@@ -32,7 +32,7 @@ class BackfillBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
         self.pool: asyncpg.Pool | None = None
         self.counts = {
-            "guild_role": 0,
+            "role": 0,
             "role_assignment": 0,
             "role_event": 0,
         }
@@ -55,11 +55,24 @@ class BackfillBot(commands.Bot):
         assert self.pool
         for guild in self.guilds:
             for role in guild.roles:
+                tag_dict = (
+                    {s: getattr(role.tags, s, None) for s in role.tags.__slots__}
+                    if role.tags is not None
+                    else None
+                )
                 inserted = await self.pool.fetchval(
                     """
-                    INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb, description)
-                    VALUES ($1,$2,$3,$4,$5)
-                    ON CONFLICT (role_id) DO UPDATE SET name=$3, color_rgb=$4, description=$5
+                    INSERT INTO discord.role (
+                        role_id, guild_id, name, color_rgb, description,
+                        position, permissions, hoist, mentionable, managed,
+                        icon_hash, unicode_emoji, flags, tags
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                    ON CONFLICT (role_id) DO UPDATE SET
+                        name=$3, color_rgb=$4, description=$5,
+                        position=$6, permissions=$7, hoist=$8,
+                        mentionable=$9, managed=$10, icon_hash=$11,
+                        unicode_emoji=$12, flags=$13, tags=$14
                     RETURNING xmax = 0
                     """,
                     role.id,
@@ -67,8 +80,17 @@ class BackfillBot(commands.Bot):
                     role.name,
                     role.color.value if role.color else None,
                     role_description(role),
+                    role.position,
+                    role.permissions.value,
+                    role.hoist,
+                    role.mentionable,
+                    role.managed,
+                    getattr(role.icon, "key", None) if role.icon else None,
+                    role.unicode_emoji,
+                    role.flags.value,
+                    tag_dict,
                 )
-                self.counts["guild_role"] += int(bool(inserted))
+                self.counts["role"] += int(bool(inserted))
             for member in guild.members:
                 for role in member.roles:
                     tag = await self.pool.execute(
@@ -94,8 +116,8 @@ class BackfillBot(commands.Bot):
                     self.counts["role_event"] += rows_from_tag(tag)
         await self.pool.close()
         log.info(
-            "Inserted %d guild roles, %d assignments, %d events",
-            self.counts["guild_role"],
+            "Inserted %d roles, %d assignments, %d events",
+            self.counts["role"],
             self.counts["role_assignment"],
             self.counts["role_event"],
         )
