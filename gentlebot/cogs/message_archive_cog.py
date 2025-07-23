@@ -116,16 +116,39 @@ class MessageArchiveCog(commands.Cog):
         guild_id = getattr(channel.guild, "id", None)
         inserted = await self.pool.fetchval(
             """
-            INSERT INTO discord.channel (channel_id, guild_id, name, type, created_at, last_message_at)
-            VALUES ($1,$2,$3,$4,$5,$6)
+            INSERT INTO discord.channel (
+                channel_id, guild_id, name, type, position, parent_id,
+                topic, nsfw, rate_limit_per_user, last_message_id,
+                bitrate, user_limit, created_at, last_message_at
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
             ON CONFLICT (channel_id)
-            DO UPDATE SET name=$3, type=$4, last_message_at=$6
+            DO UPDATE SET
+                name=$3,
+                type=$4,
+                position=$5,
+                parent_id=$6,
+                topic=$7,
+                nsfw=$8,
+                rate_limit_per_user=$9,
+                last_message_id=$10,
+                bitrate=$11,
+                user_limit=$12,
+                last_message_at=$14
             RETURNING xmax = 0
             """,
             channel.id,
             guild_id,
             getattr(channel, "name", None),
             getattr(channel, "type", None).value if hasattr(channel, "type") else None,
+            getattr(channel, "position", None),
+            getattr(channel, "category_id", None),
+            getattr(channel, "topic", None),
+            getattr(channel, "nsfw", None),
+            getattr(channel, "rate_limit_per_user", None),
+            getattr(channel, "last_message_id", None),
+            getattr(channel, "bitrate", None),
+            getattr(channel, "user_limit", None),
             getattr(channel, "created_at", None),
             discord.utils.utcnow(),
         )
