@@ -78,7 +78,8 @@ setup.sh           # install dependencies and create the venv
    after migrations complete. Set `BACKFILL_DAYS` to override the default
    number of days. You can re-run `python backfill_archive.py --days N`
    at any time; inserts use `ON CONFLICT DO NOTHING` so no duplicates are
-   created.
+   created. Reaction events can be inserted separately using
+   `python backfill_reactions.py --days N`.
 6. Set `LOG_COMMANDS=1` to record slash command usage. Run the migration
    to create the `command_invocations` table. Historical usage is also
    backfilled automatically after the migration using the same
