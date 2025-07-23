@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 
 import asyncpg
@@ -62,6 +63,7 @@ class RoleLogCog(commands.Cog):
             if role.tags is not None
             else None
         )
+        tag_json = json.dumps(tag_dict) if tag_dict is not None else None
         await self.pool.execute(
             """
             INSERT INTO discord.role (
@@ -89,7 +91,7 @@ class RoleLogCog(commands.Cog):
             getattr(role.icon, "key", None) if role.icon else None,
             role.unicode_emoji,
             role.flags.value,
-            tag_dict,
+            tag_json,
         )
 
     async def _record_assignment(self, guild_id: int, role_id: int, user_id: int) -> None:
