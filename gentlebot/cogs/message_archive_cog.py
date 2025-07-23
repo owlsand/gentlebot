@@ -70,9 +70,11 @@ class MessageArchiveCog(commands.Cog):
             """
             INSERT INTO discord."user" (
                 user_id, username, discriminator, avatar_hash, is_bot,
-                display_name, first_seen_at, last_seen_at
+                display_name, global_name, banner_hash, accent_color,
+                avatar_decoration_hash, system, public_flags,
+                first_seen_at, last_seen_at
             )
-            VALUES ($1,$2,$3,$4,$5,$6, now(), now())
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now(), now())
             ON CONFLICT (user_id)
             DO UPDATE SET
                 username=$2,
@@ -80,6 +82,12 @@ class MessageArchiveCog(commands.Cog):
                 avatar_hash=$4,
                 is_bot=$5,
                 display_name=$6,
+                global_name=$7,
+                banner_hash=$8,
+                accent_color=$9,
+                avatar_decoration_hash=$10,
+                system=$11,
+                public_flags=$12,
                 last_seen_at=EXCLUDED.last_seen_at
             RETURNING xmax = 0
             """,
@@ -89,6 +97,12 @@ class MessageArchiveCog(commands.Cog):
             getattr(member, "avatar", None) and member.avatar.key,
             getattr(member, "bot", False),
             getattr(member, "display_name", None),
+            getattr(member, "global_name", None),
+            getattr(getattr(member, "banner", None), "key", None),
+            getattr(member, "accent_color", None),
+            getattr(getattr(member, "avatar_decoration", None), "key", None),
+            getattr(member, "system", False),
+            getattr(member, "public_flags", None),
         )
         return int(bool(inserted))
 

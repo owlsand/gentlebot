@@ -149,10 +149,16 @@ def test_upsert_user(monkeypatch):
             avatar=None,
             bot=False,
             display_name="User Display",
+            global_name="User Global",
+            banner=None,
+            accent_color=None,
+            avatar_decoration=None,
+            system=False,
+            public_flags=None,
         )
         await cog._upsert_user(member)
         assert pool.executed
-        assert "display_name" in pool.executed[0]
+        assert "global_name" in pool.executed[0]
 
     asyncio.run(run_test())
 
