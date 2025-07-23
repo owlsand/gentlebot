@@ -163,6 +163,38 @@ def test_upsert_user(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_upsert_user_flags(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+        intents = discord.Intents.default()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = MessageArchiveCog(bot)
+        cog.pool = pool
+
+        class Dummy:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        member = Dummy(
+            id=1,
+            name="user",
+            discriminator="0001",
+            avatar=None,
+            bot=False,
+            display_name="User Display",
+            global_name="User Global",
+            banner=None,
+            accent_color=None,
+            avatar_decoration=None,
+            system=False,
+            public_flags=discord.PublicUserFlags._from_value(8),
+        )
+        await cog._upsert_user(member)
+        assert pool.executed
+
+    asyncio.run(run_test())
+
+
 def test_reply_to_missing(monkeypatch):
     async def run_test():
         pool = DummyPool()

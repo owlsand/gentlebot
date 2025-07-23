@@ -66,6 +66,8 @@ class MessageArchiveCog(commands.Cog):
     async def _upsert_user(self, member: discord.abc.User) -> int:
         if not self.pool:
             return 0
+        flags = getattr(member, "public_flags", None)
+        flags_value = getattr(flags, "value", None) if flags is not None else None
         inserted = await self.pool.fetchval(
             """
             INSERT INTO discord."user" (
@@ -102,7 +104,7 @@ class MessageArchiveCog(commands.Cog):
             getattr(member, "accent_color", None),
             getattr(getattr(member, "avatar_decoration", None), "key", None),
             getattr(member, "system", False),
-            getattr(member, "public_flags", None),
+            flags_value,
         )
         return int(bool(inserted))
 
