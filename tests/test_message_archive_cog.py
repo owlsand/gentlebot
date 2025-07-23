@@ -92,6 +92,56 @@ def test_on_message(monkeypatch):
 
     asyncio.run(run_test())
 
+
+def test_insert_message_updates_channel(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+        intents = discord.Intents.default()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = MessageArchiveCog(bot)
+        cog.pool = pool
+
+        executed = []
+
+        async def fake_execute(query, *args):
+            executed.append(query)
+            return "INSERT 0 1"
+
+        pool.execute = fake_execute
+
+        class Dummy:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        guild = Dummy(id=1, name="g", owner=Dummy(id=2), created_at=None)
+        channel = Dummy(id=10, guild=guild, name="c", type=discord.ChannelType.text, created_at=None)
+        author = Dummy(id=4, name="a", discriminator="1234", avatar=None, bot=False)
+        message = Dummy(
+            id=123,
+            guild=guild,
+            channel=channel,
+            author=author,
+            content="hi",
+            created_at=discord.utils.utcnow(),
+            edited_at=None,
+            pinned=False,
+            tts=False,
+            type=discord.MessageType.default,
+            flags=discord.MessageFlags._from_value(0),
+            mention_everyone=False,
+            raw_mentions=[],
+            raw_role_mentions=[],
+            embeds=[],
+            attachments=[],
+            reference=None,
+            to_json=lambda: "{}",
+        )
+
+        await cog._insert_message(message)
+        assert any("UPDATE discord.channel SET last_message_id" in q for q in executed)
+
+    asyncio.run(run_test())
+
 def test_on_ready_populates(monkeypatch):
     async def run_test():
         pool = DummyPool()

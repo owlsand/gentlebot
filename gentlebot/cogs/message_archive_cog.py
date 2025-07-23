@@ -232,6 +232,13 @@ class MessageArchiveCog(commands.Cog):
                 att.proxy_url,
             )
             att_count += rows_from_tag(att_tag)
+
+        await self.pool.execute(
+            "UPDATE discord.channel SET last_message_id=$1, last_message_at=$2 WHERE channel_id=$3",
+            message.id,
+            message.created_at,
+            message.channel.id,
+        )
         return msg_count, att_count
 
     @commands.Cog.listener()
