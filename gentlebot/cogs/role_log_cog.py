@@ -9,6 +9,7 @@ import discord
 from discord.ext import commands
 
 from ..util import build_db_url
+from .. import bot_config as cfg
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -20,6 +21,17 @@ class RoleLogCog(commands.Cog):
         self.bot = bot
         self.pool: asyncpg.Pool | None = None
         self.enabled = os.getenv("LOG_ROLES") == "1"
+
+    @staticmethod
+    def _describe(role: discord.Role) -> str:
+        """Return a string describing how the role is assigned."""
+        if role.id in cfg.ROLE_DESCRIPTIONS:
+            return cfg.ROLE_DESCRIPTIONS[role.id]
+        if role.id in cfg.AUTO_ROLE_IDS:
+            return "Assigned automatically by RolesCog"
+        if getattr(role, "managed", False):
+            return "Managed by integration"
+        return "Manual assignment"
 
     async def cog_load(self) -> None:
         if not self.enabled:
@@ -47,14 +59,15 @@ class RoleLogCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb)
-            VALUES ($1,$2,$3,$4)
-            ON CONFLICT (role_id) DO UPDATE SET name=$3, color_rgb=$4
+            INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb, description)
+            VALUES ($1,$2,$3,$4,$5)
+            ON CONFLICT (role_id) DO UPDATE SET name=$3, color_rgb=$4, description=$5
             """,
             role.id,
             role.guild.id,
             role.name,
             role.color.value if role.color else None,
+            self._describe(role),
         )
 
     async def _record_assignment(self, guild_id: int, role_id: int, user_id: int) -> None:

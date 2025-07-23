@@ -14,6 +14,16 @@ from gentlebot.util import build_db_url, rows_from_tag
 log = logging.getLogger("gentlebot.backfill_roles")
 
 
+def role_description(role: discord.Role) -> str:
+    if role.id in cfg.ROLE_DESCRIPTIONS:
+        return cfg.ROLE_DESCRIPTIONS[role.id]
+    if role.id in cfg.AUTO_ROLE_IDS:
+        return "Assigned automatically by RolesCog"
+    if role.managed:
+        return "Managed by integration"
+    return "Manual assignment"
+
+
 class BackfillBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -47,15 +57,16 @@ class BackfillBot(commands.Bot):
             for role in guild.roles:
                 inserted = await self.pool.fetchval(
                     """
-                    INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb)
-                    VALUES ($1,$2,$3,$4)
-                    ON CONFLICT (role_id) DO UPDATE SET name=$3, color_rgb=$4
+                    INSERT INTO discord.guild_role (role_id, guild_id, name, color_rgb, description)
+                    VALUES ($1,$2,$3,$4,$5)
+                    ON CONFLICT (role_id) DO UPDATE SET name=$3, color_rgb=$4, description=$5
                     RETURNING xmax = 0
                     """,
                     role.id,
                     guild.id,
                     role.name,
                     role.color.value if role.color else None,
+                    role_description(role),
                 )
                 self.counts["guild_role"] += int(bool(inserted))
             for member in guild.members:
