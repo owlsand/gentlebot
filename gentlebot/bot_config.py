@@ -99,5 +99,48 @@ else:
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
 INACTIVE_DAYS = int_env("INACTIVE_DAYS", 14)
 
+# IDs of roles automatically assigned by RolesCog
+AUTO_ROLE_IDS = {
+    ROLE_GHOST,
+    ROLE_TOP_POSTER,
+    ROLE_CERTIFIED_BANGER,
+    ROLE_TOP_CURATOR,
+    ROLE_FIRST_DROP,
+    ROLE_SUMMONER,
+    ROLE_LORE_CREATOR,
+    ROLE_REACTION_ENGINEER,
+    ROLE_GALAXY_BRAIN,
+    ROLE_WORDSMITH,
+    ROLE_SNIPER,
+    ROLE_NIGHT_OWL,
+    ROLE_COMEBACK_KID,
+    ROLE_GHOSTBUSTER,
+    ROLE_SHADOW_FLAG,
+    ROLE_LURKER_FLAG,
+    ROLE_NPC_FLAG,
+}
+
+# Descriptive text for automatically assigned roles
+ROLE_DESCRIPTIONS: dict[int, str] = {
+    ROLE_TOP_POSTER: "Most messages in the last 14 days",
+    ROLE_CERTIFIED_BANGER: "Highest laugh reaction ratio (min 10 msgs) in the last 14 days",
+    ROLE_TOP_CURATOR: "Shared the most popular rich posts in the last 14 days",
+    ROLE_FIRST_DROP: "First message of the day",
+    ROLE_SUMMONER: "Most mentions of others in the last 30 days",
+    ROLE_LORE_CREATOR: "Most replied-to user in the last 30 days",
+    ROLE_REACTION_ENGINEER: "Created emojis used most as reactions in the last 30 days",
+    ROLE_GALAXY_BRAIN: "Longest single message in the last 5 days",
+    ROLE_WORDSMITH: "Highest average words per message (min 3) in the last 5 days",
+    ROLE_SNIPER: "Best reactions-per-word ratio in the last 5 days",
+    ROLE_NIGHT_OWL: "Most messages between 10pm and 6am PT in the last 14 days",
+    ROLE_COMEBACK_KID: "Most mentioned user in the last 14 days",
+    ROLE_GHOSTBUSTER: "Broke a chat lull exceeding 24 hours",
+    ROLE_GHOST: "No messages or reactions in the last 14 days",
+    ROLE_SHADOW_FLAG: "No messages in 14 days but mentioned or reacted to in 30 days",
+    ROLE_LURKER_FLAG: "1–5 messages or up to 15 reactions in the last 14 days",
+    ROLE_NPC_FLAG: "Active without long or rich posts in the last 30 days",
+}
+
+
 # Helper: convenience log line
 logging.getLogger(__name__).info("Loaded %s env for Guild %s", env, GUILD_ID)
