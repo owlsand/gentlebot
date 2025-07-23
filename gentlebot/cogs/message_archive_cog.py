@@ -150,8 +150,10 @@ class MessageArchiveCog(commands.Cog):
             """
             INSERT INTO discord.message (
                 message_id, guild_id, channel_id, author_id, reply_to_id,
-                content, created_at, edited_at, pinned, tts, type, raw_payload)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                content, created_at, edited_at, pinned, tts, type, flags,
+                mention_everyone, mentions, mention_roles, embeds,
+                raw_payload)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
             ON CONFLICT DO NOTHING
             """,
             message.id,
@@ -165,6 +167,11 @@ class MessageArchiveCog(commands.Cog):
             message.pinned,
             message.tts,
             int(message.type.value),
+            getattr(message.flags, "value", 0),
+            getattr(message, "mention_everyone", False),
+            json.dumps(getattr(message, "raw_mentions", [])),
+            json.dumps(getattr(message, "raw_role_mentions", [])),
+            json.dumps([getattr(e, "to_dict", lambda: {})() for e in message.embeds]),
             json.dumps(payload),
         )
         msg_count = rows_from_tag(msg_tag)
@@ -202,9 +209,14 @@ class MessageArchiveCog(commands.Cog):
         if not self.enabled or after.guild is None or not self.pool:
             return
         await self.pool.execute(
-            """UPDATE discord.message SET content=$1, edited_at=$2, raw_payload=$3 WHERE message_id=$4""",
+            """UPDATE discord.message SET content=$1, edited_at=$2, flags=$3, mention_everyone=$4, mentions=$5, mention_roles=$6, embeds=$7, raw_payload=$8 WHERE message_id=$9""",
             after.content,
             after.edited_at,
+            getattr(after.flags, "value", 0),
+            getattr(after, "mention_everyone", False),
+            json.dumps(getattr(after, "raw_mentions", [])),
+            json.dumps(getattr(after, "raw_role_mentions", [])),
+            json.dumps([getattr(e, "to_dict", lambda: {})() for e in after.embeds]),
             json.dumps(
                 json.loads(after.to_json()) if hasattr(after, "to_json") else {}
             ),
