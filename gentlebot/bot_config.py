@@ -95,6 +95,17 @@ else:
     ROLE_SHADOW_FLAG = int_env("ROLE_SHADOW_FLAG", 1391977459850809425)
     ROLE_LURKER_FLAG = int_env("ROLE_LURKER_FLAG", 1391978324510642258)
     ROLE_NPC_FLAG = int_env("ROLE_NPC_FLAG", 1391978703566934087)
+    ROLE_DAILY_HERO = int_envt("ROLE_DAILY_HERO", 1397079979547955242)
+    TIERED_BADGES = {
+      'top_poster': {
+        'metric': 'msgs',
+        'roles': {'gold': 1391637786406289508, 'silver': 1397431514043781170, 'bronze': 1397432033113800877},
+      },
+      'reaction_magnet': {
+        'metric': 'reacts',
+        'roles': {'gold': 1391637939900907661, 'silver': 1397432612364095589, 'bronze': 1397432799795085372},
+      }
+    }
 
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
 INACTIVE_DAYS = int_env("INACTIVE_DAYS", 14)
