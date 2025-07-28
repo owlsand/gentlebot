@@ -232,9 +232,10 @@ class DailyDigestCog(commands.Cog):
             member = guild.get_member(hero)
             if member:
                 try:
-                    await member.send(
-                        "Congrats! You're today's Daily Hero. Run /suggest-topic to keep chats lively!"
-                    )
+                    # await member.send(
+                    #     "Congrats! You're today's Daily Hero. Run /suggest-topic to keep chats lively!"
+                    # )
+                    pass  # message sending disabled for auditing
                 except discord.HTTPException:
                     log.warning("Failed to DM Daily Hero %s", member)
 
@@ -332,17 +333,17 @@ class DailyDigestCog(commands.Cog):
             desc.append("\U0001f949 " + " / ".join(bronzes))
 
         embed = discord.Embed(description="\n".join(desc))
-        msg = await channel.send("Daily Digest", embed=embed)
-        try:
-            await msg.pin()
-            self.scheduler.add_job(
-                self._unpin_message,
-                "date",
-                run_date=now + timedelta(hours=24),
-                args=[channel.id, msg.id],
-            )
-        except discord.HTTPException:
-            log.warning("Failed to pin digest message")
+        # msg = await channel.send("Daily Digest", embed=embed)
+        # try:
+        #     await msg.pin()
+        #     self.scheduler.add_job(
+        #         self._unpin_message,
+        #         "date",
+        #         run_date=now + timedelta(hours=24),
+        #         args=[channel.id, msg.id],
+        #     )
+        # except discord.HTTPException:
+        #     log.warning("Failed to pin digest message")
         if self.pool:
             await self.pool.execute(
                 "INSERT INTO discord.experiment_results (experiment_id, day, metric, value) VALUES ('H1_ROLE_DIGEST', current_date, 'digest_sent', 1)"
