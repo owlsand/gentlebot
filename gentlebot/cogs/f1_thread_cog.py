@@ -6,6 +6,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import requests
+from dateutil import parser
+
 import asyncpg
 import discord
 from discord.ext import commands, tasks
@@ -75,9 +78,65 @@ class F1ThreadCog(commands.Cog):
             )
 
     def fetch_schedule(self) -> list[dict]:
-        from .sports_cog import SportsCog  # local import to avoid cycle
+        """Return list of qualifying and race sessions with metadata."""
+        url = "https://f1calendar.com/api/calendar"
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:  # pragma: no cover - network
+            log.exception("Failed to fetch F1 schedule: %s", exc)
+            return []
 
-        return SportsCog.fetch_f1_schedule(self)  # type: ignore[arg-type]
+        iso_map = {
+            "Australian": "AU",
+            "Chinese": "CN",
+            "Japanese": "JP",
+            "Bahrain": "BH",
+            "Saudi Arabian": "SA",
+            "Miami": "US",
+            "Emilia Romagna": "IT",
+            "Monaco": "MC",
+            "Spanish": "ES",
+            "Canadian": "CA",
+            "Austrian": "AT",
+            "British": "GB",
+            "Belgian": "BE",
+            "Hungarian": "HU",
+            "Dutch": "NL",
+            "Italian": "IT",
+            "Azerbaijan": "AZ",
+            "Singapore": "SG",
+            "United States": "US",
+            "Mexico City": "MX",
+            "Brazilian": "BR",
+            "Las Vegas": "US",
+            "Qatar": "QA",
+            "Abu Dhabi": "AE",
+        }
+
+        sessions: list[dict] = []
+        for race in data.get("races", []):
+            gp_name_full = race.get("name", "")
+            if not gp_name_full:
+                continue
+            gp_name = gp_name_full.replace(" Grand Prix", "")
+            country_iso = iso_map.get(gp_name, "")
+            for name, iso in race.get("sessions", {}).items():
+                if name not in {"Qualifying", "Grand Prix"}:
+                    continue
+                session_code = "QUALI" if name == "Qualifying" else "RACE"
+                dt = parser.isoparse(iso).astimezone(timezone.utc)
+                sessions.append(
+                    {
+                        "country_iso": country_iso,
+                        "year": dt.year,
+                        "gp_name": gp_name,
+                        "session": session_code,
+                        "starts_at": dt,
+                    }
+                )
+        return sessions
 
     async def _due_sessions(self) -> list[asyncpg.Record]:
         if not self.pool:
