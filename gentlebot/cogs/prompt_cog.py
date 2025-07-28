@@ -271,7 +271,22 @@ class PromptCog(commands.Cog):
             log.error("Unable to find channel with ID %s", channel_id)
             return
         prompt = self.fetch_prompt()
-        await channel.send(f"{prompt}")
+        try:
+            name = datetime.now(LOCAL_TZ).strftime("QOTD %b %d")
+            thread = await channel.create_thread(name=name, auto_archive_duration=1440)
+        except Exception as exc:
+            log.error("Failed to create prompt thread: %s", exc)
+            return
+        await thread.send(f"{prompt}")
+        guild = getattr(channel, "guild", None)
+        if guild:
+            for member in guild.members:
+                if member.bot:
+                    continue
+                try:
+                    await thread.add_user(member)
+                except Exception as exc:  # pragma: no cover - join failure is ok
+                    log.warning("Failed to add %s to prompt thread: %s", member.id, exc)
 
     async def _scheduler(self):
         await self.bot.wait_until_ready()
