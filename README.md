@@ -18,6 +18,7 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
   unlimited history in the background before posting the stats and optional
   activity chart.
 - **VersionCog** – `/version` prints the current commit hash for debugging.
+- **DailyDigestCog** – posts a morning summary and assigns tiered badge roles.
 
 ## Repository Layout
 ```
@@ -131,6 +132,17 @@ git revert <merge-commit-sha>
 docker compose build bot
 docker compose up -d bot
 ```
+
+## Daily Digest
+The **DailyDigestCog** posts a summary each morning and rotates tiered badge
+roles at 08:30 PT. Configure these IDs in `bot_config.py`:
+
+- `ROLE_DAILY_HERO` – role granted to yesterday's top poster.
+- `TIERED_BADGES` – mapping of badge keys to metric, threshold and role IDs.
+- `LOBBY_CHANNEL_ID` – channel where the digest message is posted (defaults to
+  `973284857885126749`). The message is pinned for 24h automatically.
+
+Add additional badge types by appending to `TIERED_BADGES`.
 
 ## Notes
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.

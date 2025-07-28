@@ -73,6 +73,7 @@ else:
     F1_DISCORD_CHANNEL_ID=1121104901175509106
     DAILY_PING_CHANNEL = 1136095810510143518
     MONEY_TALK_CHANNEL = int_env("MONEY_TALK_CHANNEL", 1160414402076491878)
+    LOBBY_CHANNEL_ID = int_env("LOBBY_CHANNEL_ID", 973284857885126749)
 
 
     # -------- ROLES --------
@@ -97,14 +98,24 @@ else:
     ROLE_NPC_FLAG = int_env("ROLE_NPC_FLAG", 1391978703566934087)
     ROLE_DAILY_HERO = int_env("ROLE_DAILY_HERO", 1397079979547955242)
     TIERED_BADGES = {
-      'top_poster': {
-        'metric': 'msgs',
-        'roles': {'gold': 1391637786406289508, 'silver': 1397431514043781170, 'bronze': 1397432033113800877},
-      },
-      'reaction_magnet': {
-        'metric': 'reacts',
-        'roles': {'gold': 1391637939900907661, 'silver': 1397432612364095589, 'bronze': 1397432799795085372},
-      }
+        'top_poster': {
+            'metric': 'msgs',
+            'threshold': 10,
+            'roles': {
+                'gold': 1391637786406289508,
+                'silver': 1397431514043781170,
+                'bronze': 1397432033113800877,
+            },
+        },
+        'reaction_magnet': {
+            'metric': 'reacts',
+            'threshold': 10,
+            'roles': {
+                'gold': 1391637939900907661,
+                'silver': 1397432612364095589,
+                'bronze': 1397432799795085372,
+            },
+        },
     }
 
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
