@@ -7,8 +7,8 @@ from sqlalchemy import pool, text
 from alembic import context
 import logging
 
-# show everything Alembic logs
-logging.getLogger('alembic').setLevel(logging.DEBUG)
+# log Alembic messages at INFO level
+logging.getLogger('alembic').setLevel(logging.INFO)
 # optionally, see full SQLAlchemy engine debugging
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
