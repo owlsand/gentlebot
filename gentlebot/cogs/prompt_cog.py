@@ -148,6 +148,9 @@ FALLBACK_PROMPTS = [
     "If you could see into the future, would you choose to look?",
     "What's a challenge you initially hated but now appreciate?",
     "What small daily pleasure makes life worth living for you?",
+    "Which app do you check first every morning and why?",
+    "How do you manage your online privacy on a daily basis?",
+    "What's one piece of digital clutter you'd love to eliminate?",
 ]
 
 # Prompt types for rotation
@@ -170,6 +173,7 @@ PROMPT_TYPES = [
     "Food & Cooking – culinary experiences or recipes",
     "History – lessons from past events or figures",
     "Superpowers – imaginative abilities or heroics",
+    "Personal Snapshot – prompts about your daily digital life.",
 ]
 
 class PromptCog(commands.Cog):
@@ -247,6 +251,15 @@ class PromptCog(commands.Cog):
         if not remaining:
             self.recent_types.clear()
             remaining = list(range(len(PROMPT_TYPES)))
+
+        special_idx = PROMPT_TYPES.index(
+            "Personal Snapshot – prompts about your daily digital life."
+        )
+        if special_idx in remaining and random.random() < 0.2:
+            self.rotation_index = special_idx
+            return
+        if special_idx in remaining:
+            remaining = [i for i in remaining if i != special_idx] or [special_idx]
         self.rotation_index = random.choice(remaining)
 
     def _next_run_time(self, now: datetime) -> datetime:
