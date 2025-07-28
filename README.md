@@ -135,14 +135,7 @@ docker compose up -d bot
 
 ## Daily Digest
 The **DailyDigestCog** posts a summary each morning and rotates tiered badge
-roles at 08:30 PT. Configure these IDs in `bot_config.py`:
-
-- `ROLE_DAILY_HERO` – role granted to yesterday's top poster.
-- `TIERED_BADGES` – mapping of badge keys to metric, threshold and role IDs.
-- `LOBBY_CHANNEL_ID` – channel where the digest message is posted (defaults to
-  `973284857885126749`). The message is pinned for 24h automatically.
-
-Add additional badge types by appending to `TIERED_BADGES`.
+roles at 08:30 PT.
 
 ## Notes
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
