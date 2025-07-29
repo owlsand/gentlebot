@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 
 from gentlebot import bot_config as cfg
-from gentlebot.util import build_db_url, chan_name, rows_from_tag
+from gentlebot.util import build_db_url, chan_name, rows_from_tag, ReactionAction
 
 log = logging.getLogger("gentlebot.backfill_reactions")
 
@@ -71,14 +71,14 @@ class BackfillBot(commands.Bot):
                                 tag = await self.pool.execute(
                                     """
                                     INSERT INTO discord.reaction_event (
-                                        message_id, user_id, emoji, action, event_at
+                                        message_id, user_id, emoji, reaction_action, event_at
                                     ) VALUES ($1,$2,$3,$4,$5)
                                     ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts DO NOTHING
                                     """,
                                     msg.id,
                                     user.id,
                                     str(reaction.emoji),
-                                    0,
+                                    ReactionAction.MESSAGE_REACTION_ADD.name,
                                     msg.created_at,
                                 )
                                 self.inserted += rows_from_tag(tag)

@@ -7,7 +7,7 @@ import os
 import asyncpg
 import discord
 from discord.ext import commands
-from ..util import build_db_url, rows_from_tag
+from ..util import build_db_url, rows_from_tag, ReactionAction
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -269,7 +269,9 @@ class MessageArchiveCog(commands.Cog):
             after.id,
         )
 
-    async def _log_reaction(self, payload: discord.RawReactionActionEvent, action: int) -> None:
+    async def _log_reaction(
+        self, payload: discord.RawReactionActionEvent, action: ReactionAction
+    ) -> None:
         if not self.pool:
             return
         # Ignore events for messages that are not archived yet
@@ -281,14 +283,14 @@ class MessageArchiveCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            INSERT INTO discord.reaction_event (message_id, user_id, emoji, action, event_at)
+            INSERT INTO discord.reaction_event (message_id, user_id, emoji, reaction_action, event_at)
             VALUES ($1,$2,$3,$4,$5)
             ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts DO NOTHING
             """,
             payload.message_id,
             payload.user_id,
             str(payload.emoji),
-            action,
+            action.name,
             discord.utils.utcnow(),
         )
 
@@ -296,13 +298,13 @@ class MessageArchiveCog(commands.Cog):
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if not self.enabled:
             return
-        await self._log_reaction(payload, 0)
+        await self._log_reaction(payload, ReactionAction.MESSAGE_REACTION_ADD)
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
         if not self.enabled:
             return
-        await self._log_reaction(payload, 1)
+        await self._log_reaction(payload, ReactionAction.MESSAGE_REACTION_REMOVE)
 
 
 async def setup(bot: commands.Bot):

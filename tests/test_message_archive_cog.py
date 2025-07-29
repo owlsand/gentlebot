@@ -6,7 +6,7 @@ from discord.ext import commands
 import asyncpg
 
 from gentlebot.cogs.message_archive_cog import MessageArchiveCog
-from gentlebot.util import build_db_url
+from gentlebot.util import build_db_url, ReactionAction
 
 
 class DummyPool:
@@ -106,8 +106,8 @@ def test_log_reaction_on_conflict(monkeypatch):
                 self.__dict__.update(kw)
 
         payload = Dummy(message_id=1, user_id=2, emoji="😀")
-        await cog._log_reaction(payload, 0)
-        await cog._log_reaction(payload, 0)
+        await cog._log_reaction(payload, ReactionAction.MESSAGE_REACTION_ADD)
+        await cog._log_reaction(payload, ReactionAction.MESSAGE_REACTION_ADD)
         assert any("ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts" in q for q in pool.executed)
 
     asyncio.run(run_test())

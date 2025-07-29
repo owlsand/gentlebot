@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..util import build_db_url
+from ..util import build_db_url, ReactionAction
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -98,7 +98,7 @@ class DailyDigestCog(commands.Cog):
                    MAX(r.event_at) AS last_ts
             FROM discord.reaction_event r
             JOIN discord.message m ON m.message_id = r.message_id
-            WHERE r.action = 1 AND r.event_at >= now() - $1::interval
+            WHERE r.reaction_action = 'MESSAGE_REACTION_ADD' AND r.event_at >= now() - $1::interval
             GROUP BY m.author_id
             HAVING COUNT(*) >= $2
             ORDER BY c DESC, last_ts ASC
