@@ -23,8 +23,8 @@ def upgrade() -> None:
     )
     op.execute(
         "UPDATE discord.reaction_event SET reaction_action = CASE "
-        "WHEN action = 0 THEN 'MESSAGE_REACTION_ADD' "
-        "ELSE 'MESSAGE_REACTION_REMOVE' END"
+        "WHEN action = 0 THEN 'MESSAGE_REACTION_ADD'::reaction_action "
+        "ELSE 'MESSAGE_REACTION_REMOVE'::reaction_action END"
     )
     op.alter_column('reaction_event', 'reaction_action', nullable=False, schema='discord')
     op.drop_constraint('uniq_reaction_event_msg_user_emoji_act_ts', 'reaction_event', schema='discord')
