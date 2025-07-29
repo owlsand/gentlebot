@@ -218,11 +218,11 @@ def test_tiered_role_refresh(monkeypatch):
 
         await cog.badge_task()
 
-        assert calls[10] == [1, 2, 3]
-        assert calls[20] == [4, 5, 6, 7, 8]
-        assert calls[30] == [9]
-        assert calls[40] == [1, 2, 3]
-        assert calls[50] == [4, 5, 6, 7, 8]
-        assert 60 not in calls
+        assert calls[10] == [1]
+        assert calls[20] == [2]
+        assert calls[30] == [3, 4]
+        assert calls[40] == [1]
+        assert calls[50] == [2]
+        assert calls[60] == [3, 4]
 
     asyncio.run(run_test())
