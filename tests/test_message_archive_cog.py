@@ -93,6 +93,26 @@ def test_on_message(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_log_reaction_on_conflict(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+        intents = discord.Intents.default()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = MessageArchiveCog(bot)
+        cog.pool = pool
+
+        class Dummy:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        payload = Dummy(message_id=1, user_id=2, emoji="😀")
+        await cog._log_reaction(payload, 0)
+        await cog._log_reaction(payload, 0)
+        assert any("ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts" in q for q in pool.executed)
+
+    asyncio.run(run_test())
+
+
 def test_insert_message_updates_channel(monkeypatch):
     async def run_test():
         pool = DummyPool()
