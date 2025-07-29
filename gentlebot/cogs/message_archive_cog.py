@@ -283,6 +283,7 @@ class MessageArchiveCog(commands.Cog):
             """
             INSERT INTO discord.reaction_event (message_id, user_id, emoji, action, event_at)
             VALUES ($1,$2,$3,$4,$5)
+            ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts DO NOTHING
             """,
             payload.message_id,
             payload.user_id,
