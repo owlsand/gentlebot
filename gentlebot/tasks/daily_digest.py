@@ -115,6 +115,7 @@ class DailyDigestCog(commands.Cog):
         now = datetime.now(tz=LA)
         start = datetime(now.year, now.month, now.day, tzinfo=LA) - timedelta(days=1)
         end = start + timedelta(days=1)
+        log.debug("Fetching top posters between %s and %s", start, end)
         rows = await self.pool.fetch(
             """
             SELECT author_id,
@@ -129,7 +130,9 @@ class DailyDigestCog(commands.Cog):
             start,
             end,
         )
-        return [(r["author_id"], r["c"]) for r in rows]
+        result = [(r["author_id"], r["c"]) for r in rows]
+        log.debug("Yesterday's top posters: %s", result)
+        return result
 
     async def _assign_roles(self, guild: discord.Guild, mapping: dict[int, int]) -> None:
         for user_id, role_id in mapping.items():
@@ -210,12 +213,17 @@ class DailyDigestCog(commands.Cog):
         top_msgs = await self._top_posters(14)
         top_reacts = await self._reaction_magnets(14)
         hero_candidates = await self._yesterday_top_poster()
+        log.debug("Hero candidates: %s", hero_candidates)
         hero: int | None = None
         for uid, _ in hero_candidates:
             last = await self._last_hero_time(uid)
+            log.debug("Evaluating candidate %s with last hero time %s", uid, last)
             if not last or last <= datetime.now(tz=LA) - timedelta(hours=72):
                 hero = uid
+                log.debug("Selected Daily Hero: %s", uid)
                 break
+        if hero is None:
+            log.debug("No eligible Daily Hero found")
 
         tier_roles = cfg.TIERED_BADGES
         msg_map = assign_tiers([uid for uid, _, _ in top_msgs], tier_roles['top_poster']['roles'])
