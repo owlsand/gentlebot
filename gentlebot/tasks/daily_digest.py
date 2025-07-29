@@ -25,9 +25,9 @@ def assign_tiers(rankings: list[int], roles: dict[str, int]) -> dict[int, int]:
 
     result: dict[int, int] = {}
     tiers = (
-        ("gold", 0, 3),   # top 3
-        ("silver", 3, 8), # ranks 4–8
-        ("bronze", 8, 15), # ranks 9–15
+        ("gold", 0, 1),    # top 1
+        ("silver", 1, 2),  # next 1
+        ("bronze", 2, 4),  # next 2
     )
     for name, start, end in tiers:
         role_id = roles.get(name, 0)
