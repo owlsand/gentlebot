@@ -29,6 +29,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from ..tasks.daily_digest import assign_tiers
+
 from ..util import chan_name
 from .. import bot_config as cfg
 
@@ -315,6 +317,22 @@ class RoleCog(commands.Cog):
             if role not in member.roles:
                 await self._assign(member, role_id)
 
+    async def _sync_role(self, guild: discord.Guild, role_id: int, winners: list[int]):
+        """Remove role from non-winners and add to winners."""
+        role = guild.get_role(role_id)
+        if not role:
+            return
+        current = {m.id for m in role.members}
+        to_remove = current - set(winners)
+        for uid in to_remove:
+            member = guild.get_member(uid)
+            if member:
+                await self._remove(member, role_id)
+        for uid in winners:
+            member = await self._get_member(guild, uid)
+            if member and role not in member.roles:
+                await self._assign(member, role_id)
+
     # ── Badge Rotation Task ─────────────────────────────────────────────
     @tasks.loop(hours=24)
     async def badge_task(self):
@@ -333,6 +351,25 @@ class RoleCog(commands.Cog):
         top_poster = counts.most_common(1)[0][0] if counts else None
         log.debug("Top Poster winner: %s", top_poster)
         await self._rotate_single(guild, ROLE_TOP_POSTER, top_poster)
+
+        # tiered Top Poster and Reaction Magnet roles
+        if hasattr(cfg, "TIERED_BADGES"):
+            poster_ranks = [uid for uid, c in counts.most_common(30)
+                            if c >= cfg.TIERED_BADGES['top_poster']['threshold']]
+            react_counts = Counter(r["msg_author"] for r in self.reactions
+                                   if r["ts"] >= cutoff14)
+            react_ranks = [uid for uid, c in react_counts.most_common(30)
+                           if c >= cfg.TIERED_BADGES['reaction_magnet']['threshold']]
+            tier_roles = cfg.TIERED_BADGES
+            poster_map = assign_tiers(poster_ranks, tier_roles['top_poster']['roles'])
+            react_map = assign_tiers(react_ranks, tier_roles['reaction_magnet']['roles'])
+            winners: dict[int, list[int]] = {}
+            for uid, rid in poster_map.items():
+                winners.setdefault(rid, []).append(uid)
+            for uid, rid in react_map.items():
+                winners.setdefault(rid, []).append(uid)
+            for rid, users in winners.items():
+                await self._sync_role(guild, rid, users)
 
         msg_counts = Counter()
         laugh_counts = Counter()
