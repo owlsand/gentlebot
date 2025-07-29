@@ -1,6 +1,14 @@
 import os
 import logging
+from enum import IntEnum
 import discord
+
+
+class ReactionAction(IntEnum):
+    """Values matching Discord's reaction gateway events."""
+
+    MESSAGE_REACTION_ADD = 0
+    MESSAGE_REACTION_REMOVE = 1
 
 def build_db_url() -> str | None:
     """Return a Postgres DSN built from env vars."""
