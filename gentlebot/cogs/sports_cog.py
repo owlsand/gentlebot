@@ -264,11 +264,8 @@ class SportsCog(commands.Cog):
                 log.warning("Failed to fetch homer info for %s: %s", day, e)
         return "", "", ""
 
-    # --- Cal Raleigh command -------------------------------------------------
-    @app_commands.command(name="bigdumper", description="Cal Raleigh stats and latest homer")
-    async def bigdumper(self, interaction: discord.Interaction):
-        log.info("/bigdumper invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
-        await interaction.response.defer(thinking=True)
+    async def build_bigdumper_embed(self) -> discord.Embed | None:
+        """Return an embed with Cal Raleigh stats and the most recent homer."""
         try:
             stats, hr_info = await asyncio.gather(
                 asyncio.to_thread(self.fetch_season_stats),
@@ -276,12 +273,10 @@ class SportsCog(commands.Cog):
             )
         except Exception:
             log.exception("Failed to fetch Cal Raleigh info")
-            await interaction.followup.send("Could not fetch data right now.")
-            return
+            return None
 
         if not stats:
-            await interaction.followup.send("No stats available.")
-            return
+            return None
         avg = stats.get("avg", "N/A")
         obp = stats.get("obp", "N/A")
         slg = stats.get("slg", "N/A")
@@ -295,25 +290,38 @@ class SportsCog(commands.Cog):
         bb = stats.get("baseOnBalls", "0")
         so = stats.get("strikeOuts", "0")
         sb = stats.get("stolenBases", "0")
-        lines = [
-            f"**G:** {gp} **AB:** {ab} **R:** {runs} **H:** {hits}",
-            f"**HR:** {hr} **RBI:** {rbi} **SB:** {sb}",
-            f"**BB:** {bb} **SO:** {so}",
-            f"**AVG:** {avg} **OBP:** {obp} **SLG:** {slg} **OPS:** {ops}",
-        ]
-        desc = "\n".join(lines)
+        totals = "\n".join(
+            [
+                f"**G:** {gp}  **AB:** {ab}  **R:** {runs}  **H:** {hits}",
+                f"**HR:** {hr}  **RBI:** {rbi}  **BB:** {bb}  **SO:** {so}  **SB:** {sb}",
+            ]
+        )
+        rates = f"**AVG:** {avg}  **OBP:** {obp}  **SLG:** {slg}  **OPS:** {ops}"
         title_date = datetime.now().strftime("%b %d")
         embed = discord.Embed(
             title=f"Big Dumper Stats ({title_date})",
-            description=desc,
             color=discord.Color.blue(),
         )
+        embed.add_field(name="Season Totals", value=totals, inline=False)
+        embed.add_field(name="Rate Stats", value=rates, inline=False)
         date, video, image = hr_info
         if video:
             embed.add_field(name="Latest Home Run", value=f"{date} [Video]({video})", inline=False)
         if image:
             embed.set_image(url=image)
-        await interaction.followup.send(embed=embed)
+
+        return embed
+
+    # --- Cal Raleigh command -------------------------------------------------
+    @app_commands.command(name="bigdumper", description="Cal Raleigh stats and latest homer")
+    async def bigdumper(self, interaction: discord.Interaction):
+        log.info("/bigdumper invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        await interaction.response.defer(thinking=True)
+        embed = await self.build_bigdumper_embed()
+        if embed is None:
+            await interaction.followup.send("Could not fetch data right now.")
+        else:
+            await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="nextf1", description="Show the next F1 race weekend preview with track map")
     async def nextf1(self, interaction: discord.Interaction):
