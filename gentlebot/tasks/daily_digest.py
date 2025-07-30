@@ -73,12 +73,14 @@ class DailyDigestCog(commands.Cog):
             return []
         rows = await self.pool.fetch(
             """
-            SELECT author_id,
+            SELECT m.author_id,
                    COUNT(*) AS c,
-                   MAX(created_at) AS last_ts
-            FROM discord.message
-            WHERE created_at >= now() - $1::interval
-            GROUP BY author_id
+                   MAX(m.created_at) AS last_ts
+            FROM discord.message m
+            JOIN discord."user" u ON m.author_id = u.user_id
+            WHERE m.created_at >= now() - $1::interval
+              AND u.is_bot IS NOT TRUE
+            GROUP BY m.author_id
             HAVING COUNT(*) >= $2
             ORDER BY c DESC, last_ts ASC
             LIMIT 30
@@ -98,7 +100,10 @@ class DailyDigestCog(commands.Cog):
                    MAX(r.event_at) AS last_ts
             FROM discord.reaction_event r
             JOIN discord.message m ON m.message_id = r.message_id
-            WHERE r.reaction_action = 'MESSAGE_REACTION_ADD' AND r.event_at >= now() - $1::interval
+            JOIN discord."user" u ON m.author_id = u.user_id
+            WHERE r.reaction_action = 'MESSAGE_REACTION_ADD'
+              AND r.event_at >= now() - $1::interval
+              AND u.is_bot IS NOT TRUE
             GROUP BY m.author_id
             HAVING COUNT(*) >= $2
             ORDER BY c DESC, last_ts ASC
@@ -118,12 +123,14 @@ class DailyDigestCog(commands.Cog):
         log.debug("Fetching top posters between %s and %s", start, end)
         rows = await self.pool.fetch(
             """
-            SELECT author_id,
+            SELECT m.author_id,
                    COUNT(*) AS c,
-                   MAX(created_at) AS last_ts
-            FROM discord.message
-            WHERE created_at >= $1 AND created_at < $2
-            GROUP BY author_id
+                   MAX(m.created_at) AS last_ts
+            FROM discord.message m
+            JOIN discord."user" u ON m.author_id = u.user_id
+            WHERE m.created_at >= $1 AND m.created_at < $2
+              AND u.is_bot IS NOT TRUE
+            GROUP BY m.author_id
             ORDER BY c DESC, last_ts ASC
             LIMIT 5
             """,
@@ -140,7 +147,7 @@ class DailyDigestCog(commands.Cog):
                 continue
             member = guild.get_member(user_id)
             role = guild.get_role(role_id)
-            if member and role and role not in member.roles:
+            if member and not getattr(member, "bot", False) and role and role not in member.roles:
                 try:
                     await member.add_roles(role, reason="Daily Digest")
                 except discord.HTTPException:
@@ -162,7 +169,7 @@ class DailyDigestCog(commands.Cog):
                     log.warning("Failed to remove %s from %s", role.name, member)
         for uid in winners:
             member = guild.get_member(uid)
-            if member and role not in member.roles:
+            if member and not getattr(member, "bot", False) and role not in member.roles:
                 try:
                     await member.add_roles(role, reason="Daily Digest rotation")
                 except discord.HTTPException:
