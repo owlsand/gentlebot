@@ -32,8 +32,8 @@ def test_send_prompt_creates_thread(monkeypatch):
 
         created = []
 
-        async def fake_create_thread(name, auto_archive_duration=None):
-            created.append(name)
+        async def fake_create_thread(name, auto_archive_duration=None, type=None):
+            created.append((name, type))
             return DummyThread()
 
         guild = SimpleNamespace(
@@ -49,7 +49,7 @@ def test_send_prompt_creates_thread(monkeypatch):
 
         await cog._send_prompt()
 
-        assert created == ["QOTD Jul 21"]
+        assert created == [("QOTD Jul 21", discord.ChannelType.public_thread)]
         assert added == guild.members
 
     asyncio.run(run_test())

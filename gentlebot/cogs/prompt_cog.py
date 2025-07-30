@@ -27,6 +27,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from collections import deque
+import discord
 from discord.ext import commands
 from ..util import chan_name, int_env
 from huggingface_hub import InferenceClient
@@ -286,20 +287,23 @@ class PromptCog(commands.Cog):
         prompt = self.fetch_prompt()
         try:
             name = datetime.now(LOCAL_TZ).strftime("QOTD %b %d")
-            thread = await channel.create_thread(name=name, auto_archive_duration=1440)
+            thread = await channel.create_thread(
+                name=name,
+                auto_archive_duration=1440,
+                type=discord.ChannelType.public_thread,
+            )
         except Exception as exc:
             log.error("Failed to create prompt thread: %s", exc)
             return
         await thread.send(f"{prompt}")
         guild = getattr(channel, "guild", None)
         if guild:
-            for member in guild.members:
-                if member.bot:
-                    continue
-                try:
-                    await thread.add_user(member)
-                except Exception as exc:  # pragma: no cover - join failure is ok
-                    log.warning("Failed to add %s to prompt thread: %s", member.id, exc)
+            members = [m for m in guild.members if not m.bot]
+            tasks = [thread.add_user(m) for m in members]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for member, result in zip(members, results):
+                if isinstance(result, Exception):  # pragma: no cover - join failure is ok
+                    log.warning("Failed to add %s to prompt thread: %s", member.id, result)
 
     async def _scheduler(self):
         await self.bot.wait_until_ready()
