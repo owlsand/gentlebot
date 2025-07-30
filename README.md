@@ -64,7 +64,7 @@ setup.sh           # install dependencies and create the venv
    `bot_logs` table. Database logging only stores **INFO** and above so
    verbose debug messages remain in the console or log file:
    ```bash
-   alembic upgrade head
+   alembic upgrade heads
    ```
    The migrations create tables in the `discord` schema. Connections should
    use `SET search_path=discord,public` as done by the bot's database helpers.
@@ -75,7 +75,7 @@ setup.sh           # install dependencies and create the venv
    messages and reactions. Run the migration again to create the tables
    used by the archive cog.
    ```bash
-   alembic upgrade head
+   alembic upgrade heads
    ```
    A backfill of up to 30 days of history is automatically performed
    after migrations complete. Set `BACKFILL_DAYS` to override the default
@@ -89,7 +89,7 @@ setup.sh           # install dependencies and create the venv
    `BACKFILL_DAYS` value. Inserts are deduplicated via a unique
    constraint so the backfill can be safely re-run:
    ```bash
-   alembic upgrade head
+   alembic upgrade heads
    ```
 7. Run the bot:
    ```bash
