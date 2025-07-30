@@ -48,7 +48,7 @@ if IS_TEST:
     ROLE_TOP_POSTER = int_env("ROLE_TOP_POSTER", 0)
     ROLE_CERTIFIED_BANGER = int_env("ROLE_CERTIFIED_BANGER", 0)
     ROLE_TOP_CURATOR = int_env("ROLE_TOP_CURATOR", 0)
-    ROLE_FIRST_DROP = int_env("ROLE_FIRST_DROP", 0)
+    ROLE_EARLY_BIRD = int_env("ROLE_EARLY_BIRD", 0)
     ROLE_SUMMONER = int_env("ROLE_SUMMONER", 0)
     ROLE_LORE_CREATOR = int_env("ROLE_LORE_CREATOR", 0)
     ROLE_REACTION_ENGINEER = int_env("ROLE_REACTION_ENGINEER", 0)
@@ -82,7 +82,7 @@ else:
     ROLE_TOP_POSTER = int_env("ROLE_TOP_POSTER", 1391637786406289508)
     ROLE_CERTIFIED_BANGER = int_env("ROLE_CERTIFIED_BANGER", 1391637939900907661)
     ROLE_TOP_CURATOR = int_env("ROLE_TOP_CURATOR", 1391638247570149400)
-    ROLE_FIRST_DROP = int_env("ROLE_FIRST_DROP", 1391638519667228672)
+    ROLE_EARLY_BIRD = int_env("ROLE_EARLY_BIRD", 1391638519667228672)
     ROLE_SUMMONER = int_env("ROLE_SUMMONER", 1391638673405116446)
     ROLE_LORE_CREATOR = int_env("ROLE_LORE_CREATOR", 1391976400193327124)
     ROLE_REACTION_ENGINEER = int_env("ROLE_REACTION_ENGINEER", 1391976121758908548)
@@ -127,7 +127,7 @@ AUTO_ROLE_IDS = {
     ROLE_TOP_POSTER,
     ROLE_CERTIFIED_BANGER,
     ROLE_TOP_CURATOR,
-    ROLE_FIRST_DROP,
+    ROLE_EARLY_BIRD,
     ROLE_SUMMONER,
     ROLE_LORE_CREATOR,
     ROLE_REACTION_ENGINEER,
@@ -147,14 +147,14 @@ ROLE_DESCRIPTIONS: dict[int, str] = {
     ROLE_TOP_POSTER: "Most messages in the last 14 days",
     ROLE_CERTIFIED_BANGER: "Highest laugh reaction ratio (min 10 msgs) in the last 14 days",
     ROLE_TOP_CURATOR: "Shared the most popular rich posts in the last 14 days",
-    ROLE_FIRST_DROP: "First message of the day",
+    ROLE_EARLY_BIRD: "Most messages between 5am and 8:30am PT in the last 14 days",
     ROLE_SUMMONER: "Most mentions of others in the last 30 days",
     ROLE_LORE_CREATOR: "Most replied-to user in the last 30 days",
     ROLE_REACTION_ENGINEER: "Created emojis used most as reactions in the last 30 days",
     ROLE_GALAXY_BRAIN: "Longest single message in the last 5 days",
     ROLE_WORDSMITH: "Highest average words per message (min 3) in the last 5 days",
     ROLE_SNIPER: "Best reactions-per-word ratio in the last 5 days",
-    ROLE_NIGHT_OWL: "Most messages between 10pm and 6am PT in the last 14 days",
+    ROLE_NIGHT_OWL: "Most messages between 10pm and 4am PT in the last 14 days",
     ROLE_COMEBACK_KID: "Most mentioned user in the last 14 days",
     ROLE_GHOSTBUSTER: "Broke a chat lull exceeding 24 hours",
     ROLE_GHOST: "No messages or reactions in the last 14 days",

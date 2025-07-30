@@ -5,7 +5,7 @@ Rotating engagement badges and inactivity flags.
 Roles are refreshed automatically on startup so a redeploy won't reset
 any of the vanity badges or inactivity flags.
 
-Engagement badges: Top Poster, Certified Banger, Top Curator, First Drop,
+Engagement badges: Top Poster, Certified Banger, Top Curator, Early Bird,
 The Summoner, Lore Creator, Reaction Engineer, Galaxy Brain, Wordsmith,
 Sniper, Night Owl, Comeback Kid, Ghostbuster.
 
@@ -44,7 +44,7 @@ ROLE_GHOST: int = cfg.ROLE_GHOST
 ROLE_TOP_POSTER: int = cfg.ROLE_TOP_POSTER
 ROLE_CERTIFIED_BANGER: int = cfg.ROLE_CERTIFIED_BANGER
 ROLE_TOP_CURATOR: int = cfg.ROLE_TOP_CURATOR
-ROLE_FIRST_DROP: int = cfg.ROLE_FIRST_DROP
+ROLE_EARLY_BIRD: int = cfg.ROLE_EARLY_BIRD
 ROLE_SUMMONER: int = cfg.ROLE_SUMMONER
 ROLE_LORE_CREATOR: int = cfg.ROLE_LORE_CREATOR
 ROLE_REACTION_ENGINEER: int = cfg.ROLE_REACTION_ENGINEER
@@ -72,8 +72,6 @@ class RoleCog(commands.Cog):
         self.messages: list[dict] = []
         self.reactions: list[dict] = []
         self.last_online: defaultdict[int, datetime] = defaultdict(discord.utils.utcnow)
-        self.first_drop_day: date | None = None
-        self.first_drop_user: int | None = None
         self.last_message_ts: datetime = discord.utils.utcnow()
         self.assign_counts: Counter[int] = Counter()
         self._startup_refreshed: bool = False
@@ -205,15 +203,6 @@ class RoleCog(commands.Cog):
                     exc,
                 )
 
-        la_now = datetime.now(tz=LA)
-        start_today = la_now.replace(hour=0, minute=0, second=0, microsecond=0)
-        utc_start = start_today.astimezone(timezone.utc)
-        todays = [m for m in self.messages if m["ts"] >= utc_start]
-        if todays:
-            first = min(todays, key=lambda m: m["ts"])
-            first_ts_la = first["ts"].astimezone(LA)
-            self.first_drop_day = first_ts_la.date()
-            self.first_drop_user = first["author"]
         if self.messages:
             self.last_message_ts = max(m["ts"] for m in self.messages)
 
@@ -247,11 +236,6 @@ class RoleCog(commands.Cog):
             log.debug("Ghostbuster winner: %s", member_id)
             await self._rotate_single(msg.guild, ROLE_GHOSTBUSTER, member_id)
         self.last_message_ts = msg.created_at
-        la_ts = msg.created_at.astimezone(LA)
-        if self.first_drop_day != la_ts.date():
-            self.first_drop_day = la_ts.date()
-            self.first_drop_user = member_id
-            await self._rotate_single(msg.guild, ROLE_FIRST_DROP, member_id)
 
 
     @commands.Cog.listener()
@@ -402,8 +386,16 @@ class RoleCog(commands.Cog):
         log.debug("Top Curator winner: %s", top_curator)
         await self._rotate_single(guild, ROLE_TOP_CURATOR, top_curator)
 
-        log.debug("First Drop winner: %s", self.first_drop_user)
-        await self._rotate_single(guild, ROLE_FIRST_DROP, self.first_drop_user)
+        early_counts = Counter()
+        for m in self.messages:
+            if m["ts"] >= cutoff14:
+                ts_la = m["ts"].astimezone(LA)
+                minutes = ts_la.hour * 60 + ts_la.minute
+                if 5 * 60 <= minutes <= 8 * 60 + 30:
+                    early_counts[m["author"]] += 1
+        early_bird = early_counts.most_common(1)[0][0] if early_counts else None
+        log.debug("Early Bird winner: %s", early_bird)
+        await self._rotate_single(guild, ROLE_EARLY_BIRD, early_bird)
 
         summons = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff30 for _ in range(m["mentions"]))
         summoner = summons.most_common(1)[0][0] if summons else None
@@ -467,7 +459,7 @@ class RoleCog(commands.Cog):
         for m in self.messages:
             if m["ts"] >= cutoff14:
                 hour = m["ts"].astimezone(LA).hour
-                if hour >= 22 or hour < 6:
+                if hour >= 22 or hour < 4:
                     night_counts[m["author"]] += 1
         night_owl = night_counts.most_common(1)[0][0] if night_counts else None
         log.debug("Night Owl winner: %s", night_owl)
