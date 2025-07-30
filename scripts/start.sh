@@ -15,7 +15,7 @@ if [[ "${SKIP_DB:-0}" != "1" ]]; then
   done
 
   # Apply migrations
-  alembic upgrade head
+  alembic upgrade heads
 
   # Run backfill scripts after migrations
   BACKFILL_DAYS=${BACKFILL_DAYS:-30}
