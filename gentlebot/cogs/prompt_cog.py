@@ -286,7 +286,9 @@ class PromptCog(commands.Cog):
             return
         prompt = self.fetch_prompt()
         try:
-            name = datetime.now(LOCAL_TZ).strftime("QOTD %b %d")
+            name = datetime.now(LOCAL_TZ).strftime(
+                "Ping for Your Thoughts (%b %d)"
+            )
             thread = await channel.create_thread(
                 name=name,
                 auto_archive_duration=1440,
@@ -296,14 +298,7 @@ class PromptCog(commands.Cog):
             log.error("Failed to create prompt thread: %s", exc)
             return
         await thread.send(f"{prompt}")
-        guild = getattr(channel, "guild", None)
-        if guild:
-            members = [m for m in guild.members if not m.bot]
-            tasks = [thread.add_user(m) for m in members]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for member, result in zip(members, results):
-                if isinstance(result, Exception):  # pragma: no cover - join failure is ok
-                    log.warning("Failed to add %s to prompt thread: %s", member.id, result)
+        # The thread is public, so we no longer add members individually.
 
     async def _scheduler(self):
         await self.bot.wait_until_ready()

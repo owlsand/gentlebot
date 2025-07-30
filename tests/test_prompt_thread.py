@@ -49,8 +49,11 @@ def test_send_prompt_creates_thread(monkeypatch):
 
         await cog._send_prompt()
 
-        assert created == [("QOTD Jul 21", discord.ChannelType.public_thread)]
-        assert added == guild.members
+        assert created == [(
+            "Ping for Your Thoughts (Jul 21)",
+            discord.ChannelType.public_thread,
+        )]
+        assert added == []
 
     asyncio.run(run_test())
 
