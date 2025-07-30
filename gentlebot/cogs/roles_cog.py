@@ -328,8 +328,17 @@ class RoleCog(commands.Cog):
         now = discord.utils.utcnow()
         cutoff14 = now - timedelta(days=14)
         cutoff30 = now - timedelta(days=30)
-        self.messages = [m for m in self.messages if m["ts"] >= cutoff30]
-        self.reactions = [r for r in self.reactions if r["ts"] >= cutoff30]
+        bot_ids = {m.id for m in guild.members if m.bot}
+        self.messages = [
+            m for m in self.messages if m["ts"] >= cutoff30 and m["author"] not in bot_ids
+        ]
+        self.reactions = [
+            r
+            for r in self.reactions
+            if r["ts"] >= cutoff30
+            and r["user"] not in bot_ids
+            and r["msg_author"] not in bot_ids
+        ]
 
         counts = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
         top_poster = counts.most_common(1)[0][0] if counts else None
@@ -531,6 +540,9 @@ class RoleCog(commands.Cog):
                     await self._assign_flag(guild, member, ROLE_NPC_FLAG)
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
+        if member.bot:
+            log.debug("Skipping role %s for bot %s", role_id, member.id)
+            return
         role = member.guild.get_role(role_id)
         if not role:
             log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
