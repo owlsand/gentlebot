@@ -294,6 +294,15 @@ class MarketCog(commands.Cog):
         conn.close()
         return winners, leaderboard
 
+    def _bets_exist(self, week: str) -> bool:
+        """Return True if any bets exist for the given week."""
+        conn = self._connect()
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM {SCHEMA}.bets WHERE week=? LIMIT 1", (week,))
+        row = cur.fetchone()
+        conn.close()
+        return row is not None
+
     # ─── Fetch Helpers ───────────────────────────────────────────────────
     async def _quote_pct(self, symbol: str) -> Optional[float]:
         try:
@@ -487,6 +496,8 @@ class MarketCog(commands.Cog):
         if now.weekday() != 4:
             return
         week = _week_start(now).date().isoformat()
+        if not self._bets_exist(week):
+            return
         monday_open, friday_close = await self._week_open_close()
         if monday_open is None or friday_close is None:
             return
