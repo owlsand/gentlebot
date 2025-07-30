@@ -27,6 +27,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from collections import deque
+import discord
 from discord.ext import commands
 from ..util import chan_name, int_env
 from huggingface_hub import InferenceClient
@@ -286,7 +287,11 @@ class PromptCog(commands.Cog):
         prompt = self.fetch_prompt()
         try:
             name = datetime.now(LOCAL_TZ).strftime("QOTD %b %d")
-            thread = await channel.create_thread(name=name, auto_archive_duration=1440)
+            thread = await channel.create_thread(
+                name=name,
+                auto_archive_duration=1440,
+                type=discord.ChannelType.public_thread,
+            )
         except Exception as exc:
             log.error("Failed to create prompt thread: %s", exc)
             return
