@@ -70,6 +70,7 @@ setup.sh           # install dependencies and create the venv
    use `SET search_path=discord,public` as done by the bot's database helpers.
    A `message_type` reference table enumerates Discord message types so
    the numeric `message.type` column can be joined to readable names.
+   A `channel_type` table does the same for channel types.
 5. Set `ARCHIVE_MESSAGES=1` to enable message archival. The archive cog
    records all existing guilds and channels on startup and then logs new
    messages and reactions. Run the migration again to create the tables
