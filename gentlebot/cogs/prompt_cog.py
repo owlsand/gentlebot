@@ -286,9 +286,11 @@ class PromptCog(commands.Cog):
             return
         prompt = self.fetch_prompt()
         try:
-            name = datetime.now(LOCAL_TZ).strftime(
-                "Ping for Your Thoughts (%b %d)"
-            )
+            date = datetime.now(LOCAL_TZ).strftime("%b %d")
+            prompt_single = prompt.replace("\n", " ").strip()
+            name = f"({date}) {prompt_single}"
+            if len(name) > 100:
+                name = name[:97] + "..."
             thread = await channel.create_thread(
                 name=name,
                 auto_archive_duration=1440,
