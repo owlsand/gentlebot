@@ -3,7 +3,7 @@ import asyncio
 import discord
 from discord.ext import commands
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from gentlebot.cogs.f1_thread_cog import F1ThreadCog, iso_to_flag
 
 
@@ -65,5 +65,42 @@ def test_open_threads(monkeypatch):
         assert created == [expected_title]
         assert marked == [(1, 123)]
         assert sent[0].startswith(f"**{flag} 2025 Hungarian GP – Qualifying**")
+
+    asyncio.run(run_test())
+
+
+def test_fetch_schedule_uses_current_year(monkeypatch):
+    captured = {}
+
+    def fake_get(url, headers=None, timeout=10):
+        captured["url"] = url
+        return SimpleNamespace(
+            raise_for_status=lambda: None, json=lambda: {"races": []}
+        )
+
+    monkeypatch.setattr(
+        "gentlebot.cogs.f1_thread_cog.requests.get", fake_get
+    )
+    F1ThreadCog.fetch_schedule(SimpleNamespace())
+    assert f"season={datetime.now(timezone.utc).year}" in captured["url"]
+
+
+def test_due_sessions_query_has_two_hour_window(monkeypatch):
+    async def run_test():
+        monkeypatch.setattr(
+            F1ThreadCog, "session_task", SimpleNamespace(start=lambda *a, **k: None)
+        )
+        cog = F1ThreadCog(SimpleNamespace())
+        captured = {}
+
+        async def fake_fetch(query, interval):
+            captured["query"] = query
+            captured["interval"] = interval
+            return []
+
+        cog.pool = SimpleNamespace(fetch=fake_fetch)
+        await cog._due_sessions()
+        assert "now() + $1" in captured["query"]
+        assert captured["interval"] == timedelta(hours=2)
 
     asyncio.run(run_test())
