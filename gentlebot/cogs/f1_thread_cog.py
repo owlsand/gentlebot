@@ -20,6 +20,8 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 
 # Los Angeles timezone for thread titles/messages
 LA_TZ = ZoneInfo("America/Los_Angeles")
+# Time window to open threads ahead of session start
+THREAD_OPEN_WINDOW = timedelta(hours=2)
 
 
 def iso_to_flag(iso: str) -> str:
@@ -79,7 +81,8 @@ class F1ThreadCog(commands.Cog):
 
     def fetch_schedule(self) -> list[dict]:
         """Return list of qualifying and race sessions with metadata."""
-        url = "https://f1calendar.com/api/calendar"
+        year = datetime.now(timezone.utc).year
+        url = f"https://f1calendar.com/api/calendar?season={year}"
         try:
             resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
             resp.raise_for_status()
@@ -147,11 +150,12 @@ class F1ThreadCog(commands.Cog):
             FROM discord.f1_session
             WHERE session IN ('QUALI','RACE')
               AND starts_at >= now()
-              AND starts_at <= now() + interval '2 hours'
+              AND starts_at <= now() + $1
               AND thread_id IS NULL
             ORDER BY starts_at
             LIMIT 5
-            """
+            """,
+            THREAD_OPEN_WINDOW,
         )
 
     def _make_title(self, row: asyncpg.Record) -> str:
