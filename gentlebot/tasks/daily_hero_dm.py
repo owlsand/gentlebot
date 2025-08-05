@@ -102,6 +102,11 @@ class DailyHeroDMCog(commands.Cog):
             message = await self._generate_message(member.display_name)
             try:
                 await member.send(message)
+                log.info(
+                    "Sent Daily Hero DM to %s: %s",
+                    member.display_name,
+                    message,
+                )
             except discord.HTTPException:
                 log.warning("Failed to DM Daily Hero %s", member)
 
