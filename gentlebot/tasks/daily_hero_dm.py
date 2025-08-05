@@ -34,7 +34,7 @@ FALLBACK_TEMPLATE = (
 
 
 class DailyHeroDMCog(commands.Cog):
-    """Scheduler that DMs yesterday's Daily Hero at 8am Pacific."""
+    """Scheduler that DMs yesterday's Daily Hero at 9am Pacific, 30 minutes after the role rotates."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -47,7 +47,7 @@ class DailyHeroDMCog(commands.Cog):
 
     async def cog_load(self) -> None:
         self.scheduler = AsyncIOScheduler(timezone=LA)
-        trigger = CronTrigger(hour=8, minute=0, timezone=LA)
+        trigger = CronTrigger(hour=9, minute=0, timezone=LA)
         self.scheduler.add_job(self._send_dm, trigger)
         self.scheduler.start()
         log.info("DailyHero DM scheduler started")
