@@ -28,7 +28,7 @@ class BurstThreadCog(commands.Cog):
         self.bot = bot
         self.window = timedelta(minutes=10)
         self.cooldown = timedelta(minutes=int_env("BURST_COOLDOWN_MINUTES", 30))
-        self.threshold = 10
+        self.threshold = 20
         self.bot_id = 1128886406488530966
         self.history: dict[int, deque[tuple[datetime, int, str]]] = defaultdict(
             lambda: deque(maxlen=50)
@@ -45,6 +45,7 @@ class BurstThreadCog(commands.Cog):
         self.max_tokens = int_env("HF_MAX_TOKENS", 10)
         self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
         self.top_p = float(os.getenv("HF_TOP_P", 0.9))
+        self.alert_tokens = int_env("HF_ALERT_TOKENS", 50)
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
@@ -85,6 +86,45 @@ class BurstThreadCog(commands.Cog):
             log.exception("HF summary failed: %s", exc)
             return "Chat Burst Thread"
 
+    async def _alert_text(self, topic: str, thread_mention: str) -> str:
+        """Generate an enthusiastic notice suggesting a thread."""
+        if not self.hf_client:
+            return (
+                "📈 Wow, looks like you're getting pretty into "
+                f"{topic}! Here's a thread if you want to take it offline "
+                "to avoid blowing up everyone else's notifications: "
+                f"{thread_mention}"
+            )
+        prompt = (
+            "The chat topic is: "
+            + topic
+            + ".\nWrite two short sentences. First, enthusiastically observe the topic. "
+            "Second, politely suggest moving the conversation to a thread to avoid "
+            "blowing up everyone's notifications, using the placeholder <THREAD> "
+            "where the thread mention should go."
+        )
+        try:
+            result = await asyncio.to_thread(
+                self.hf_client.chat.completions.create,
+                model=self.model_id,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.alert_tokens,
+                temperature=self.temperature,
+                top_p=self.top_p,
+            )
+            content = getattr(result.choices[0].message, "content", "").strip()
+            if content:
+                content = content.replace("<THREAD>", thread_mention)
+                return "📈 " + content
+        except Exception as exc:  # pragma: no cover - network
+            log.exception("HF alert failed: %s", exc)
+        return (
+            "📈 Wow, looks like you're getting pretty into "
+            f"{topic}! Here's a thread if you want to take it offline "
+            "to avoid blowing up everyone else's notifications: "
+            f"{thread_mention}"
+        )
+
     async def _log(self, channel_id: int, thread_id: int, msgs: int, authors: int) -> None:
         if not self.pool:
             return
@@ -111,8 +151,10 @@ class BurstThreadCog(commands.Cog):
         except Exception:
             log.exception("Failed to create burst thread")
             return
+        topic = name.lower()
+        msg = await self._alert_text(topic, thread.mention)
         try:
-            await channel.send(f"📈 Burst detected – opened {thread.mention}")
+            await channel.send(msg)
         except Exception:
             log.exception("Failed to send burst notice")
         guild = getattr(channel, "guild", None)
