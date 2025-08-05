@@ -37,6 +37,15 @@ def test_burst_triggers_thread(monkeypatch):
 
         monkeypatch.setattr(cog, "_summarize", fake_summary)
 
+        async def fake_alert(topic, mention):
+            return (
+                f"📈 Wow, looks like you're getting pretty into {topic}! "
+                f"Here's a thread if you want to take it offline to avoid blowing up "
+                f"everyone else's notifications: {mention}"
+            )
+
+        monkeypatch.setattr(cog, "_alert_text", fake_alert)
+
         sent = []
         added = []
 
@@ -61,7 +70,7 @@ def test_burst_triggers_thread(monkeypatch):
         monkeypatch.setattr(discord, "TextChannel", DummyChannel)
         base_ts = discord.utils.utcnow()
         authors = [SimpleNamespace(id=1, bot=False), SimpleNamespace(id=2, bot=False)]
-        for i in range(10):
+        for i in range(20):
             msg = SimpleNamespace(
                 channel=channel,
                 author=authors[i % 2],
@@ -72,7 +81,12 @@ def test_burst_triggers_thread(monkeypatch):
             await cog.on_message(msg)
 
         assert created == ["Hot Sports Debate"]
-        assert sent == ["📈 Burst detected – opened <#1>"]
+        expected = (
+            "📈 Wow, looks like you're getting pretty into hot sports debate! "
+            "Here's a thread if you want to take it offline to avoid blowing up "
+            "everyone else's notifications: <#1>"
+        )
+        assert sent == [expected]
         assert set(added) == {1, 2}
         assert pool.executed
 
