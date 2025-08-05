@@ -23,16 +23,16 @@ import os
 import random
 import asyncio
 import logging
-import json
-from pathlib import Path
 from datetime import datetime, timedelta
 from collections import deque
 import discord
 from discord.ext import commands
-from ..util import chan_name, int_env
+from ..util import chan_name, build_db_url
 from huggingface_hub import InferenceClient
 from .. import bot_config as cfg
 from zoneinfo import ZoneInfo
+import asyncpg
+import feedparser
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -41,11 +41,6 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 12)
 SCHEDULE_MINUTE = getattr(cfg, 'PROMPT_SCHEDULE_MINUTE', 30)
-
-# Path for persisting prompt rotation state
-STATE_FILE = Path('prompt_state.json')
-# How many recent prompt types to avoid repeating
-RECENT_TYPE_COUNT = 3
 
 # Fallback prompts
 FALLBACK_PROMPTS = [
@@ -154,114 +149,199 @@ FALLBACK_PROMPTS = [
     "What's one piece of digital clutter you'd love to eliminate?",
 ]
 
-# Prompt types for rotation
-PROMPT_TYPES = [
-    "Would You Rather – binary tradeoffs, real or hypothetical",
-    "Reflection – introspective or self-insight",
-    "Philosophical – abstract or existential",
-    "Silly – absurd, humorous, or playful hypotheticals",
-    "Identity – about self-concept, preferences, or roles",
-    "Moral Dilemma – ethics-based, value-conflict scenarios",
-    "Prediction – future-focused or speculative questions",
-    "Recommendation – asks for advice, tips, or endorsements",
-    "Nostalgia – memory-based or childhood-related prompts",
-    "Hot Take – bold, opinionated, or contrarian statements",
-    "Mindfulness – focusing on the present or self-awareness",
-    "Creativity – exploring artistic or imaginative ideas",
-    "Tech & AI – the impact of emerging technology",
-    "Culture & Travel – experiences with places or traditions",
-    "Health & Wellness – mental or physical wellbeing",
-    "Food & Cooking – culinary experiences or recipes",
-    "History – lessons from past events or figures",
-    "Superpowers – imaginative abilities or heroics",
-    "Personal Snapshot – prompts about your daily digital life.",
+# Prompt categories
+PROMPT_CATEGORIES = [
+    "Recent Server Discussion",
+    "Engagement Bait",
+    "Current event",
 ]
 
 class PromptCog(commands.Cog):
-    """Scheduled and on‑demand AI-powered prompt generator with type rotation and custom scheduler."""
+    """Scheduled and on‑demand AI-powered prompt generator with random category selection."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         size = getattr(cfg, 'PROMPT_HISTORY_SIZE', 5)
         self.history = deque(maxlen=size)
-        # load recent type history and choose next index
-        self.recent_types = self._load_state()
-        self.rotation_index = 0
-        self._choose_next_type()
         self._scheduler_task = None
-        self._unused_fallback = list(FALLBACK_PROMPTS)
-        random.shuffle(self._unused_fallback)
+        self.pool: asyncpg.Pool | None = None
+        self.past_prompts: set[str] = set()
+        self.last_category: str = ""
 
-    def fetch_prompt(self) -> str:
-        """Generate a new prompt via HF inference, including rotation and history."""
-        prompt_type = PROMPT_TYPES[self.rotation_index]
-        self.recent_types.append(self.rotation_index)
-        self._save_state()
-        self._choose_next_type()
+    async def cog_load(self) -> None:
+        url = build_db_url()
+        if not url:
+            return
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+
+        async def _init(conn: asyncpg.Connection) -> None:
+            await conn.execute("SET search_path=discord,public")
+
+        self.pool = await asyncpg.create_pool(url, init=_init)
+        rows = await self.pool.fetch(
+            "SELECT prompt FROM daily_prompt ORDER BY created_at"
+        )
+        self.past_prompts = {r["prompt"] for r in rows}
+        for p in [r["prompt"] for r in rows[-self.history.maxlen:]]:
+            self.history.append(p)
+
+    async def cog_unload(self) -> None:
+        if self.pool:
+            await self.pool.close()
+            self.pool = None
+
+    async def fetch_prompt(self) -> str:
+        """Generate a new prompt via HF inference, including history."""
+        category = random.choice(PROMPT_CATEGORIES)
+        self.last_category = category
         messages = [
-            {'role': 'system', 'content': 'You generate creative discussion prompts for a friendly Discord group. Your personality should be that of a robot butler with an almost imperceptibly subtle sardonic wit.'}
+            {
+                'role': 'system',
+                'content': (
+                    'You generate creative discussion prompts for a friendly Discord group.'
+                ),
+            }
         ]
         messages += [{'role': 'assistant', 'content': p} for p in self.history]
-        messages.append({'role': 'user', 'content': f"Generate one concise '{prompt_type}' prompt. Respond only with the prompt. Don't include quotation marks."})
+        topic = None
+        if category == "Recent Server Discussion":
+            topic = await self._recent_server_topic()
+            user_content = (
+                f"Generate one concise prompt about the topic '{topic}'. "
+                "It should be a question, assertion, or novel insight."
+            )
+        elif category == "Current event":
+            topic = await self._current_event_topic()
+            user_content = (
+                f"Generate one concise prompt about the news topic '{topic}'. "
+                "It should be a question, assertion, or insight to spark discussion."
+            )
+        else:  # Engagement Bait
+            user_content = (
+                "Generate one short engagement bait prompt designed to solicit reactions or responses."
+            )
+        messages.append({'role': 'user', 'content': user_content})
         token = os.getenv('HF_API_TOKEN')
         if token:
             client = InferenceClient(provider="together", api_key=token)
             model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
             params = {
-                'max_tokens': int_env('HF_MAX_TOKENS', 50),
+                'max_tokens': 75,
                 'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
                 'top_p': float(os.getenv('HF_TOP_P', 0.9)),
             }
             try:
-                completion = client.chat.completions.create(
+                completion = await asyncio.to_thread(
+                    client.chat.completions.create,
                     model=model,
                     messages=messages,
-                    **params
+                    **params,
                 )
                 content = getattr(completion.choices[0].message, 'content', None)
                 if content:
                     prompt = content.strip()
-                    self.history.append(prompt)
-                    return prompt
-            except Exception as e:
+                    if prompt not in self.past_prompts:
+                        self.history.append(prompt)
+                        self.past_prompts.add(prompt)
+                        return prompt
+            except Exception as e:  # pragma: no cover - network
                 log.exception("inference error: %s", e)
-        if not self._unused_fallback:
-            self._unused_fallback = list(FALLBACK_PROMPTS)
-            random.shuffle(self._unused_fallback)
-        prompt = self._unused_fallback.pop()
+        prompt = random.choice(FALLBACK_PROMPTS) if FALLBACK_PROMPTS else "Share something interesting today."
         self.history.append(prompt)
+        self.past_prompts.add(prompt)
         return prompt
 
-    def _load_state(self) -> deque:
-        if STATE_FILE.exists():
-            try:
-                data = json.loads(STATE_FILE.read_text())
-                return deque(data.get('recent_types', []), maxlen=RECENT_TYPE_COUNT)
-            except Exception as exc:
-                log.warning("Failed to load prompt state: %s", exc)
-        return deque(maxlen=RECENT_TYPE_COUNT)
-
-    def _save_state(self) -> None:
-        try:
-            STATE_FILE.write_text(json.dumps({'recent_types': list(self.recent_types)}))
-        except Exception as exc:
-            log.warning("Failed to save prompt state: %s", exc)
-
-    def _choose_next_type(self) -> None:
-        remaining = [i for i in range(len(PROMPT_TYPES)) if i not in self.recent_types]
-        if not remaining:
-            self.recent_types.clear()
-            remaining = list(range(len(PROMPT_TYPES)))
-
-        special_idx = PROMPT_TYPES.index(
-            "Personal Snapshot – prompts about your daily digital life."
-        )
-        if special_idx in remaining and random.random() < 0.2:
-            self.rotation_index = special_idx
+    async def _archive_prompt(self, prompt: str, category: str, thread_id: int) -> None:
+        if not self.pool:
             return
-        if special_idx in remaining:
-            remaining = [i for i in remaining if i != special_idx] or [special_idx]
-        self.rotation_index = random.choice(remaining)
+        await self.pool.execute(
+            """
+            INSERT INTO daily_prompt (prompt, category, thread_channel_id)
+            VALUES ($1,$2,$3)
+            ON CONFLICT (prompt) DO NOTHING
+            """,
+            prompt,
+            category,
+            thread_id,
+        )
+
+    async def _recent_server_topic(self) -> str:
+        if not self.pool:
+            return "the community"
+        rows = await self.pool.fetch(
+            """
+            SELECT m.content
+            FROM message m
+            JOIN "user" u ON u.user_id = m.author_id
+            JOIN channel c ON c.channel_id = m.channel_id
+            WHERE u.is_bot = FALSE
+              AND c.type = 0
+              AND m.created_at >= now() - interval '72 hours'
+            ORDER BY m.created_at DESC
+            LIMIT 200
+            """,
+        )
+        text = "\n".join(r["content"] for r in rows if r["content"])
+        if not text:
+            return "the community"
+        token = os.getenv('HF_API_TOKEN')
+        if not token:
+            return "the community"
+        client = InferenceClient(provider="together", api_key=token)
+        model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
+        params = {
+            'max_tokens': 20,
+            'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
+            'top_p': float(os.getenv('HF_TOP_P', 0.9)),
+        }
+        try:
+            completion = await asyncio.to_thread(
+                client.chat.completions.create,
+                model=model,
+                messages=[{'role': 'user', 'content': 'Summarize the main topic of these messages in a short noun phrase.\n' + text}],
+                **params,
+            )
+            content = getattr(completion.choices[0].message, 'content', '').strip()
+            return content or "the community"
+        except Exception as exc:  # pragma: no cover - network
+            log.exception("topic summary failed: %s", exc)
+            return "the community"
+
+    async def _current_event_topic(self) -> str:
+        try:
+            feed = await asyncio.to_thread(
+                feedparser.parse,
+                "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+            )
+            titles = [e.get('title', '') for e in getattr(feed, 'entries', [])]
+        except Exception as exc:  # pragma: no cover - network
+            log.exception("news fetch failed: %s", exc)
+            titles = []
+        if not titles:
+            return "current events"
+        text = "\n".join(titles)
+        token = os.getenv('HF_API_TOKEN')
+        if not token:
+            return titles[0]
+        client = InferenceClient(provider="together", api_key=token)
+        model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
+        params = {
+            'max_tokens': 20,
+            'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
+            'top_p': float(os.getenv('HF_TOP_P', 0.9)),
+        }
+        try:
+            completion = await asyncio.to_thread(
+                client.chat.completions.create,
+                model=model,
+                messages=[{'role': 'user', 'content': 'Succinctly summarize the single most important topic among these headlines\n' + text}],
+                **params,
+            )
+            content = getattr(completion.choices[0].message, 'content', '').strip()
+            return content or titles[0]
+        except Exception as exc:  # pragma: no cover - network
+            log.exception("news summary failed: %s", exc)
+            return titles[0]
 
     def _next_run_time(self, now: datetime) -> datetime:
         next_run = now.replace(hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, second=0, microsecond=0)
@@ -284,7 +364,8 @@ class PromptCog(commands.Cog):
         if not channel:
             log.error("Unable to find channel with ID %s", channel_id)
             return
-        prompt = self.fetch_prompt()
+        prompt = await self.fetch_prompt()
+        category = self.last_category
         try:
             date = datetime.now(LOCAL_TZ).strftime("%b %d")
             prompt_single = prompt.replace("\n", " ").strip()
@@ -300,6 +381,7 @@ class PromptCog(commands.Cog):
             log.error("Failed to create prompt thread: %s", exc)
             return
         await thread.send(f"{prompt}")
+        await self._archive_prompt(prompt, category, thread.id)
         # The thread is public, so we no longer add members individually.
 
     async def _scheduler(self):
@@ -325,10 +407,24 @@ class PromptCog(commands.Cog):
             log.info("Starting scheduler task.")
             self._scheduler_task = self.bot.loop.create_task(self._scheduler())
 
+    @commands.Cog.listener()
+    async def on_message(self, msg: discord.Message) -> None:
+        if msg.author.bot or not self.pool:
+            return
+        row = await self.pool.fetchrow(
+            "SELECT 1 FROM daily_prompt WHERE thread_channel_id=$1",
+            msg.channel.id,
+        )
+        if row:
+            await self.pool.execute(
+                "UPDATE daily_prompt SET message_count = message_count + 1 WHERE thread_channel_id=$1",
+                msg.channel.id,
+            )
+
     @commands.command(name='skip_prompt')
     async def skip_prompt(self, ctx: commands.Context):
         log.info("skip_prompt invoked by %s in %s", ctx.author.id, chan_name(ctx.channel))
-        prompt = self.fetch_prompt()
+        prompt = await self.fetch_prompt()
         await ctx.send(f"{prompt}")
 
 async def setup(bot: commands.Bot):

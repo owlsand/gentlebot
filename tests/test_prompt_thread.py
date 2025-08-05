@@ -12,7 +12,11 @@ def test_send_prompt_creates_thread(monkeypatch):
         bot = commands.Bot(command_prefix="!", intents=intents)
         cog = prompt_cog.PromptCog(bot)
 
-        monkeypatch.setattr(cog, "fetch_prompt", lambda: "What is your favorite color?")
+        async def fake_fetch():
+            cog.last_category = "Engagement Bait"
+            return "What is your favorite color?"
+
+        monkeypatch.setattr(cog, "fetch_prompt", fake_fetch)
 
         class DummyDateTime:
             @classmethod
@@ -25,8 +29,11 @@ def test_send_prompt_creates_thread(monkeypatch):
         added = []
 
         class DummyThread(SimpleNamespace):
+            id = 1
+
             async def send(self, msg):
                 self.sent = msg
+
             async def add_user(self, member):
                 added.append(member)
 
@@ -65,7 +72,12 @@ def test_thread_name_truncates(monkeypatch):
         cog = prompt_cog.PromptCog(bot)
 
         long_prompt = "A" * 200
-        monkeypatch.setattr(cog, "fetch_prompt", lambda: long_prompt)
+
+        async def fake_fetch_long():
+            cog.last_category = "Engagement Bait"
+            return long_prompt
+
+        monkeypatch.setattr(cog, "fetch_prompt", fake_fetch_long)
 
         class DummyDateTime:
             @classmethod
@@ -76,6 +88,8 @@ def test_thread_name_truncates(monkeypatch):
         monkeypatch.setattr(prompt_cog, "datetime", DummyDateTime)
 
         class DummyThread(SimpleNamespace):
+            id = 1
+
             async def send(self, msg):
                 pass
 
