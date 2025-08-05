@@ -1,4 +1,4 @@
-# cogs/huggingface_cog.py
+"""HuggingFace-powered conversational responses and emoji reactions."""
 
 import os
 import re
@@ -318,7 +318,7 @@ class HuggingFaceCog(commands.Cog):
         # 10) Sanitize prompt
         sanitized = self.sanitize_prompt(user_prompt)
         if sanitized is None:
-            await message.reply("❌ Invalid prompt: too long, empty, or disallowed mentions.")
+            log.info("Rejected prompt: too long, empty, or disallowed mentions.")
             return
 
         # 11) Typing indicator while fetching
@@ -326,7 +326,7 @@ class HuggingFaceCog(commands.Cog):
             try:
                 response = await self.call_hf(message.channel.id, sanitized)
             except Exception as e:
-                await message.reply(self.friendly_hf_error(e))
+                log.exception("HF call failed: %s", self.friendly_hf_error(e))
                 return
 
         # 12) Paginate if needed
@@ -345,11 +345,13 @@ class HuggingFaceCog(commands.Cog):
         await interaction.response.defer()
         sanitized = self.sanitize_prompt(prompt)
         if not sanitized:
-            return await interaction.followup.send("My apologies, I cannot comment.")
+            log.info("Rejected prompt for /ask: too long, empty, or disallowed mentions.")
+            return
         try:
             response = await self.call_hf(interaction.channel_id, sanitized)
         except Exception as e:
-            return await interaction.followup.send(self.friendly_hf_error(e))
+            log.exception("HF call failed in /ask: %s", self.friendly_hf_error(e))
+            return
 
         if len(response) <= 2000:
             await interaction.followup.send(response)
