@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 import discord
 from discord.ext import commands
+from apscheduler.triggers.cron import CronTrigger
 
 from gentlebot import bot_config as cfg
 from gentlebot.tasks.daily_hero_dm import DailyHeroDMCog
@@ -73,3 +74,31 @@ def test_send_dm_logged(cog, monkeypatch, caplog):
         assert any("Sent Daily Hero DM to Tester: Hello Hero" in r.message for r in caplog.records)
 
     asyncio.run(run_test())
+
+
+def test_dm_scheduled_after_rotation(cog, monkeypatch):
+    captured: dict[str, CronTrigger] = {}
+
+    class DummyScheduler:
+        def __init__(self, timezone):
+            self.timezone = timezone
+
+        def add_job(self, func, trigger):
+            captured["trigger"] = trigger
+
+        def start(self):
+            pass
+
+        def shutdown(self, wait=False):
+            pass
+
+    import gentlebot.tasks.daily_hero_dm as module
+
+    monkeypatch.setattr(module, "AsyncIOScheduler", DummyScheduler)
+
+    asyncio.run(cog.cog_load())
+
+    trigger = captured.get("trigger")
+    assert isinstance(trigger, CronTrigger)
+    assert "hour='9'" in str(trigger)
+    assert "minute='0'" in str(trigger)
