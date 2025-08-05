@@ -1,7 +1,5 @@
 import asyncio
 import asyncpg
-import asyncio
-import asyncpg
 import discord
 from discord.ext import commands
 
@@ -58,9 +56,12 @@ def test_presence_logged(monkeypatch):
             "web_status": discord.Status.online,
         })()
         await cog.on_presence_update(before, after)
-        assert pool.executed
-        query, args = pool.executed[0]
-        assert "INSERT INTO discord.presence_update" in query
-        assert args[0] == 1
-        assert args[1] == 2
+        assert len(pool.executed) == 2
+        insert_query, insert_args = pool.executed[0]
+        assert "INSERT INTO discord.presence_update" in insert_query
+        assert insert_args[0] == 1
+        assert insert_args[1] == 2
+        update_query, update_args = pool.executed[1]
+        assert "UPDATE discord.\"user\" SET last_seen_at" in update_query
+        assert update_args[0] == 2
     asyncio.run(run_test())

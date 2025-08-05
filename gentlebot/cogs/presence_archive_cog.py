@@ -60,6 +60,7 @@ class PresenceArchiveCog(commands.Cog):
             }.items()
             if v and v is not discord.Status.offline
         }
+        event_time = discord.utils.utcnow()
         await self.pool.execute(
             """
             INSERT INTO discord.presence_update (
@@ -72,8 +73,14 @@ class PresenceArchiveCog(commands.Cog):
             after.raw_status,
             json.dumps(activities),
             json.dumps(client_status) if client_status else None,
-            discord.utils.utcnow(),
+            event_time,
         )
+        if after.raw_status != "offline":
+            await self.pool.execute(
+                'UPDATE discord."user" SET last_seen_at=$2 WHERE user_id=$1',
+                after.id,
+                event_time,
+            )
 
 
 async def setup(bot: commands.Bot):
