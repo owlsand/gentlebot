@@ -208,17 +208,20 @@ class PromptCog(commands.Cog):
             topic = await self._recent_server_topic()
             user_content = (
                 f"Generate one concise prompt about the topic '{topic}'. "
-                "It should be a question, assertion, or novel insight."
+                "It should be a question, assertion, or novel insight. "
+                "Respond only with the prompt itself and nothing else."
             )
         elif category == "Current event":
             topic = await self._current_event_topic()
             user_content = (
                 f"Generate one concise prompt about the news topic '{topic}'. "
-                "It should be a question, assertion, or insight to spark discussion."
+                "It should be a question, assertion, or insight to spark discussion. "
+                "Respond only with the prompt itself and nothing else."
             )
         else:  # Engagement Bait
             user_content = (
-                "Generate one short engagement bait prompt designed to solicit reactions or responses."
+                "Generate one short engagement bait prompt designed to solicit reactions or responses. "
+                "Respond only with the prompt itself and nothing else."
             )
         messages.append({'role': 'user', 'content': user_content})
         token = os.getenv('HF_API_TOKEN')
