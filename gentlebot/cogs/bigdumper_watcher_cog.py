@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 import discord
 from discord.ext import commands, tasks
 
@@ -22,17 +23,27 @@ class BigDumperWatcherCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[500, 502, 503, 504],
+            allowed_methods=["GET"],
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
         self.last_hr = 0
-        self.check_task.start()
 
     async def cog_load(self) -> None:
         try:
             self.last_hr = await asyncio.to_thread(self._fetch_hr)
         except Exception as exc:  # pragma: no cover - network
             log.warning("Failed to fetch initial HR count: %s", exc)
+        self.check_task.start()
 
     async def cog_unload(self) -> None:
         self.check_task.cancel()
+        self.session.close()
 
     def _fetch_hr(self) -> int:
         year = datetime.now().year
@@ -48,6 +59,9 @@ class BigDumperWatcherCog(commands.Cog):
         await self.bot.wait_until_ready()
         try:
             hr = await asyncio.to_thread(self._fetch_hr)
+        except requests.RequestException as exc:  # pragma: no cover - network
+            log.warning("Failed to fetch HR count: %s", exc)
+            return
         except Exception as exc:  # pragma: no cover - network
             log.exception("Failed to fetch HR count: %s", exc)
             return
