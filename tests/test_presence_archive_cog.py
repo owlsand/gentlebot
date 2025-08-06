@@ -1,6 +1,7 @@
 import asyncio
 import asyncpg
 import discord
+import logging
 from discord.ext import commands
 
 from gentlebot.cogs.presence_archive_cog import PresenceArchiveCog
@@ -22,7 +23,7 @@ async def fake_create_pool(url, *args, **kwargs):
     return DummyPool()
 
 
-def test_presence_logged(monkeypatch):
+def test_presence_logged(monkeypatch, caplog):
     async def run_test():
         monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
         monkeypatch.setenv("ARCHIVE_PRESENCE", "1")
@@ -55,7 +56,9 @@ def test_presence_logged(monkeypatch):
             "mobile_status": discord.Status.offline,
             "web_status": discord.Status.online,
         })()
-        await cog.on_presence_update(before, after)
+        with caplog.at_level(logging.INFO, logger="gentlebot.gentlebot.cogs.presence_archive_cog"):
+            await cog.on_presence_update(before, after)
+        assert "Presence update for 2 -> online" in caplog.text
         assert len(pool.executed) == 2
         insert_query, insert_args = pool.executed[0]
         assert "INSERT INTO discord.presence_update" in insert_query
