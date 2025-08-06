@@ -264,9 +264,14 @@ class PromptCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                INSERT INTO discord.daily_prompt (prompt, category, thread_channel_id)
-                VALUES ($1,$2,$3)
-                ON CONFLICT (prompt) DO NOTHING
+                INSERT INTO discord.daily_prompt
+                    (prompt, category, thread_channel_id, message_count)
+                VALUES ($1, $2, $3, 0)
+                ON CONFLICT (prompt) DO UPDATE SET
+                    category = EXCLUDED.category,
+                    thread_channel_id = EXCLUDED.thread_channel_id,
+                    message_count = 0,
+                    created_at = NOW()
                 """,
                 prompt,
                 category,

@@ -98,3 +98,52 @@ def test_on_message_uses_schema():
         assert 'discord.daily_prompt' in captured[0]
 
     asyncio.run(run())
+
+
+def test_duplicate_prompt_updates_message_count():
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            def __init__(self):
+                self.rows = {}
+
+            async def execute(self, query, *args):
+                query = query.strip()
+                if query.startswith("INSERT INTO discord.daily_prompt"):
+                    prompt, category, thread_id = args
+                    if "DO NOTHING" in query and prompt in self.rows:
+                        return
+                    self.rows[prompt] = {
+                        "category": category,
+                        "thread_id": thread_id,
+                        "message_count": 0,
+                    }
+                elif query.startswith("UPDATE discord.daily_prompt SET message_count"):
+                    (thread_id,) = args
+                    for row in self.rows.values():
+                        if row["thread_id"] == thread_id:
+                            row["message_count"] += 1
+
+            async def fetchrow(self, query, thread_id):
+                for row in self.rows.values():
+                    if row["thread_id"] == thread_id:
+                        return object()
+                return None
+
+        pool = DummyPool()
+        cog.pool = pool
+
+        await cog._archive_prompt("hi", "cat", 1)
+        await cog._archive_prompt("hi", "cat", 2)
+
+        msg = types.SimpleNamespace(
+            author=types.SimpleNamespace(bot=False),
+            channel=types.SimpleNamespace(id=2),
+        )
+        await cog.on_message(msg)
+
+        assert pool.rows["hi"]["message_count"] == 1
+
+    asyncio.run(run())
