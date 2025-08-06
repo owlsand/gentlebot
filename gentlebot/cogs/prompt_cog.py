@@ -178,9 +178,13 @@ class PromptCog(commands.Cog):
             await conn.execute("SET search_path=discord,public")
 
         self.pool = await asyncpg.create_pool(url, init=_init)
-        rows = await self.pool.fetch(
-            "SELECT prompt FROM daily_prompt ORDER BY created_at"
-        )
+        try:
+            rows = await self.pool.fetch(
+                "SELECT prompt FROM discord.daily_prompt ORDER BY created_at"
+            )
+        except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
+            log.warning("daily_prompt table not found; prompt history disabled")
+            return
         self.past_prompts = {r["prompt"] for r in rows}
         for p in [r["prompt"] for r in rows[-self.history.maxlen:]]:
             self.history.append(p)
@@ -257,16 +261,19 @@ class PromptCog(commands.Cog):
     async def _archive_prompt(self, prompt: str, category: str, thread_id: int) -> None:
         if not self.pool:
             return
-        await self.pool.execute(
-            """
-            INSERT INTO daily_prompt (prompt, category, thread_channel_id)
-            VALUES ($1,$2,$3)
-            ON CONFLICT (prompt) DO NOTHING
-            """,
-            prompt,
-            category,
-            thread_id,
-        )
+        try:
+            await self.pool.execute(
+                """
+                INSERT INTO discord.daily_prompt (prompt, category, thread_channel_id)
+                VALUES ($1,$2,$3)
+                ON CONFLICT (prompt) DO NOTHING
+                """,
+                prompt,
+                category,
+                thread_id,
+            )
+        except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
+            log.warning("daily_prompt table not found; prompt not archived")
 
     async def _recent_server_topic(self) -> str:
         if not self.pool:
@@ -414,15 +421,18 @@ class PromptCog(commands.Cog):
     async def on_message(self, msg: discord.Message) -> None:
         if msg.author.bot or not self.pool:
             return
-        row = await self.pool.fetchrow(
-            "SELECT 1 FROM daily_prompt WHERE thread_channel_id=$1",
-            msg.channel.id,
-        )
-        if row:
-            await self.pool.execute(
-                "UPDATE daily_prompt SET message_count = message_count + 1 WHERE thread_channel_id=$1",
+        try:
+            row = await self.pool.fetchrow(
+                "SELECT 1 FROM discord.daily_prompt WHERE thread_channel_id=$1",
                 msg.channel.id,
             )
+            if row:
+                await self.pool.execute(
+                    "UPDATE discord.daily_prompt SET message_count = message_count + 1 WHERE thread_channel_id=$1",
+                    msg.channel.id,
+                )
+        except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
+            pass
 
     @commands.command(name='skip_prompt')
     async def skip_prompt(self, ctx: commands.Context):
