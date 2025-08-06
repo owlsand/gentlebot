@@ -39,3 +39,15 @@ def test_post_on_new_hr(monkeypatch):
         assert sent and sent[0] is dummy_embed
 
     asyncio.run(run_test())
+
+
+def test_session_retries_configured():
+    async def run_test():
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = bigdumper_watcher_cog.BigDumperWatcherCog(bot)
+        adapter = cog.session.get_adapter("https://")
+        assert adapter.max_retries.total >= 3
+        cog.check_task.cancel()
+
+    asyncio.run(run_test())
