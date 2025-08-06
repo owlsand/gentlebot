@@ -70,15 +70,14 @@ class DailyHeroDMCog(commands.Cog):
     async def _generate_message(self, display_name: str) -> str:
         prompt = self._build_prompt(display_name)
         try:
-            response = self.hf_client.text_generation(
-                prompt,
+            completion = self.hf_client.chat.completions.create(
                 model=self.model_id,
-                max_new_tokens=60,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=60,
                 temperature=0.7,
                 top_p=0.9,
-                repetition_penalty=1.2,
             )
-            text = response.strip().replace("\n", " ")
+            text = getattr(completion.choices[0].message, "content", "").strip().replace("\n", " ")
         except Exception as e:
             log.exception("HF generation failed: %s", e)
             return self._fallback(display_name)
