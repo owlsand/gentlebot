@@ -25,22 +25,28 @@ def test_generate_message_fallback(cog, monkeypatch):
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="Hello there"))]
         )
-    monkeypatch.setattr(cog.hf_client, "chat_completion", fake_gen)
-    msg = asyncio.run(cog._generate_message("Tester"))
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_gen)))
+    monkeypatch.setattr(cog, "hf_client", client)
+    msg = asyncio.run(cog._generate_message("Tester", 5))
     assert "Daily Hero role until midnight Pacific" in msg
+    assert "Gentlefolk" in msg
+    assert "5th time" in msg
 
 
 def test_generate_message_success(cog, monkeypatch):
     sample = (
-        "Greetings, Tester; your valiant efforts yesterday earned the Daily Hero honour, "
-        "which persists until midnight, so cherish this well-deserved laurel in quiet, dignified triumph tonight."
+        "Greetings, Tester; your valiant efforts in Gentlefolk yesterday earned the Daily Hero honour for the 5th time, "
+        "lasting until midnight, so savour this distinguished laurel."
     )
+
     def fake_gen(*args, **kwargs):
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=sample))]
         )
-    monkeypatch.setattr(cog.hf_client, "chat_completion", fake_gen)
-    msg = asyncio.run(cog._generate_message("Tester"))
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_gen)))
+    monkeypatch.setattr(cog, "hf_client", client)
+    msg = asyncio.run(cog._generate_message("Tester", 5))
     assert msg == sample
 
 
@@ -57,25 +63,30 @@ def test_send_dm_logged(cog, monkeypatch, caplog):
 
         class DummyMember(SimpleNamespace):
             display_name = "Tester"
+            id = 1
 
             async def send(self, message):
                 sent.append(message)
 
         member = DummyMember()
-        role = SimpleNamespace(members=[member])
+        role = SimpleNamespace(id=2, members=[member])
         guild = SimpleNamespace(get_role=lambda _id: role)
         monkeypatch.setattr(cog.bot, "get_guild", lambda _id: guild)
 
-        async def fake_generate(name):
-            return "Hello Hero"
+        async def fake_generate(name, wins):
+            return f"Hello Hero {wins}"
+
+        async def fake_count(role_id, user_id):
+            return 5
 
         monkeypatch.setattr(cog, "_generate_message", fake_generate)
+        monkeypatch.setattr(cog, "_win_count", fake_count)
 
         caplog.set_level(logging.INFO)
         await cog._send_dm()
 
-        assert sent == ["Hello Hero"]
-        assert any("Sent Daily Hero DM to Tester: Hello Hero" in r.message for r in caplog.records)
+        assert sent == ["Hello Hero 5"]
+        assert any("Sent Daily Hero DM to Tester: Hello Hero 5" in r.message for r in caplog.records)
 
     asyncio.run(run_test())
 
