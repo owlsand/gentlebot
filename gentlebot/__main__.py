@@ -12,6 +12,7 @@ from discord.ext import commands
 from . import bot_config as cfg
 from .postgres_handler import PostgresHandler
 from .util import build_db_url
+from .db import close_pool
 from .version import get_version
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ async def main() -> None:
             await db_handler.aclose()
         if file_handler:
             file_handler.close()
+        await close_pool()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Gentlebot")

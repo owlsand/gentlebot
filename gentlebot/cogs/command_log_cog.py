@@ -9,7 +9,7 @@ import asyncpg
 import discord
 from discord.ext import commands
 
-from ..util import build_db_url
+from ..db import get_pool
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -25,23 +25,16 @@ class CommandLogCog(commands.Cog):
     async def cog_load(self) -> None:
         if not self.enabled:
             return
-        url = build_db_url()
-        if not url:
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
             log.warning("LOG_COMMANDS set but PG_DSN is missing")
             self.enabled = False
             return
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
-
-        self.pool = await asyncpg.create_pool(url, init=_init)
         log.info("Command logging enabled")
 
     async def cog_unload(self) -> None:
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     @commands.Cog.listener()
     async def on_app_command_completion(
