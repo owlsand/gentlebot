@@ -168,6 +168,7 @@ class PromptCog(commands.Cog):
         self.pool: asyncpg.Pool | None = None
         self.past_prompts: set[str] = set()
         self.last_category: str = ""
+        self.last_topic: str | None = None
 
     async def cog_load(self) -> None:
         try:
@@ -211,11 +212,29 @@ class PromptCog(commands.Cog):
             )
         elif category == "Current event":
             topic = await self._current_event_topic()
-            user_content = (
-                f"Generate one concise prompt about the news topic '{topic}'. "
-                "It should be a question, assertion, or insight to spark discussion. "
-                "Respond only with the prompt itself and nothing else."
-            )
+            if await self._topic_used_recently(topic):
+                others = [c for c in PROMPT_CATEGORIES if c != "Current event"]
+                category = random.choice(others)
+                self.last_category = category
+                if category == "Recent Server Discussion":
+                    topic = await self._recent_server_topic()
+                    user_content = (
+                        f"Generate one concise prompt about the topic '{topic}'. "
+                        "It should be a question, assertion, or novel insight. "
+                        "Respond only with the prompt itself and nothing else."
+                    )
+                else:  # Engagement Bait
+                    topic = None
+                    user_content = (
+                        "Generate one short engagement bait prompt designed to solicit reactions or responses. "
+                        "Respond only with the prompt itself and nothing else."
+                    )
+            else:
+                user_content = (
+                    f"Generate one concise prompt about the news topic '{topic}'. "
+                    "It should be a question, assertion, or insight to spark discussion. "
+                    "Respond only with the prompt itself and nothing else."
+                )
         else:  # Engagement Bait
             user_content = (
                 "Generate one short engagement bait prompt designed to solicit reactions or responses. "
@@ -244,35 +263,56 @@ class PromptCog(commands.Cog):
                     if prompt not in self.past_prompts:
                         self.history.append(prompt)
                         self.past_prompts.add(prompt)
+                        self.last_topic = topic
                         return prompt
             except Exception as e:  # pragma: no cover - network
                 log.exception("inference error: %s", e)
         prompt = random.choice(FALLBACK_PROMPTS) if FALLBACK_PROMPTS else "Share something interesting today."
         self.history.append(prompt)
         self.past_prompts.add(prompt)
+        self.last_topic = topic
         return prompt
 
-    async def _archive_prompt(self, prompt: str, category: str, thread_id: int) -> None:
+    async def _archive_prompt(
+        self, prompt: str, category: str, thread_id: int, topic: str | None = None
+    ) -> None:
         if not self.pool:
             return
         try:
             await self.pool.execute(
                 """
                 INSERT INTO discord.daily_prompt
-                    (prompt, category, thread_channel_id, message_count)
-                VALUES ($1, $2, $3, 0)
+                    (prompt, category, thread_channel_id, message_count, topic)
+                VALUES ($1, $2, $3, 0, $4)
                 ON CONFLICT (prompt) DO UPDATE SET
                     category = EXCLUDED.category,
                     thread_channel_id = EXCLUDED.thread_channel_id,
                     message_count = 0,
+                    topic = EXCLUDED.topic,
                     created_at = NOW()
                 """,
                 prompt,
                 category,
                 thread_id,
+                topic,
             )
-        except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
+        except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):  # pragma: no cover - requires DB
             log.warning("daily_prompt table not found; prompt not archived")
+
+    async def _topic_used_recently(self, topic: str) -> bool:
+        if not self.pool:
+            return False
+        try:
+            row = await self.pool.fetchrow(
+                """
+                SELECT 1 FROM discord.daily_prompt
+                WHERE topic=$1 AND created_at >= NOW() - INTERVAL '30 days'
+                """,
+                topic,
+            )
+        except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):  # pragma: no cover - requires DB
+            return False
+        return row is not None
 
     async def _recent_server_topic(self) -> str:
         if not self.pool:
@@ -390,7 +430,7 @@ class PromptCog(commands.Cog):
             log.error("Failed to create prompt thread: %s", exc)
             return
         await thread.send(f"{prompt}")
-        await self._archive_prompt(prompt, category, thread.id)
+        await self._archive_prompt(prompt, category, thread.id, self.last_topic)
         # The thread is public, so we no longer add members individually.
 
     async def _scheduler(self):
