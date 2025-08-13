@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 import asyncpg
 
+from gentlebot import db
 from gentlebot.cogs.command_log_cog import CommandLogCog
 
 
@@ -26,7 +27,8 @@ async def fake_create_pool(url, *args, **kwargs):
 
 def test_command_logged(monkeypatch):
     async def run_test():
-        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("LOG_COMMANDS", "1")
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 

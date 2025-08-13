@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 
 from gentlebot.cogs import burst_thread_cog
+from gentlebot import db
 
 
 class DummyPool:
@@ -24,7 +25,8 @@ async def fake_create_pool(url, *args, **kwargs):
 
 def test_burst_triggers_thread(monkeypatch):
     async def run_test():
-        monkeypatch.setattr(burst_thread_cog.asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
         intents = discord.Intents.none()
         bot = commands.Bot(command_prefix="!", intents=intents)

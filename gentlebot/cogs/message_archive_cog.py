@@ -7,7 +7,8 @@ import os
 import asyncpg
 import discord
 from discord.ext import commands
-from ..util import build_db_url, rows_from_tag, ReactionAction
+from ..db import get_pool
+from ..util import rows_from_tag, ReactionAction
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -23,23 +24,16 @@ class MessageArchiveCog(commands.Cog):
     async def cog_load(self) -> None:
         if not self.enabled:
             return
-        url = self._build_db_url()
-        if not url:
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
             log.warning("ARCHIVE_MESSAGES set but PG_DSN is missing")
             self.enabled = False
             return
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
-
-        self.pool = await asyncpg.create_pool(url, init=_init)
         log.info("Message archival enabled")
 
     async def cog_unload(self) -> None:
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -58,10 +52,6 @@ class MessageArchiveCog(commands.Cog):
         await self._upsert_guild(guild)
         for ch in guild.channels:
             await self._upsert_channel(ch)
-
-    @staticmethod
-    def _build_db_url() -> str | None:
-        return build_db_url()
 
     async def _upsert_user(self, member: discord.abc.User) -> int:
         if not self.pool:

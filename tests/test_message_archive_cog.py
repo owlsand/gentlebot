@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 import asyncpg
 
+from gentlebot import db
 from gentlebot.cogs.message_archive_cog import MessageArchiveCog
 from gentlebot.util import build_db_url, ReactionAction
 
@@ -52,7 +53,8 @@ def test_on_message(monkeypatch):
         async def fake_create_pool(url, *args, **kwargs):
             assert url.startswith("postgresql://")
             return pool
-        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
         intents = discord.Intents.default()
@@ -169,7 +171,8 @@ def test_on_ready_populates(monkeypatch):
         async def fake_create_pool(url, *args, **kwargs):
             return pool
 
-        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 
@@ -277,7 +280,8 @@ def test_reply_to_missing(monkeypatch):
         async def fake_create_pool(url, *args, **kwargs):
             return pool
 
-        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("ARCHIVE_MESSAGES", "1")
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 

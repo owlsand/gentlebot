@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import asyncpg
 
+from gentlebot import db
 from gentlebot.cogs.role_log_cog import RoleLogCog
 import json
 
@@ -24,7 +25,8 @@ async def fake_create_pool(url, *args, **kwargs):
 
 def test_role_add_logged(monkeypatch):
     async def run_test():
-        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("LOG_ROLES", "1")
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
         intents = discord.Intents.default()

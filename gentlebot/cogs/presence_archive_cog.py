@@ -9,7 +9,7 @@ import asyncpg
 import discord
 from discord.ext import commands
 
-from ..util import build_db_url
+from ..db import get_pool
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -25,23 +25,16 @@ class PresenceArchiveCog(commands.Cog):
     async def cog_load(self) -> None:
         if not self.enabled:
             return
-        url = build_db_url()
-        if not url:
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
             log.warning("ARCHIVE_PRESENCE set but PG_DSN is missing")
             self.enabled = False
             return
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
-
-        self.pool = await asyncpg.create_pool(url, init=_init)
         log.info("Presence archival enabled")
 
     async def cog_unload(self) -> None:
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:

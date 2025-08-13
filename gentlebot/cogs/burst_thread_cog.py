@@ -11,7 +11,8 @@ import asyncpg
 import discord
 from discord.ext import commands
 
-from ..util import build_db_url, int_env
+from ..db import get_pool
+from ..util import int_env
 
 try:
     from huggingface_hub import InferenceClient
@@ -49,20 +50,13 @@ class BurstThreadCog(commands.Cog):
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
-        url = build_db_url()
-        if not url:
-            return
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
-
-        self.pool = await asyncpg.create_pool(url, init=_init)
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
+            self.pool = None
 
     async def cog_unload(self) -> None:
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     async def _summarize(self, text: str) -> str:
         """Return a four-word topic summary."""

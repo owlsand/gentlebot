@@ -13,7 +13,7 @@ import asyncpg
 import discord
 from discord.ext import commands, tasks
 
-from ..util import build_db_url
+from ..db import get_pool
 from .. import bot_config as cfg
 
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -38,23 +38,16 @@ class F1ThreadCog(commands.Cog):
         self.session_task.start()
 
     async def cog_load(self) -> None:
-        url = build_db_url()
-        if not url:
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
             log.warning("PG_DSN required for F1ThreadCog")
             return
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
-
-        self.pool = await asyncpg.create_pool(url, init=_init)
         await self._refresh_schedule()
 
     async def cog_unload(self) -> None:
         self.session_task.cancel()
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     async def _refresh_schedule(self) -> None:
         """Fetch sessions and insert any new ones."""

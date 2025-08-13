@@ -27,7 +27,8 @@ from datetime import datetime, timedelta
 from collections import deque
 import discord
 from discord.ext import commands
-from ..util import chan_name, build_db_url
+from ..util import chan_name
+from ..db import get_pool
 from huggingface_hub import InferenceClient
 from .. import bot_config as cfg
 from zoneinfo import ZoneInfo
@@ -169,15 +170,10 @@ class PromptCog(commands.Cog):
         self.last_category: str = ""
 
     async def cog_load(self) -> None:
-        url = build_db_url()
-        if not url:
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
             return
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
-
-        self.pool = await asyncpg.create_pool(url, init=_init)
         try:
             rows = await self.pool.fetch(
                 "SELECT prompt FROM discord.daily_prompt ORDER BY created_at"
@@ -190,9 +186,7 @@ class PromptCog(commands.Cog):
             self.history.append(p)
 
     async def cog_unload(self) -> None:
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     async def fetch_prompt(self) -> str:
         """Generate a new prompt via HF inference, including history."""

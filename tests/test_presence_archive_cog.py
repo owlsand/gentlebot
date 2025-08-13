@@ -4,6 +4,7 @@ import discord
 import logging
 from discord.ext import commands
 
+from gentlebot import db
 from gentlebot.cogs.presence_archive_cog import PresenceArchiveCog
 
 
@@ -25,7 +26,8 @@ async def fake_create_pool(url, *args, **kwargs):
 
 def test_presence_logged(monkeypatch, caplog):
     async def run_test():
-        monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        db._pool = None
         monkeypatch.setenv("ARCHIVE_PRESENCE", "1")
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
         intents = discord.Intents.default()
