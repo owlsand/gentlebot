@@ -112,13 +112,12 @@ def test_duplicate_prompt_updates_message_count():
             async def execute(self, query, *args):
                 query = query.strip()
                 if query.startswith("INSERT INTO discord.daily_prompt"):
-                    prompt, category, thread_id = args
-                    if "DO NOTHING" in query and prompt in self.rows:
-                        return
+                    prompt, category, thread_id, topic = args
                     self.rows[prompt] = {
                         "category": category,
                         "thread_id": thread_id,
                         "message_count": 0,
+                        "topic": topic,
                     }
                 elif query.startswith("UPDATE discord.daily_prompt SET message_count"):
                     (thread_id,) = args
@@ -145,5 +144,40 @@ def test_duplicate_prompt_updates_message_count():
         await cog.on_message(msg)
 
         assert pool.rows["hi"]["message_count"] == 1
+
+    asyncio.run(run())
+
+
+def test_fetch_prompt_skips_recent_news_topic(monkeypatch):
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            async def fetchrow(self, query, topic):
+                return object()  # topic seen recently
+
+        cog.pool = DummyPool()
+
+        monkeypatch.setenv("HF_API_TOKEN", "")
+        monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["fallback"])
+
+        def fake_choice(seq):
+            if seq == prompt_cog.PROMPT_CATEGORIES:
+                return "Current event"
+            if len(seq) == 2 and "Engagement Bait" in seq:
+                return "Engagement Bait"
+            return seq[0]
+
+        monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
+
+        async def fake_current_event_topic(self):
+            return "Israel and Palestine"
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "_current_event_topic", fake_current_event_topic)
+
+        prompt = await cog.fetch_prompt()
+        assert cog.last_category == "Engagement Bait"
+        assert prompt == "fallback"
 
     asyncio.run(run())
