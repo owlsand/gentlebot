@@ -32,6 +32,7 @@ def test_debug_logs_filtered(monkeypatch):
         pool = DummyPool()
         handler = PostgresHandler("postgresql+asyncpg://u:p@localhost/db")
         handler.pool = pool
+        handler.loop = asyncio.get_running_loop()
         logger = logging.getLogger("gentlebot.test")
         logger.setLevel(logging.DEBUG)
         logger.addHandler(handler)
@@ -39,6 +40,32 @@ def test_debug_logs_filtered(monkeypatch):
         logger.removeHandler(handler)
         await asyncio.sleep(0)
         assert not getattr(pool, "executed", False)
+
+    asyncio.run(run_test())
+
+
+def test_emit_threadsafe():
+    async def run_test():
+        pool = DummyPool()
+        handler = PostgresHandler("postgresql+asyncpg://u:p@localhost/db")
+        handler.pool = pool
+        handler.loop = asyncio.get_running_loop()
+
+        record = logging.LogRecord(
+            name="gentlebot.test", level=logging.INFO, pathname="", lineno=0, msg="hello", args=(), exc_info=None
+        )
+
+        import threading
+
+        def emit_in_thread():
+            handler.emit(record)
+
+        t = threading.Thread(target=emit_in_thread)
+        t.start()
+        t.join()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert getattr(pool, "executed", False)
 
     asyncio.run(run_test())
 
