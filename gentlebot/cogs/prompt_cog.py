@@ -150,6 +150,14 @@ FALLBACK_PROMPTS = [
     "What's one piece of digital clutter you'd love to eliminate?",
 ]
 
+
+def _strip_outer_quotes(text: str) -> str:
+    """Remove matching leading and trailing single or double quotes."""
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        return text[1:-1].strip()
+    return text
+
 # Prompt categories
 PROMPT_CATEGORIES = [
     "Recent Server Discussion",
@@ -247,7 +255,7 @@ class PromptCog(commands.Cog):
                 )
                 content = getattr(completion.choices[0].message, 'content', None)
                 if content:
-                    prompt = content.strip()
+                    prompt = _strip_outer_quotes(content)
                     if prompt not in self.past_prompts:
                         self.history.append(prompt)
                         self.past_prompts.add(prompt)
@@ -256,6 +264,7 @@ class PromptCog(commands.Cog):
             except Exception as e:  # pragma: no cover - network
                 log.exception("inference error: %s", e)
         prompt = random.choice(FALLBACK_PROMPTS) if FALLBACK_PROMPTS else "Share something interesting today."
+        prompt = _strip_outer_quotes(prompt)
         self.history.append(prompt)
         self.past_prompts.add(prompt)
         self.last_topic = topic
