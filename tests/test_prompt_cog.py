@@ -22,6 +22,30 @@ def test_engagement_bait_category_and_fallback(monkeypatch):
     assert cog.last_category == "Engagement Bait"
 
 
+def test_sports_news_category_and_fallback(monkeypatch):
+    assert "Sports News" in prompt_cog.PROMPT_CATEGORIES
+
+    monkeypatch.setenv("HF_API_TOKEN", "")
+    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["Goal or no goal?"])
+
+    async def fake_topic(self):
+        return "Team X wins"
+
+    monkeypatch.setattr(prompt_cog.PromptCog, "_sports_news_topic", fake_topic)
+
+    def fake_choice(seq):
+        if seq == prompt_cog.PROMPT_CATEGORIES:
+            return "Sports News"
+        return seq[0]
+
+    monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
+
+    cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
+    prompt = asyncio.run(cog.fetch_prompt())
+    assert prompt == "Goal or no goal?"
+    assert cog.last_category == "Sports News"
+
+
 def test_current_event_category_removed():
     assert "Current event" not in prompt_cog.PROMPT_CATEGORIES
 

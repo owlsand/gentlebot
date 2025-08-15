@@ -33,6 +33,7 @@ from huggingface_hub import InferenceClient
 from .. import bot_config as cfg
 from zoneinfo import ZoneInfo
 import asyncpg
+import requests
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -153,6 +154,7 @@ FALLBACK_PROMPTS = [
 PROMPT_CATEGORIES = [
     "Recent Server Discussion",
     "Engagement Bait",
+    "Sports News",
 ]
 
 class PromptCog(commands.Cog):
@@ -208,6 +210,19 @@ class PromptCog(commands.Cog):
                 "It should be a question, assertion, or novel insight. "
                 "Respond only with the prompt itself and nothing else."
             )
+        elif category == "Sports News":
+            topic = await self._sports_news_topic()
+            if topic:
+                user_content = (
+                    f"Generate one concise prompt about the sports news headline '{topic}'. "
+                    "It should be a question, assertion, or novel insight. "
+                    "Respond only with the prompt itself and nothing else."
+                )
+            else:
+                user_content = (
+                    "Generate one short prompt related to recent sports news. "
+                    "Respond only with the prompt itself and nothing else."
+                )
         else:  # Engagement Bait
             user_content = (
                 "Generate one short engagement bait prompt designed to solicit reactions or responses. "
@@ -313,6 +328,24 @@ class PromptCog(commands.Cog):
         except Exception as exc:  # pragma: no cover - network
             log.exception("topic summary failed: %s", exc)
             return "the community"
+
+    async def _sports_news_topic(self) -> str | None:
+        """Fetch a random headline from ESPN's general sports news feed."""
+        try:
+            resp = await asyncio.to_thread(
+                requests.get,
+                "https://site.api.espn.com/apis/site/v2/sports/news",
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            headlines = [
+                a.get("headline") for a in data.get("articles", []) if a.get("headline")
+            ]
+            return random.choice(headlines) if headlines else None
+        except Exception as exc:  # pragma: no cover - network
+            log.exception("sports news fetch failed: %s", exc)
+            return None
 
     def _next_run_time(self, now: datetime) -> datetime:
         next_run = now.replace(hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, second=0, microsecond=0)
