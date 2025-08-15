@@ -151,3 +151,29 @@ def test_duplicate_prompt_updates_message_count():
 
     asyncio.run(run())
 
+
+def test_fetch_prompt_strips_outer_quotes(monkeypatch):
+    monkeypatch.setenv("HF_API_TOKEN", "token")
+
+    class DummyInferenceClient:
+        def __init__(self, provider, api_key):
+            self.chat = types.SimpleNamespace(
+                completions=types.SimpleNamespace(create=None)
+            )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        msg = types.SimpleNamespace(content='"Quoted prompt"')
+        completion = types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=msg)]
+        )
+        return completion
+
+    monkeypatch.setattr(prompt_cog, "InferenceClient", DummyInferenceClient)
+    monkeypatch.setattr(prompt_cog.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(prompt_cog.random, "choice", lambda seq: seq[0])
+
+    cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
+    prompt = asyncio.run(cog.fetch_prompt())
+    assert prompt == "Quoted prompt"
+    assert not prompt.startswith('"') and not prompt.endswith('"')
+
