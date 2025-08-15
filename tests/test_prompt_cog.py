@@ -22,6 +22,10 @@ def test_engagement_bait_category_and_fallback(monkeypatch):
     assert cog.last_category == "Engagement Bait"
 
 
+def test_current_event_category_removed():
+    assert "Current event" not in prompt_cog.PROMPT_CATEGORIES
+
+
 def test_archive_prompt_missing_table():
     async def run():
         cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
@@ -147,37 +151,3 @@ def test_duplicate_prompt_updates_message_count():
 
     asyncio.run(run())
 
-
-def test_fetch_prompt_skips_recent_news_topic(monkeypatch):
-    async def run():
-        bot = types.SimpleNamespace()
-        cog = prompt_cog.PromptCog(bot)
-
-        class DummyPool:
-            async def fetchrow(self, query, topic):
-                return object()  # topic seen recently
-
-        cog.pool = DummyPool()
-
-        monkeypatch.setenv("HF_API_TOKEN", "")
-        monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["fallback"])
-
-        def fake_choice(seq):
-            if seq == prompt_cog.PROMPT_CATEGORIES:
-                return "Current event"
-            if len(seq) == 2 and "Engagement Bait" in seq:
-                return "Engagement Bait"
-            return seq[0]
-
-        monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
-
-        async def fake_current_event_topic(self):
-            return "Israel and Palestine"
-
-        monkeypatch.setattr(prompt_cog.PromptCog, "_current_event_topic", fake_current_event_topic)
-
-        prompt = await cog.fetch_prompt()
-        assert cog.last_category == "Engagement Bait"
-        assert prompt == "fallback"
-
-    asyncio.run(run())

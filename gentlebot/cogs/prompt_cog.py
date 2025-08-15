@@ -33,7 +33,6 @@ from huggingface_hub import InferenceClient
 from .. import bot_config as cfg
 from zoneinfo import ZoneInfo
 import asyncpg
-import feedparser
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -154,7 +153,6 @@ FALLBACK_PROMPTS = [
 PROMPT_CATEGORIES = [
     "Recent Server Discussion",
     "Engagement Bait",
-    "Current event",
 ]
 
 class PromptCog(commands.Cog):
@@ -210,31 +208,6 @@ class PromptCog(commands.Cog):
                 "It should be a question, assertion, or novel insight. "
                 "Respond only with the prompt itself and nothing else."
             )
-        elif category == "Current event":
-            topic = await self._current_event_topic()
-            if await self._topic_used_recently(topic):
-                others = [c for c in PROMPT_CATEGORIES if c != "Current event"]
-                category = random.choice(others)
-                self.last_category = category
-                if category == "Recent Server Discussion":
-                    topic = await self._recent_server_topic()
-                    user_content = (
-                        f"Generate one concise prompt about the topic '{topic}'. "
-                        "It should be a question, assertion, or novel insight. "
-                        "Respond only with the prompt itself and nothing else."
-                    )
-                else:  # Engagement Bait
-                    topic = None
-                    user_content = (
-                        "Generate one short engagement bait prompt designed to solicit reactions or responses. "
-                        "Respond only with the prompt itself and nothing else."
-                    )
-            else:
-                user_content = (
-                    f"Generate one concise prompt about the news topic '{topic}'. "
-                    "It should be a question, assertion, or insight to spark discussion. "
-                    "Respond only with the prompt itself and nothing else."
-                )
         else:  # Engagement Bait
             user_content = (
                 "Generate one short engagement bait prompt designed to solicit reactions or responses. "
@@ -299,21 +272,6 @@ class PromptCog(commands.Cog):
         except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):  # pragma: no cover - requires DB
             log.warning("daily_prompt table not found; prompt not archived")
 
-    async def _topic_used_recently(self, topic: str) -> bool:
-        if not self.pool:
-            return False
-        try:
-            row = await self.pool.fetchrow(
-                """
-                SELECT 1 FROM discord.daily_prompt
-                WHERE topic=$1 AND created_at >= NOW() - INTERVAL '30 days'
-                """,
-                topic,
-            )
-        except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):  # pragma: no cover - requires DB
-            return False
-        return row is not None
-
     async def _recent_server_topic(self) -> str:
         if not self.pool:
             return "the community"
@@ -355,42 +313,6 @@ class PromptCog(commands.Cog):
         except Exception as exc:  # pragma: no cover - network
             log.exception("topic summary failed: %s", exc)
             return "the community"
-
-    async def _current_event_topic(self) -> str:
-        try:
-            feed = await asyncio.to_thread(
-                feedparser.parse,
-                "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
-            )
-            titles = [e.get('title', '') for e in getattr(feed, 'entries', [])]
-        except Exception as exc:  # pragma: no cover - network
-            log.exception("news fetch failed: %s", exc)
-            titles = []
-        if not titles:
-            return "current events"
-        text = "\n".join(titles)
-        token = os.getenv('HF_API_TOKEN')
-        if not token:
-            return titles[0]
-        client = InferenceClient(provider="together", api_key=token)
-        model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
-        params = {
-            'max_tokens': 20,
-            'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
-            'top_p': float(os.getenv('HF_TOP_P', 0.9)),
-        }
-        try:
-            completion = await asyncio.to_thread(
-                client.chat.completions.create,
-                model=model,
-                messages=[{'role': 'user', 'content': 'Succinctly summarize the single most important topic among these headlines\n' + text}],
-                **params,
-            )
-            content = getattr(completion.choices[0].message, 'content', '').strip()
-            return content or titles[0]
-        except Exception as exc:  # pragma: no cover - network
-            log.exception("news summary failed: %s", exc)
-            return titles[0]
 
     def _next_run_time(self, now: datetime) -> datetime:
         next_run = now.replace(hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, second=0, microsecond=0)
