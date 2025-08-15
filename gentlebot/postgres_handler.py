@@ -12,6 +12,7 @@ class PostgresHandler(logging.Handler):
         self.dsn = dsn
         self.table = table
         self.pool: asyncpg.Pool | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
         # Ignore DEBUG records so they are not written to the database
         self.setLevel(logging.INFO)
 
@@ -22,6 +23,7 @@ class PostgresHandler(logging.Handler):
             await conn.execute("SET search_path=discord,public")
 
         self.pool = await asyncpg.create_pool(url, init=_init)
+        self.loop = asyncio.get_running_loop()
 
         create_sql = (
             f"""
@@ -59,7 +61,7 @@ class PostgresHandler(logging.Handler):
         super().close()
 
     def emit(self, record: logging.LogRecord) -> None:
-        if not self.pool:
+        if not self.pool or not self.loop:
             return
         ts = datetime.fromtimestamp(record.created, tz=timezone.utc)
         message = record.getMessage()
@@ -70,4 +72,12 @@ class PostgresHandler(logging.Handler):
             message,
             ts,
         )
-        asyncio.create_task(coro)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run_coroutine_threadsafe(coro, self.loop)
+        else:
+            if loop is self.loop:
+                loop.create_task(coro)
+            else:
+                asyncio.run_coroutine_threadsafe(coro, self.loop)
