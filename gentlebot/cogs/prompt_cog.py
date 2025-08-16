@@ -165,6 +165,12 @@ PROMPT_CATEGORIES = [
     "Sports News",
 ]
 
+SPORTS_NEWS_PATHS = [
+    "soccer/eng.1",
+    "racing/f1",
+    "football/nfl"
+]
+
 class PromptCog(commands.Cog):
     """Scheduled and on‑demand AI-powered prompt generator with random category selection."""
 
@@ -340,10 +346,11 @@ class PromptCog(commands.Cog):
 
     async def _sports_news_topic(self) -> str | None:
         """Fetch a random headline from ESPN's general sports news feed."""
+        path = random.choice(SPORTS_NEWS_PATHS)
         try:
             resp = await asyncio.to_thread(
                 requests.get,
-                "https://site.api.espn.com/apis/site/v2/sports/news",
+                f"https://site.api.espn.com/apis/site/v2/sports/{path}/news",
                 timeout=10,
             )
             resp.raise_for_status()
