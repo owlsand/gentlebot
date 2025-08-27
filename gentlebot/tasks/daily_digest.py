@@ -359,10 +359,6 @@ class DailyDigestCog(commands.Cog):
         #     )
         # except discord.HTTPException:
         #     log.warning("Failed to pin digest message")
-        if self.pool:
-            await self.pool.execute(
-                "INSERT INTO discord.experiment_results (experiment_id, day, metric, value) VALUES ('H1_ROLE_DIGEST', current_date, 'digest_sent', 1)"
-            )
 
 
 async def setup(bot: commands.Bot) -> None:
