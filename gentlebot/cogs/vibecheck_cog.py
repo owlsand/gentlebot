@@ -6,7 +6,6 @@ an AI generated one-liner.
 """
 from __future__ import annotations
 
-import os
 import re
 import time
 import asyncio
@@ -17,13 +16,10 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord import app_commands
 from discord.ext import commands
-try:
-    from huggingface_hub import InferenceClient
-except Exception:  # pragma: no cover - optional dependency may be missing
-    InferenceClient = None  # type: ignore
-
-from ..util import chan_name, int_env
+from ..util import chan_name
 from .. import bot_config as cfg
+from ..llm.router import router, SafetyBlocked
+from ..infra.quotas import RateLimited
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -44,15 +40,8 @@ class VibeCheckCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        token = os.getenv("HF_API_TOKEN")
-        if InferenceClient and token:
-            self.hf_client = InferenceClient(provider="together", api_key=token)
-        else:
-            self.hf_client = None
-        self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.max_tokens = int_env("HF_MAX_TOKENS", 60)
-        self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
-        self.top_p = float(os.getenv("HF_TOP_P", 0.9))
+        self.max_tokens = 60
+        self.temperature = 0.6
         self._cache: tuple[float, discord.Embed] | None = None
 
     # --- scoring helpers -------------------------------------------------
@@ -71,32 +60,30 @@ class VibeCheckCog(commands.Cog):
         return "Dead Server", "🌵"
 
     async def _generate_blurb(self, data: str) -> str | None:
-        if not self.hf_client:
-            return None
         prompt = (
             "You are Gentlebot, a cheeky but concise Discord concierge. "
             "Write ONE or TWO sentences describing the vibe in this server. "
             "Add one emoji. No line breaks.\nDATA:\n" + data
         )
         try:
-            completion = await asyncio.wait_for(
+            return await asyncio.wait_for(
                 asyncio.to_thread(
-                    self.hf_client.chat.completions.create,
-                    model=self.model_id,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=self.max_tokens,
-                    temperature=self.temperature,
-                    top_p=self.top_p,
+                    router.generate,
+                    "general",
+                    [{"role": "user", "content": prompt}],
+                    self.temperature,
                 ),
                 timeout=8,
             )
-            content = getattr(completion.choices[0].message, "content", "").strip()
-            return content.replace("\n", " ")
         except asyncio.TimeoutError:
-            log.error("HF blurb timed out")
+            log.error("Model blurb timed out")
             return None
+        except RateLimited:
+            return "Let me get back to you on this... I'm a bit busy right now."
+        except SafetyBlocked:
+            return "Your inquiry is being blocked by my policy commitments."
         except Exception as e:
-            log.exception("HF blurb failed: %s", e)
+            log.exception("Model blurb failed: %s", e)
             return None
 
     async def _collect_stats(self) -> dict:

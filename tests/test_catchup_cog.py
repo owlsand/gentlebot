@@ -24,7 +24,7 @@ class DummyPool:
 
 def test_catchup_command_registration(monkeypatch):
     async def run():
-        monkeypatch.setenv("HF_API_TOKEN", "test")
+        monkeypatch.setenv("GEMINI_API_KEY", "test")
         intents = discord.Intents.none()
         bot = commands.Bot(command_prefix="!", intents=intents)
         cog = CatchupCog(bot)
@@ -47,7 +47,7 @@ def test_catchup_command_registration(monkeypatch):
 
 def test_collect_messages_uses_archive(monkeypatch):
     async def run():
-        monkeypatch.setenv("HF_API_TOKEN", "x")
+        monkeypatch.setenv("GEMINI_API_KEY", "x")
         bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
         cog = CatchupCog(bot)
         await bot.add_cog(cog)

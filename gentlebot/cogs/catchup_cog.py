@@ -1,18 +1,17 @@
 """Summarize missed conversations for returning users."""
 from __future__ import annotations
 
+import asyncio
 import logging
-import os
 from datetime import timedelta
 
 import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands
-from huggingface_hub import InferenceClient
-
 from ..db import get_pool
-from ..util import int_env
+from ..llm.router import router, SafetyBlocked
+from ..infra.quotas import RateLimited
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -22,17 +21,8 @@ class CatchupCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.hf_api_key = os.getenv("HF_API_TOKEN")
-        if not self.hf_api_key:
-            raise RuntimeError("HF_API_TOKEN is not set in environment")
-
-        self.model_id = os.getenv(
-            "HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct"
-        )
-        self.max_tokens = int_env("HF_MAX_TOKENS", 200)
-        self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
-        self.top_p = float(os.getenv("HF_TOP_P", 0.9))
-        self.hf_client = InferenceClient(api_key=self.hf_api_key, provider="together")
+        self.max_tokens = 200
+        self.temperature = 0.6
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
@@ -102,14 +92,17 @@ class CatchupCog(commands.Cog):
             {"role": "system", "content": system},
             {"role": "user", "content": convo},
         ]
-        completion = self.hf_client.chat.completions.create(
-            model=self.model_id,
-            messages=data,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            top_p=self.top_p,
-        )
-        return getattr(completion.choices[0].message, "content", "").strip()
+        try:
+            return await asyncio.to_thread(
+                router.generate, "general", data, self.temperature
+            )
+        except RateLimited:
+            return "Let me get back to you on this... I'm a bit busy right now."
+        except SafetyBlocked:
+            return "Your inquiry is being blocked by my policy commitments."
+        except Exception as exc:
+            log.exception("Summarization failed: %s", exc)
+            return "Something's wrong... I need a mechanic."
 
     @app_commands.command(name="catchup", description="Summarize conversations since you were last online.")
     @app_commands.describe(

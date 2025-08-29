@@ -17,3 +17,4 @@ huggingface-hub
 watchfiles
 watchdog
 APScheduler==3.10.4
+google-genai

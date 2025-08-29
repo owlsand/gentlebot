@@ -1,25 +1,21 @@
 """
 prompt_cog.py – Dynamic Daily‑Ping Prompt Generator for Gentlebot
 ================================================================
-Generates a rotating, AI-powered prompt each day via Hugging Face inference,
+Generates a rotating, AI-powered prompt each day via Gemini inference,
 posts to DAILY_PING on schedule, and provides a command to skip to a new prompt.
 
 Configuration in bot_config.py:
   • DAILY_PING_CHANNEL: channel ID for daily‑ping (must be an integer)
   • PROMPT_SCHEDULE_HOUR: (optional) local hour to schedule daily prompts
   • PROMPT_SCHEDULE_MINUTE: (optional) local minute for prompt scheduling
-  • HF_API_TOKEN: required for HF inference
-  • HF_MODEL: model ID for HF text-generation API
   • PROMPT_HISTORY_SIZE: how many past prompts to send as context
 
 Requires:
   • discord.py v2+
   • requests
-  • huggingface-hub
   • zoneinfo (stdlib) or backports.zoneinfo
 """
 from __future__ import annotations
-import os
 import random
 import asyncio
 import logging
@@ -29,8 +25,9 @@ import discord
 from discord.ext import commands
 from ..util import chan_name
 from ..db import get_pool
-from huggingface_hub import InferenceClient
 from .. import bot_config as cfg
+from ..llm.router import router, SafetyBlocked
+from ..infra.quotas import RateLimited
 from zoneinfo import ZoneInfo
 import asyncpg
 import requests
@@ -243,32 +240,21 @@ class PromptCog(commands.Cog):
                 "Respond only with the prompt itself and nothing else."
             )
         messages.append({'role': 'user', 'content': user_content})
-        token = os.getenv('HF_API_TOKEN')
-        if token:
-            client = InferenceClient(provider="together", api_key=token)
-            model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
-            params = {
-                'max_tokens': 75,
-                'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
-                'top_p': float(os.getenv('HF_TOP_P', 0.9)),
-            }
-            try:
-                completion = await asyncio.to_thread(
-                    client.chat.completions.create,
-                    model=model,
-                    messages=messages,
-                    **params,
-                )
-                content = getattr(completion.choices[0].message, 'content', None)
-                if content:
-                    prompt = _strip_outer_quotes(content)
-                    if prompt not in self.past_prompts:
-                        self.history.append(prompt)
-                        self.past_prompts.add(prompt)
-                        self.last_topic = topic
-                        return prompt
-            except Exception as e:  # pragma: no cover - network
-                log.exception("inference error: %s", e)
+        try:
+            content = await asyncio.to_thread(
+                router.generate, "scheduled", messages, 0.8
+            )
+            if content:
+                prompt = _strip_outer_quotes(content)
+                if prompt not in self.past_prompts:
+                    self.history.append(prompt)
+                    self.past_prompts.add(prompt)
+                    self.last_topic = topic
+                    return prompt
+        except (RateLimited, SafetyBlocked) as e:
+            log.warning("scheduled prompt generation failed: %s", e)
+        except Exception as e:  # pragma: no cover - network
+            log.exception("inference error: %s", e)
         prompt = random.choice(FALLBACK_PROMPTS) if FALLBACK_PROMPTS else "Share something interesting today."
         prompt = _strip_outer_quotes(prompt)
         self.history.append(prompt)
@@ -321,25 +307,18 @@ class PromptCog(commands.Cog):
         text = "\n".join(r["content"] for r in rows if r["content"])
         if not text:
             return "the community"
-        token = os.getenv('HF_API_TOKEN')
-        if not token:
-            return "the community"
-        client = InferenceClient(provider="together", api_key=token)
-        model = os.getenv('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
-        params = {
-            'max_tokens': 20,
-            'temperature': float(os.getenv('HF_TEMPERATURE', 0.8)),
-            'top_p': float(os.getenv('HF_TOP_P', 0.9)),
-        }
         try:
-            completion = await asyncio.to_thread(
-                client.chat.completions.create,
-                model=model,
-                messages=[{'role': 'user', 'content': 'Summarize the main topic of these messages in a short noun phrase.\n' + text}],
-                **params,
+            content = await asyncio.to_thread(
+                router.generate,
+                "scheduled",
+                [{'role': 'user', 'content': 'Summarize the main topic of these messages in a short noun phrase.\n' + text}],
+                0.8,
             )
-            content = getattr(completion.choices[0].message, 'content', '').strip()
-            return content or "the community"
+            return content.strip() or "the community"
+        except RateLimited:
+            return "the community"
+        except SafetyBlocked:
+            return "the community"
         except Exception as exc:  # pragma: no cover - network
             log.exception("topic summary failed: %s", exc)
             return "the community"
