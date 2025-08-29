@@ -79,14 +79,16 @@ async def on_ready() -> None:
             backfill_roles,
         )
 
-        _backfill_tasks.extend(
-            [
-                asyncio.create_task(backfill_commands.run_backfill(days)),
-                asyncio.create_task(backfill_archive.run_backfill(days)),
-                asyncio.create_task(backfill_reactions.run_backfill(days)),
-                asyncio.create_task(backfill_roles.run_backfill()),
-            ]
-        )
+        async def _run_backfills() -> None:
+            await backfill_commands.run_backfill(days)
+            await asyncio.sleep(5)
+            await backfill_archive.run_backfill(days)
+            await asyncio.sleep(5)
+            await backfill_reactions.run_backfill(days)
+            await asyncio.sleep(5)
+            await backfill_roles.run_backfill()
+
+        _backfill_tasks.append(asyncio.create_task(_run_backfills()))
 
 @bot.event
 async def on_error(event: str, *args, **kwargs) -> None:
