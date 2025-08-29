@@ -139,7 +139,7 @@ class CatchupCog(commands.Cog):
         try:
             summary = await self._summarize(messages, style)
         except Exception as exc:
-            log.exception("HF summarization failed: %s", exc)
+            log.exception("Gemini summarization failed: %s", exc)
             summary = "⚠️ Unable to generate summary at this time."
         await interaction.response.send_message(summary[:1900], ephemeral=ephemeral)
 
