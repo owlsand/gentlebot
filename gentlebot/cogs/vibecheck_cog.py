@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord import app_commands
 from discord.ext import commands
-from ..util import chan_name
+from ..util import chan_name, user_name
 from .. import bot_config as cfg
 from ..llm.router import router, SafetyBlocked
 from ..infra.quotas import RateLimited
@@ -169,7 +169,11 @@ class VibeCheckCog(commands.Cog):
     @app_commands.command(name="vibecheck", description="Check the server vibe")
     async def vibecheck(self, interaction: discord.Interaction):
         """Return a quick read on how things feel in the server."""
-        log.info("/vibecheck invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        log.info(
+            "/vibecheck invoked by %s in %s",
+            user_name(interaction.user),
+            chan_name(interaction.channel),
+        )
         now = time.time()
         if self._cache and now - self._cache[0] < 60:
             await interaction.response.send_message(embed=self._cache[1])

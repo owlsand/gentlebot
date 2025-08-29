@@ -31,7 +31,7 @@ from discord.ext import commands, tasks
 
 from ..tasks.daily_digest import assign_tiers
 
-from ..util import chan_name
+from ..util import chan_name, user_name, guild_name
 from .. import bot_config as cfg
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
@@ -93,7 +93,11 @@ class RoleCog(commands.Cog):
         This fetches the last 14 days of guild history so badges and flags are
         computed even after a restart.
         """
-        log.info("/refreshroles invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        log.info(
+            "/refreshroles invoked by %s in %s",
+            user_name(interaction.user),
+            chan_name(interaction.channel),
+        )
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             await self._fetch_recent_activity()
@@ -116,9 +120,19 @@ class RoleCog(commands.Cog):
         try:
             return await guild.fetch_member(user_id)
         except discord.NotFound:
-            log.warning("Member %s not found in guild %s", user_id, guild.id)
+            user = self.bot.get_user(user_id)
+            log.warning(
+                "Member %s not found in guild %s",
+                user_name(user),
+                guild_name(guild),
+            )
         except discord.HTTPException as exc:
-            log.error("Failed to fetch member %s: %s", user_id, exc)
+            user = self.bot.get_user(user_id)
+            log.error(
+                "Failed to fetch member %s: %s",
+                user_name(user),
+                exc,
+            )
         return None
 
     async def _fetch_recent_activity(self, days: int = 14) -> None:
@@ -233,7 +247,13 @@ class RoleCog(commands.Cog):
         }
         self.messages.append(info)
         if msg.created_at - self.last_message_ts >= timedelta(hours=24):
-            log.debug("Ghostbuster winner: %s", member_id)
+            log.debug(
+                "Ghostbuster winner: %s",
+                user_name(
+                    (getattr(msg.guild, "get_member", lambda _id: None)(member_id))
+                    or member_id
+                ),
+            )
             await self._rotate_single(msg.guild, ROLE_GHOSTBUSTER, member_id)
         self.last_message_ts = msg.created_at
 
@@ -265,7 +285,11 @@ class RoleCog(commands.Cog):
         """Rotate a single badge role to the specified user."""
         role = guild.get_role(role_id)
         if not role:
-            log.debug("Role ID %s not found in guild %s; skipping", role_id, guild.id)
+            log.debug(
+                "Role ID %s not found in guild %s; skipping",
+                role_id,
+                guild_name(guild),
+            )
             return
 
         changed = False
@@ -281,7 +305,11 @@ class RoleCog(commands.Cog):
                     await self._assign(target, role_id)
                     changed = True
             else:
-                log.warning("Member %s for role %s not found", user_id, role.name)
+                  log.warning(
+                      "Member %s for role %s not found",
+                      user_name(self.bot.get_user(user_id) or user_id),
+                      role.name,
+                  )
         else:
             log.debug("No qualifying member for %s", role.name)
 
@@ -342,7 +370,13 @@ class RoleCog(commands.Cog):
 
         counts = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
         top_poster = counts.most_common(1)[0][0] if counts else None
-        log.debug("Top Poster winner: %s", top_poster)
+        log.debug(
+            "Top Poster winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(top_poster))
+                or top_poster
+            ),
+        )
         await self._rotate_single(guild, ROLE_TOP_POSTER, top_poster)
 
         # tiered Top Poster and Reaction Magnet roles
@@ -380,7 +414,12 @@ class RoleCog(commands.Cog):
                 if avg > best_avg:
                     best_avg = avg
                     best = uid
-        log.debug("Certified Banger winner: %s", best)
+        log.debug(
+            "Certified Banger winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(best)) or best
+            ),
+        )
         await self._rotate_single(guild, ROLE_CERTIFIED_BANGER, best)
 
         reaction_map = Counter()
@@ -392,7 +431,13 @@ class RoleCog(commands.Cog):
             if m["ts"] >= cutoff14 and m["rich"] and reaction_map[m["id"]] >= 3:
                 curator[m["author"]] += 1
         top_curator = curator.most_common(1)[0][0] if curator else None
-        log.debug("Top Curator winner: %s", top_curator)
+        log.debug(
+            "Top Curator winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(top_curator))
+                or top_curator
+            ),
+        )
         await self._rotate_single(guild, ROLE_TOP_CURATOR, top_curator)
 
         early_counts = Counter()
@@ -403,22 +448,46 @@ class RoleCog(commands.Cog):
                 if 5 * 60 <= minutes <= 8 * 60 + 30:
                     early_counts[m["author"]] += 1
         early_bird = early_counts.most_common(1)[0][0] if early_counts else None
-        log.debug("Early Bird winner: %s", early_bird)
+        log.debug(
+            "Early Bird winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(early_bird))
+                or early_bird
+            ),
+        )
         await self._rotate_single(guild, ROLE_EARLY_BIRD, early_bird)
 
         summons = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff30 for _ in range(m["mentions"]))
         summoner = summons.most_common(1)[0][0] if summons else None
-        log.debug("The Summoner winner: %s", summoner)
+        log.debug(
+            "The Summoner winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(summoner))
+                or summoner
+            ),
+        )
         await self._rotate_single(guild, ROLE_SUMMONER, summoner)
 
         referenced = Counter(m["reply_to"] for m in self.messages if m["ts"] >= cutoff30 and m["reply_to"])
         lore_creator = referenced.most_common(1)[0][0] if referenced else None
-        log.debug("Lore Creator winner: %s", lore_creator)
+        log.debug(
+            "Lore Creator winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(lore_creator))
+                or lore_creator
+            ),
+        )
         await self._rotate_single(guild, ROLE_LORE_CREATOR, lore_creator)
 
         creator_counts = Counter(r["creator"] for r in self.reactions if r["ts"] >= cutoff30 and r["creator"])
         reaction_engineer = creator_counts.most_common(1)[0][0] if creator_counts else None
-        log.debug("Reaction Engineer winner: %s", reaction_engineer)
+        log.debug(
+            "Reaction Engineer winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(reaction_engineer))
+                or reaction_engineer
+            ),
+        )
         await self._rotate_single(guild, ROLE_REACTION_ENGINEER, reaction_engineer)
 
         cutoff5 = now - timedelta(days=5)
@@ -428,7 +497,13 @@ class RoleCog(commands.Cog):
             galaxy_brain = max(recent_msgs, key=lambda m: m.get("words", 0))["author"]
         else:
             galaxy_brain = None
-        log.debug("Galaxy Brain winner: %s", galaxy_brain)
+        log.debug(
+            "Galaxy Brain winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(galaxy_brain))
+                or galaxy_brain
+            ),
+        )
         await self._rotate_single(guild, ROLE_GALAXY_BRAIN, galaxy_brain)
 
         word_counts = defaultdict(list)
@@ -442,7 +517,13 @@ class RoleCog(commands.Cog):
                 if avg > best_avg:
                     best_avg = avg
                     wordsmith = uid
-        log.debug("Wordsmith winner: %s", wordsmith)
+        log.debug(
+            "Wordsmith winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(wordsmith))
+                or wordsmith
+            ),
+        )
         await self._rotate_single(guild, ROLE_WORDSMITH, wordsmith)
 
         reaction_map5 = Counter()
@@ -461,7 +542,12 @@ class RoleCog(commands.Cog):
             if avg > best_ratio:
                 best_ratio = avg
                 sniper = uid
-        log.debug("Sniper winner: %s", sniper)
+        log.debug(
+            "Sniper winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(sniper)) or sniper
+            ),
+        )
         await self._rotate_single(guild, ROLE_SNIPER, sniper)
 
         night_counts = Counter()
@@ -471,7 +557,13 @@ class RoleCog(commands.Cog):
                 if hour >= 22 or hour < 4:
                     night_counts[m["author"]] += 1
         night_owl = night_counts.most_common(1)[0][0] if night_counts else None
-        log.debug("Night Owl winner: %s", night_owl)
+        log.debug(
+            "Night Owl winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(night_owl))
+                or night_owl
+            ),
+        )
         await self._rotate_single(guild, ROLE_NIGHT_OWL, night_owl)
 
         mention_counts = Counter(
@@ -481,7 +573,13 @@ class RoleCog(commands.Cog):
             for uid in m.get("mention_ids", [])
         )
         comeback_kid = mention_counts.most_common(1)[0][0] if mention_counts else None
-        log.debug("Comeback Kid winner: %s", comeback_kid)
+        log.debug(
+            "Comeback Kid winner: %s",
+            user_name(
+                (getattr(guild, "get_member", lambda _id: None)(comeback_kid))
+                or comeback_kid
+            ),
+        )
         await self._rotate_single(guild, ROLE_COMEBACK_KID, comeback_kid)
 
         msg_count14 = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
@@ -541,18 +639,22 @@ class RoleCog(commands.Cog):
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
         if member.bot:
-            log.debug("Skipping role %s for bot %s", role_id, member.id)
+            log.debug("Skipping role %s for bot %s", role_id, user_name(member))
             return
         role = member.guild.get_role(role_id)
         if not role:
-            log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
+            log.error(
+                "ERROR - role_id=%s not found in guild %s",
+                role_id,
+                guild_name(member.guild),
+            )
             return
         if role_id != ROLE_NPC_FLAG:
             npc = member.guild.get_role(ROLE_NPC_FLAG)
             if npc and npc in member.roles:
                 await self._remove(member, ROLE_NPC_FLAG)
         if role in member.roles:
-            log.debug("Member %s already has role %s", member.id, role_id)
+            log.debug("Member %s already has role %s", user_name(member), role_id)
             return
         try:
             self.assign_counts[role_id] += 1
@@ -562,28 +664,46 @@ class RoleCog(commands.Cog):
                 "Missing permissions to assign role %s to %s. "
                 "Ensure the bot's role is above the target role and has Manage Roles.",
                 role_id,
-                member.id,
+                user_name(member),
             )
         except Exception as e:
-            log.error("Failed assigning role %s to %s: %s", role_id, member.id, e)
+            log.error(
+                "Failed assigning role %s to %s: %s", role_id, user_name(member), e
+            )
 
     async def _remove(self, member: discord.Member, role_id: int):
         role = member.guild.get_role(role_id)
         if not role:
-            log.error("ERROR - role_id=%s not found in guild %s", role_id, member.guild.id)
+            log.error(
+                "ERROR - role_id=%s not found in guild %s",
+                role_id,
+                guild_name(member.guild),
+            )
             return
         if role not in member.roles:
-            log.debug("Member %s missing role %s on remove; fetching", member.id, role_id)
+            log.debug(
+                "Member %s missing role %s on remove; fetching",
+                user_name(member),
+                role_id,
+            )
             try:
                 refreshed = await member.guild.fetch_member(member.id)
             except discord.NotFound:
-                log.warning("Member %s disappeared while removing role %s", member.id, role_id)
+                log.warning(
+                    "Member %s disappeared while removing role %s",
+                    user_name(member),
+                    role_id,
+                )
                 return
             except discord.HTTPException as exc:
-                log.error("Failed to refresh member %s: %s", member.id, exc)
+                log.error("Failed to refresh member %s: %s", user_name(member), exc)
                 return
             if role not in refreshed.roles:
-                log.debug("Member %s no longer has role %s", member.id, role_id)
+                log.debug(
+                    "Member %s no longer has role %s",
+                    user_name(member),
+                    role_id,
+                )
                 return
             member = refreshed
         try:
@@ -593,10 +713,12 @@ class RoleCog(commands.Cog):
                 "Missing permissions to remove role %s from %s. "
                 "Ensure the bot's role is above the target role and has Manage Roles.",
                 role_id,
-                member.id,
+                user_name(member),
             )
         except Exception as e:
-            log.error("Failed removing role %s from %s: %s", role_id, member.id, e)
+            log.error(
+                "Failed removing role %s from %s: %s", role_id, user_name(member), e
+            )
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(RoleCog(bot))

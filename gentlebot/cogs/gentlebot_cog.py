@@ -11,7 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ..util import chan_name
+from ..util import chan_name, user_name
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -30,7 +30,7 @@ class GentlebotCog(commands.Cog):
         """Echo the supplied text into the current channel."""
         log.info(
             "/gentlebot invoked by %s in %s: %s",
-            interaction.user.id,
+            user_name(interaction.user),
             chan_name(interaction.channel),
             say,
         )

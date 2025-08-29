@@ -15,7 +15,7 @@ from discord.ext import commands
 import feedparser
 from bs4 import BeautifulSoup
 
-from ..util import chan_name
+from ..util import chan_name, user_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -32,7 +32,7 @@ class TechmemeCog(commands.Cog):
     @app_commands.command(name="techmeme", description="Show the latest Techmeme headlines")
     @app_commands.describe(ephemeral="Whether the response should be ephemeral")
     async def techmeme(self, interaction: discord.Interaction, ephemeral: bool = False):
-        log.info("/techmeme invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        log.info("/techmeme invoked by %s in %s", user_name(interaction.user), chan_name(interaction.channel))
         await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         try:
             feed = await asyncio.to_thread(feedparser.parse, TECHMEME_RSS)

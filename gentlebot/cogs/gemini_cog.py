@@ -10,7 +10,7 @@ from collections import defaultdict
 import discord
 from discord import app_commands
 from discord.ext import commands
-from ..util import chan_name
+from ..util import chan_name, user_name
 from ..llm.router import router, SafetyBlocked
 from ..infra.quotas import RateLimited
 
@@ -265,7 +265,7 @@ class GeminiCog(commands.Cog):
     @app_commands.command(name="ask", description="Ask Gentlebot a question.")
     async def ask(self, interaction: discord.Interaction, prompt: str):
         """Slash command to ask Gentlebot a question."""
-        log.info("/ask invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        log.info("/ask invoked by %s in %s", user_name(interaction.user), chan_name(interaction.channel))
         await interaction.response.defer()
         sanitized = self.sanitize_prompt(prompt)
         if not sanitized:

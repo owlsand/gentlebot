@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 
 from gentlebot import bot_config as cfg
-from gentlebot.util import build_db_url, rows_from_tag
+from gentlebot.util import build_db_url, rows_from_tag, chan_name
 
 log = logging.getLogger("gentlebot.backfill_commands")
 
@@ -86,9 +86,11 @@ class BackfillBot(commands.Bot):
                             )
                             self.inserted += rows_from_tag(result)
                 except discord.Forbidden:
-                    log.warning("History fetch forbidden for %s", channel)
+                    log.warning("History fetch forbidden for %s", chan_name(channel))
                 except Exception as exc:  # pragma: no cover - logging only
-                    log.exception("History fetch failed for %s: %s", channel, exc)
+                    log.exception(
+                        "History fetch failed for %s: %s", chan_name(channel), exc
+                    )
 
 
 def parse_args() -> argparse.Namespace:

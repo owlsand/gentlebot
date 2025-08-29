@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..util import build_db_url, ReactionAction
+from ..util import build_db_url, ReactionAction, user_name
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -220,14 +220,22 @@ class DailyDigestCog(commands.Cog):
         top_msgs = await self._top_posters(14)
         top_reacts = await self._reaction_magnets(14)
         hero_candidates = await self._yesterday_top_poster()
-        log.debug("Hero candidates: %s", hero_candidates)
+        log.debug(
+            "Hero candidates: %s",
+            [user_name(guild.get_member(uid) or uid) for uid, _ in hero_candidates],
+        )
         hero: int | None = None
         for uid, _ in hero_candidates:
             last = await self._last_hero_time(uid)
-            log.debug("Evaluating candidate %s with last hero time %s", uid, last)
+            name = user_name(guild.get_member(uid) or uid)
+            log.debug(
+                "Evaluating candidate %s with last hero time %s",
+                name,
+                last,
+            )
             if not last or last <= datetime.now(tz=LA) - timedelta(hours=72):
                 hero = uid
-                log.debug("Selected Daily Hero: %s", uid)
+                log.debug("Selected Daily Hero: %s", name)
                 break
         if hero is None:
             log.debug("No eligible Daily Hero found")

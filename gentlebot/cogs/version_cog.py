@@ -12,7 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from ..version import VERSION
-from ..util import chan_name
+from ..util import chan_name, user_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -27,7 +27,11 @@ class VersionCog(commands.Cog):
     @app_commands.command(name="version", description="Show the current bot version")
     async def version(self, interaction: discord.Interaction):
         """Reply with the Git commit hash of the running bot."""
-        log.info("/version invoked by %s in %s", interaction.user.id, chan_name(interaction.channel))
+        log.info(
+            "/version invoked by %s in %s",
+            user_name(interaction.user),
+            chan_name(interaction.channel),
+        )
         await interaction.response.send_message(
             f"Gentlebot version: {VERSION}", ephemeral=True
         )

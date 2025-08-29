@@ -3,7 +3,7 @@ import logging
 
 import discord
 from discord.ext import commands
-from ..util import chan_name
+from ..util import chan_name, user_name
 
 # Use the same logger as main.py so handlers are attached
 log = logging.getLogger("gentlebot")
@@ -25,20 +25,30 @@ class TestLoggingCog(commands.Cog):
         if interaction.type is discord.InteractionType.application_command:
             data = interaction.data or {}
             name = data.get("name")
-            log.info("[TEST] Slash command /%s by %s in %s", name, interaction.user.id, chan_name(interaction.channel))
+            log.info(
+                "[TEST] Slash command /%s by %s in %s",
+                name,
+                user_name(interaction.user),
+                chan_name(interaction.channel),
+            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
-        log.info("[TEST] Message from %s in %s: %s", message.author.id, chan_name(message.channel), message.content.replace('\n', ' '))
+        log.info(
+            "[TEST] Message from %s in %s: %s",
+            user_name(message.author),
+            chan_name(message.channel),
+            message.content.replace("\n", " "),
+        )
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         log.info(
             "[TEST] Reaction %s added by %s to %s in %s",
             str(payload.emoji),
-            payload.user_id,
+            user_name(self.bot.get_user(payload.user_id) or payload.user_id),
             payload.message_id,
             chan_name(self.bot.get_channel(payload.channel_id)),
         )
