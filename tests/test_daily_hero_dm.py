@@ -11,22 +11,18 @@ from apscheduler.triggers.cron import CronTrigger
 
 from gentlebot import bot_config as cfg
 from gentlebot.tasks.daily_hero_dm import DailyHeroDMCog
+from gentlebot.llm.router import router
 
 
 @pytest.fixture()
 def cog(monkeypatch):
-    os.environ.setdefault("HF_API_TOKEN", "dummy")
+    os.environ.setdefault("GEMINI_API_KEY", "dummy")
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     return DailyHeroDMCog(bot)
 
 
 def test_generate_message_fallback(cog, monkeypatch):
-    def fake_gen(*args, **kwargs):
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="Hello there"))]
-        )
-    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_gen)))
-    monkeypatch.setattr(cog, "hf_client", client)
+    monkeypatch.setattr(router, "generate", lambda *a, **k: "Hello there")
     msg = asyncio.run(cog._generate_message("Tester", 5))
     assert "Daily Hero role until midnight Pacific" in msg
     assert "Gentlefolk" in msg
@@ -39,13 +35,7 @@ def test_generate_message_success(cog, monkeypatch):
         "lasting until midnight, so savour this distinguished laurel."
     )
 
-    def fake_gen(*args, **kwargs):
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=sample))]
-        )
-
-    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_gen)))
-    monkeypatch.setattr(cog, "hf_client", client)
+    monkeypatch.setattr(router, "generate", lambda *a, **k: sample)
     msg = asyncio.run(cog._generate_message("Tester", 5))
     assert msg == sample
 

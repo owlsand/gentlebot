@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
@@ -13,11 +12,8 @@ from discord.ext import commands
 
 from ..db import get_pool
 from ..util import int_env
-
-try:
-    from huggingface_hub import InferenceClient
-except Exception:  # pragma: no cover - optional dependency may be missing
-    InferenceClient = None  # type: ignore
+from ..llm.router import router, SafetyBlocked
+from ..infra.quotas import RateLimited
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -37,16 +33,9 @@ class BurstThreadCog(commands.Cog):
         self.last_trigger: dict[int, datetime] = defaultdict(
             lambda: datetime.min.replace(tzinfo=timezone.utc)
         )
-        token = os.getenv("HF_API_TOKEN")
-        if InferenceClient and token:
-            self.hf_client = InferenceClient(provider="together", api_key=token)
-        else:
-            self.hf_client = None
-        self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.max_tokens = int_env("HF_MAX_TOKENS", 10)
-        self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
-        self.top_p = float(os.getenv("HF_TOP_P", 0.9))
-        self.alert_tokens = int_env("HF_ALERT_TOKENS", 50)
+        self.max_tokens = 10
+        self.temperature = 0.6
+        self.alert_tokens = 50
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
@@ -60,35 +49,26 @@ class BurstThreadCog(commands.Cog):
 
     async def _summarize(self, text: str) -> str:
         """Return a four-word topic summary."""
-        if not self.hf_client:
-            return "Chat Burst Thread"
         prompt = (
             "Summarize the main topic of these messages in four words or less.\n" + text
         )
         try:
-            result = await asyncio.to_thread(
-                self.hf_client.chat.completions.create,
-                model=self.model_id,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                top_p=self.top_p,
+            return await asyncio.to_thread(
+                router.generate,
+                "general",
+                [{"role": "user", "content": prompt}],
+                self.temperature,
             )
-            content = getattr(result.choices[0].message, "content", "").strip()
-            return content or "Chat Burst Thread"
+        except RateLimited:
+            return "Let me get back to you on this... I'm a bit busy right now."
+        except SafetyBlocked:
+            return "Your inquiry is being blocked by my policy commitments."
         except Exception as exc:  # pragma: no cover - network
-            log.exception("HF summary failed: %s", exc)
+            log.exception("Summary failed: %s", exc)
             return "Chat Burst Thread"
 
     async def _alert_text(self, topic: str, thread_mention: str) -> str:
         """Generate an enthusiastic notice suggesting a thread."""
-        if not self.hf_client:
-            return (
-                "📈 Wow, looks like you're getting pretty into "
-                f"{topic}! Here's a thread if you want to take it offline "
-                "to avoid blowing up everyone else's notifications: "
-                f"{thread_mention}"
-            )
         prompt = (
             "The chat topic is: "
             + topic
@@ -98,20 +78,26 @@ class BurstThreadCog(commands.Cog):
             "where the thread mention should go."
         )
         try:
-            result = await asyncio.to_thread(
-                self.hf_client.chat.completions.create,
-                model=self.model_id,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.alert_tokens,
-                temperature=self.temperature,
-                top_p=self.top_p,
+            content = await asyncio.to_thread(
+                router.generate,
+                "general",
+                [{"role": "user", "content": prompt}],
+                self.temperature,
             )
-            content = getattr(result.choices[0].message, "content", "").strip()
             if content:
                 content = content.replace("<THREAD>", thread_mention)
                 return "📈 " + content
+        except RateLimited:
+            return (
+                "📈 Wow, looks like you're getting pretty into "
+                f"{topic}! Here's a thread if you want to take it offline "
+                "to avoid blowing up everyone else's notifications: "
+                f"{thread_mention}"
+            )
+        except SafetyBlocked:
+            return "Your inquiry is being blocked by my policy commitments."
         except Exception as exc:  # pragma: no cover - network
-            log.exception("HF alert failed: %s", exc)
+            log.exception("Alert text failed: %s", exc)
         return (
             "📈 Wow, looks like you're getting pretty into "
             f"{topic}! Here's a thread if you want to take it offline "

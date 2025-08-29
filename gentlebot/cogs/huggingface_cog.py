@@ -1,19 +1,18 @@
 """HuggingFace-powered conversational responses and emoji reactions."""
 
-import os
 import re
 import time
 import random
 import asyncio
 import logging
 from collections import defaultdict
-from requests.exceptions import HTTPError
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-from ..util import chan_name, int_env
-from huggingface_hub import InferenceClient
+from ..util import chan_name
+from ..llm.router import router, SafetyBlocked
+from ..infra.quotas import RateLimited
 
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
@@ -25,23 +24,8 @@ class HuggingFaceCog(commands.Cog):
         self.bot = bot
 
         # === Env/config ===
-        self.hf_api_key = os.getenv("HF_API_TOKEN")
-        # Optional secondary token used if the primary hits a billing error
-        self.hf_api_key_alt = os.getenv("HF_API_TOKEN_ALT")
-        self._using_alt = False
-        self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.max_tokens = int_env("HF_MAX_TOKENS", 150)
-        self.temperature = float(os.getenv("HF_TEMPERATURE", 0.6))
-        self.top_p = float(os.getenv("HF_TOP_P", 0.9))
-
-        if not self.hf_api_key:
-            raise RuntimeError("HF_API_TOKEN is not set in environment")
-
-        # === Inference client ===
-        self.hf_client = InferenceClient(
-            api_key=self.hf_api_key,
-            provider="together"
-        )
+        self.max_tokens = 150
+        self.temperature = 0.6
 
         # === Mention strings (populated after on_ready) ===
         self.mention_strs: list[str] = []
@@ -95,40 +79,9 @@ class HuggingFaceCog(commands.Cog):
 
         return prompt
 
-    def friendly_hf_error(self, err: Exception) -> str:
-        """Return a user-friendly message for a HuggingFace error."""
-        msg = str(err)
-        if "Payment Required" in msg:
-            return "Apologies, my batteries are low and in need of a recharge."
-        if "Too Many Requests" in msg or "429" in msg:
-            return "Terribly sorry, I'm processing quite a few tasks. Please try again shortly."
-        if "Service Unavailable" in msg or "503" in msg:
-            return "My connection to the knowledge chamber faltered. A moment's patience, please."
-        return f"⚠️ HuggingFace error: {err}"
 
-    def _is_billing_error(self, err: Exception) -> bool:
-        """Return True if the error appears to be billing-related."""
-        msg = str(err).lower()
-        if (
-            "payment required" in msg
-            or "payment" in msg
-            or "billing" in msg
-            or "insufficient" in msg
-            or "402" in msg
-            or "credit" in msg
-            or "quota" in msg
-        ):
-            return True
-        if isinstance(err, HTTPError):
-            resp = getattr(err, "response", None)
-            if resp is not None and getattr(resp, "status_code", None) == 402:
-                return True
-        return False
-
-    async def call_hf(self, channel_id: int, user_prompt: str) -> str:
-        """
-        Build context with channel info + recent history + system directive, send to HF, update history.
-        """
+    async def call_llm(self, channel_id: int, user_prompt: str) -> str:
+        """Send chat history to Gemini and return the reply."""
         # Fetch channel info for tone adjustment
         channel = self.bot.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
@@ -154,47 +107,17 @@ class HuggingFaceCog(commands.Cog):
         messages.append({"role": "system", "content": system_directive})
         messages.append({"role": "user", "content": user_prompt})
 
-        log.debug(
-            "Calling HF with %s token", "alternate" if self._using_alt else "primary"
-        )
-
         try:
-            completion = self.hf_client.chat.completions.create(
-                model=self.model_id,
-                messages=messages,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                top_p=self.top_p,
+            reply = await asyncio.to_thread(
+                router.generate, "general", messages, self.temperature
             )
-        except Exception as e:
-            log.exception("HF call failed with primary token: %s", e)
-            if (
-                self.hf_api_key_alt
-                and not self._using_alt
-                and self._is_billing_error(e)
-            ):
-                log.warning(
-                    "Primary HF token hit billing issue; retrying with alternate token"
-                )
-                self.hf_client = InferenceClient(
-                    api_key=self.hf_api_key_alt, provider="together"
-                )
-                self._using_alt = True
-                try:
-                    completion = self.hf_client.chat.completions.create(
-                        model=self.model_id,
-                        messages=messages,
-                        max_tokens=self.max_tokens,
-                        temperature=self.temperature,
-                        top_p=self.top_p,
-                    )
-                except Exception as alt_e:
-                    log.exception("HF call failed with alternate token: %s", alt_e)
-                    raise
-            else:
-                raise
-
-        reply = getattr(completion.choices[0].message, "content", "")
+        except RateLimited:
+            return "Let me get back to you on this... I'm a bit busy right now."
+        except SafetyBlocked:
+            return "Your inquiry is being blocked by my policy commitments."
+        except Exception:
+            log.exception("Model call failed")
+            return "Something's wrong... I need a mechanic."
 
         history.append({"role": "user", "content": user_prompt})
         history.append({"role": "assistant", "content": reply})
@@ -204,7 +127,7 @@ class HuggingFaceCog(commands.Cog):
         log.info("Response invoked in channel %s with prompt: %s", chan_name(channel), user_prompt)
         return reply
 
-    async def choose_emoji_hf(self, message_content: str, available_emojis: list[str]) -> str | None:
+    async def choose_emoji_llm(self, message_content: str, available_emojis: list[str]) -> str | None:
         """
         Ask the HF model to select an emoji from the provided available_emojis list that humorously reacts to the message_content.
         Returns the selected emoji string from available_emojis, or None on failure.
@@ -216,7 +139,7 @@ class HuggingFaceCog(commands.Cog):
         )
         try:
             # Use dummy channel to avoid polluting histories
-            response = await self.call_hf(0, prompt)
+            response = await self.call_llm(0, prompt)
             for emoji in available_emojis:
                 if emoji in response:
                     return emoji
@@ -249,7 +172,7 @@ class HuggingFaceCog(commands.Cog):
             if message.guild and message.guild.emojis:
                 available.extend(str(e) for e in message.guild.emojis)
             available.extend(self.default_emojis)
-            emoji_resp = await self.choose_emoji_hf(message.content, available) if available else None
+            emoji_resp = await self.choose_emoji_llm(message.content, available) if available else None
             emoji_to_use = emoji_resp if emoji_resp else random.choice(available)
             try:
                 await message.add_reaction(emoji_to_use)
@@ -324,9 +247,9 @@ class HuggingFaceCog(commands.Cog):
         # 11) Typing indicator while fetching
         async with message.channel.typing():
             try:
-                response = await self.call_hf(message.channel.id, sanitized)
+                response = await self.call_llm(message.channel.id, sanitized)
             except Exception as e:
-                log.exception("HF call failed: %s", self.friendly_hf_error(e))
+                log.exception("Model call failed: %s", e)
                 return
 
         # 12) Paginate if needed
@@ -348,9 +271,9 @@ class HuggingFaceCog(commands.Cog):
             log.info("Rejected prompt for /ask: too long, empty, or disallowed mentions.")
             return
         try:
-            response = await self.call_hf(interaction.channel_id, sanitized)
+                response = await self.call_llm(interaction.channel_id, sanitized)
         except Exception as e:
-            log.exception("HF call failed in /ask: %s", self.friendly_hf_error(e))
+            log.exception("Model call failed in /ask: %s", e)
             return
 
         if len(response) <= 2000:

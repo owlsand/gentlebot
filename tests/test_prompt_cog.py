@@ -6,8 +6,9 @@ from gentlebot.cogs import prompt_cog
 def test_engagement_bait_category_and_fallback(monkeypatch):
     assert "Engagement Bait" in prompt_cog.PROMPT_CATEGORIES
 
-    monkeypatch.setenv("HF_API_TOKEN", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["React with an emoji!"])
+    monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
     def fake_choice(seq):
         if seq == prompt_cog.PROMPT_CATEGORIES:
@@ -25,8 +26,9 @@ def test_engagement_bait_category_and_fallback(monkeypatch):
 def test_sports_news_category_and_fallback(monkeypatch):
     assert "Sports News" in prompt_cog.PROMPT_CATEGORIES
 
-    monkeypatch.setenv("HF_API_TOKEN", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["Goal or no goal?"])
+    monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
     async def fake_topic(self):
         return "Team X wins"
@@ -177,23 +179,8 @@ def test_duplicate_prompt_updates_message_count():
 
 
 def test_fetch_prompt_strips_outer_quotes(monkeypatch):
-    monkeypatch.setenv("HF_API_TOKEN", "token")
-
-    class DummyInferenceClient:
-        def __init__(self, provider, api_key):
-            self.chat = types.SimpleNamespace(
-                completions=types.SimpleNamespace(create=None)
-            )
-
-    async def fake_to_thread(func, *args, **kwargs):
-        msg = types.SimpleNamespace(content='"Quoted prompt"')
-        completion = types.SimpleNamespace(
-            choices=[types.SimpleNamespace(message=msg)]
-        )
-        return completion
-
-    monkeypatch.setattr(prompt_cog, "InferenceClient", DummyInferenceClient)
-    monkeypatch.setattr(prompt_cog.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setenv("GEMINI_API_KEY", "token")
+    monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: '"Quoted prompt"')
     monkeypatch.setattr(prompt_cog.random, "choice", lambda seq: seq[0])
 
     cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())

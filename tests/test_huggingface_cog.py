@@ -15,7 +15,7 @@ async def dummy_typing():
 
 
 def test_on_message_logs_failure_no_reply(monkeypatch):
-    monkeypatch.setenv("HF_API_TOKEN", "fake")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)
     cog = HuggingFaceCog(bot)
@@ -38,7 +38,7 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     async def raise_error(*args, **kwargs):
         raise RuntimeError("boom")
 
-    cog.call_hf = raise_error
+    cog.call_llm = raise_error
 
     asyncio.run(cog.on_message(message))
 

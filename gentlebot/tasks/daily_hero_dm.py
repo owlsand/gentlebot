@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import logging
+import asyncio
 
 import pytz
 import asyncpg
@@ -9,10 +10,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 import discord
 from discord.ext import commands
-from huggingface_hub import InferenceClient
 
 from .. import bot_config as cfg
 from ..util import build_db_url
+from ..llm.router import router, SafetyBlocked
+from ..infra.quotas import RateLimited
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -41,11 +43,7 @@ class DailyHeroDMCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        token = os.getenv("HF_API_TOKEN")
-        if not token:
-            raise RuntimeError("HF_API_TOKEN is not set")
-        self.model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
-        self.hf_client = InferenceClient(api_key=token, provider="together")
+        self.temperature = 0.7
         self.scheduler: AsyncIOScheduler | None = None
         self.pool: asyncpg.Pool | None = None
 
@@ -95,16 +93,18 @@ class DailyHeroDMCog(commands.Cog):
     async def _generate_message(self, display_name: str, wins: int) -> str:
         prompt = self._build_prompt(display_name, wins)
         try:
-            completion = self.hf_client.chat.completions.create(
-                model=self.model_id,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=60,
-                temperature=0.7,
-                top_p=0.9,
+            text = await asyncio.to_thread(
+                router.generate,
+                "scheduled",
+                [{"role": "user", "content": prompt}],
+                self.temperature,
             )
-            text = getattr(completion.choices[0].message, "content", "").strip().replace("\n", " ")
+            text = text.strip().replace("\n", " ")
+        except (RateLimited, SafetyBlocked) as e:
+            log.warning("scheduled DM generation failed: %s", e)
+            return self._fallback(display_name, wins)
         except Exception as e:
-            log.exception("HF generation failed: %s", e)
+            log.exception("Generation failed: %s", e)
             return self._fallback(display_name, wins)
 
         if not self._is_valid(text):
