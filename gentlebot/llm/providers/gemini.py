@@ -43,11 +43,22 @@ class GeminiClient:
         self.client = genai.Client(api_key=api_key)
 
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        parts = []
+        """Translate internal message format to Gemini's expected structure.
+
+        The Gemini SDK expects each message as a ``Content`` object with parts that
+        are ``Part`` instances (or dictionaries with a ``text`` field).  Previously
+        we passed the raw string directly which caused pydantic validation errors
+        like ``Input should be a valid dictionary``.  This method now wraps each
+        message content in a ``{"text": ...}`` part so the request validates
+        correctly.
+        """
+
+        converted: List[Dict[str, Any]] = []
         for m in messages:
             role = ROLE_MAP.get(m.get("role", "user"), "user")
-            parts.append({"role": role, "parts": [m.get("content", "")]})
-        return parts
+            content = m.get("content", "")
+            converted.append({"role": role, "parts": [{"text": content}]})
+        return converted
 
     def generate(
         self,
