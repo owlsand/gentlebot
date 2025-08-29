@@ -80,13 +80,23 @@ async def on_ready() -> None:
         )
 
         async def _run_backfills() -> None:
-            await backfill_commands.run_backfill(days)
-            await asyncio.sleep(5)
-            await backfill_archive.run_backfill(days)
-            await asyncio.sleep(5)
-            await backfill_reactions.run_backfill(days)
-            await asyncio.sleep(5)
-            await backfill_roles.run_backfill()
+            backfills = [
+                ("commands", backfill_commands.run_backfill, days),
+                ("archive", backfill_archive.run_backfill, days),
+                ("reactions", backfill_reactions.run_backfill, days),
+                ("roles", backfill_roles.run_backfill, None),
+            ]
+
+            for i, (name, func, arg) in enumerate(backfills):
+                try:
+                    if arg is None:
+                        await func()
+                    else:
+                        await func(arg)
+                except Exception:
+                    logger.exception("Backfill %s failed", name)
+                if i < len(backfills) - 1:
+                    await asyncio.sleep(5)
 
         _backfill_tasks.append(asyncio.create_task(_run_backfills()))
 
