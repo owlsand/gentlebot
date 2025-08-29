@@ -24,7 +24,9 @@ class SafetyBlocked(Exception):
 
 class LLMRouter:
     def __init__(self) -> None:
-        api_key = os.getenv("GEMINI_API_KEY", "test")
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key is None:
+            log.debug("GEMINI_API_KEY environment variable not set")
         self.client = GeminiClient(api_key)
         self.models = {
             "general": os.getenv("MODEL_GENERAL", "gemini-2.5-flash"),
