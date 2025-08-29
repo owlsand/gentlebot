@@ -39,7 +39,24 @@ ROLE_MAP = {"user": "user", "assistant": "model", "system": "system"}
 class GeminiClient:
     """Wrapper around the google-genai client."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str | None) -> None:
+        """Create a Gemini API client.
+
+        Parameters
+        ----------
+        api_key:
+            API key used to authenticate with Gemini.  When not provided the
+            client is still created with a dummy key so imports don't fail,
+            but requests will error.  This method logs a warning in that case
+            to make configuration issues easier to spot.
+        """
+
+        if not api_key:
+            log.warning("GEMINI_API_KEY not configured; using placeholder key")
+            api_key = "test"
+        else:
+            log.debug("GEMINI_API_KEY provided (%d chars)", len(api_key))
+
         self.client = genai.Client(api_key=api_key)
 
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -74,11 +91,15 @@ class GeminiClient:
         if thinking_budget:
             config.thinking = genai.types.ThinkingConfig(budget_tokens=thinking_budget)
         content = self._convert_messages(messages)
-        response = self.client.models.generate_content(
-            model=model,
-            contents=content,
-            config=config,
-        )
+        try:
+            response = self.client.models.generate_content(
+                model=model,
+                contents=content,
+                config=config,
+            )
+        except Exception as exc:  # pragma: no cover - optional logging
+            log.exception("Gemini API call failed: %s", exc)
+            raise
         return response
 
     def generate_image(self, model: str, prompt: str, *images: bytes) -> Any:
