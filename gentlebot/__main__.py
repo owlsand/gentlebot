@@ -55,10 +55,12 @@ class GentleBot(commands.Bot):
 bot = GentleBot(command_prefix="!", intents=intents)
 
 _synced = False
+_backfills_started = False
+_backfill_tasks: list[asyncio.Task] = []
 
 @bot.event
 async def on_ready() -> None:
-    global _synced
+    global _synced, _backfills_started
     logger.info("%s is now online in this guild", bot.user)
     if not _synced:
         try:
@@ -67,6 +69,24 @@ async def on_ready() -> None:
             _synced = True
         except Exception as e:
             logger.exception("Failed to sync commands: %s", e)
+    if not _backfills_started:
+        _backfills_started = True
+        days = int(os.getenv("BACKFILL_DAYS", "30"))
+        from . import (
+            backfill_archive,
+            backfill_commands,
+            backfill_reactions,
+            backfill_roles,
+        )
+
+        _backfill_tasks.extend(
+            [
+                asyncio.create_task(backfill_commands.run_backfill(days)),
+                asyncio.create_task(backfill_archive.run_backfill(days)),
+                asyncio.create_task(backfill_reactions.run_backfill(days)),
+                asyncio.create_task(backfill_roles.run_backfill()),
+            ]
+        )
 
 @bot.event
 async def on_error(event: str, *args, **kwargs) -> None:
