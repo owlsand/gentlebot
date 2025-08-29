@@ -64,9 +64,9 @@ async def on_ready() -> None:
         try:
             cmds = await bot.tree.sync()
             logger.info("Synced %d commands.", len(cmds))
+            _synced = True
         except Exception as e:
             logger.exception("Failed to sync commands: %s", e)
-        _synced = True
 
 @bot.event
 async def on_error(event: str, *args, **kwargs) -> None:
