@@ -33,8 +33,8 @@ except Exception:  # pragma: no cover - optional dependency
 log = logging.getLogger(f"gentlebot.{__name__}")
 
 
-# Gemini only accepts "user" or "model" roles.  System messages are handled
-# separately via the ``system_instruction`` argument when generating content.
+# Gemini only accepts "user" or "model" roles; "system" prompts are coerced to
+# a "user" role because google-genai v1.32.0 lacks a dedicated parameter.
 ROLE_MAP = {"user": "user", "assistant": "model"}
 
 
@@ -60,25 +60,6 @@ class GeminiClient:
             log.debug("GEMINI_API_KEY provided (%d chars)", len(api_key))
 
         self.client = genai.Client(api_key=api_key)
-
-    def _extract_system_instruction(
-        self, messages: List[Dict[str, Any]]
-    ) -> tuple[str | None, List[Dict[str, Any]]]:
-        """Split out a system instruction from chat messages.
-
-        Gemini's SDK expects system directives to be provided separately from the
-        user/model message list.  This helper returns the system instruction text
-        and the remaining non-system messages.
-        """
-
-        system_text: str | None = None
-        remaining: List[Dict[str, Any]] = []
-        for m in messages:
-            if m.get("role") == "system" and system_text is None:
-                system_text = m.get("content", "")
-            else:
-                remaining.append(m)
-        return system_text, remaining
 
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Translate internal message format to Gemini's expected structure.
@@ -111,17 +92,11 @@ class GeminiClient:
             config.response_mime_type = "application/json"
         if thinking_budget:
             config.thinking = genai.types.ThinkingConfig(budget_tokens=thinking_budget)
-        system_instruction, remaining = self._extract_system_instruction(messages)
-        content = self._convert_messages(remaining)
+        content = self._convert_messages(messages)
         try:
-            kwargs: Dict[str, Any] = {
-                "model": model,
-                "contents": content,
-                "config": config,
-            }
-            if system_instruction:
-                kwargs["system_instruction"] = system_instruction
-            response = self.client.models.generate_content(**kwargs)
+            response = self.client.models.generate_content(
+                model=model, contents=content, config=config
+            )
         except Exception as exc:  # pragma: no cover - optional logging
             log.exception("Gemini API call failed: %s", exc)
             raise
