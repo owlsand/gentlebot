@@ -139,7 +139,14 @@ class LLMRouter:
 
         data = None
         try:
-            data = resp.candidates[0].content.parts[0].inline_data.data  # type: ignore
+            # Gemini responses may include textual parts before the actual
+            # image data. Walk through all returned parts and capture the
+            # final ``inline_data`` block as the effective image result.
+            parts = resp.candidates[0].content.parts  # type: ignore[attr-defined]
+            for part in parts:
+                inline = getattr(part, "inline_data", None)
+                if inline and getattr(inline, "data", None):
+                    data = inline.data
         except Exception:
             data = None
         total_ms = (time.time() - start) * 1000
