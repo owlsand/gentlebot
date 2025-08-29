@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 from discord.ext import commands
 
-import gentlebot.cogs.huggingface_cog as hf_cog
-from gentlebot.cogs.huggingface_cog import HuggingFaceCog
+import gentlebot.cogs.gemini_cog as gemini_cog
+from gentlebot.cogs.gemini_cog import GeminiCog
 
 
 @asynccontextmanager
@@ -18,7 +18,7 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)
-    cog = HuggingFaceCog(bot)
+    cog = GeminiCog(bot)
     cog.mention_strs = ["<@123>"]
 
     message = MagicMock(spec=discord.Message)
@@ -33,7 +33,7 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(hf_cog.random, "random", lambda: 1)
+    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     async def raise_error(*args, **kwargs):
         raise RuntimeError("boom")

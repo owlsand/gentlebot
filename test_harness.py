@@ -5,7 +5,7 @@ import os
 import discord
 
 os.environ.setdefault("env", "TEST")
-os.environ.setdefault("HF_API_TOKEN", "dummy")
+os.environ.setdefault("GEMINI_API_KEY", "dummy")
 os.environ.setdefault("DISCORD_TOKEN", "dummy")
 os.environ.setdefault("PG_DSN", "")
 os.environ.pop("PG_USER", None)

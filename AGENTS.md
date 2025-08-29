@@ -1,6 +1,6 @@
 # Repository Guide
 
-Gentlebot is a modular Discord bot built with **discord.py** v2. Each feature lives in a separate _cog_ under the `cogs/` folder. The bot integrates with third‑party APIs such as Hugging Face and Yahoo Finance.
+Gentlebot is a modular Discord bot built with **discord.py** v2. Each feature lives in a separate _cog_ under the `cogs/` folder. The bot integrates with third‑party APIs such as Gemini and Yahoo Finance.
 
 ## Running the bot
 1. Create a virtual environment and install the libraries listed in the README.
@@ -15,7 +15,7 @@ Gentlebot is a modular Discord bot built with **discord.py** v2. Each feature li
 
 ## Interacting with APIs
  - API tokens and IDs are read from `.env` variables. Never commit actual tokens.
- - The Hugging Face cogs require `HF_API_TOKEN` and optionally `HF_API_TOKEN_ALT` for billing fallback; other cogs may use public APIs.
+ - The Gemini cogs require `GEMINI_API_KEY`; other cogs may use public APIs.
 
 ## Tests
 Before committing run the local checks below.  Install dependencies with

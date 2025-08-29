@@ -108,7 +108,7 @@ class DailyHeroDMCog(commands.Cog):
             return self._fallback(display_name, wins)
 
         if not self._is_valid(text):
-            log.debug("Invalid HF message '%s'; using fallback", text)
+            log.debug("Invalid Gemini message '%s'; using fallback", text)
             return self._fallback(display_name, wins)
         return text
 

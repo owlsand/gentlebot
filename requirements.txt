@@ -13,7 +13,6 @@ beautifulsoup4
 yfinance
 matplotlib
 pandas
-huggingface-hub
 watchfiles
 watchdog
 APScheduler==3.10.4

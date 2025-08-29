@@ -201,7 +201,7 @@ class PromptCog(commands.Cog):
         self.pool = None
 
     async def fetch_prompt(self) -> str:
-        """Generate a new prompt via HF inference, including history."""
+        """Generate a new prompt via Gemini inference, including history."""
         category = random.choice(PROMPT_CATEGORIES)
         self.last_category = category
         messages = [

@@ -1,5 +1,5 @@
 # Gentlebot
-Gentlebot is a modular Discord bot composed of several **cogs** that handle different features.  It uses `discord.py` v2 and integrates with third‑party APIs such as Hugging Face and Yahoo Finance.
+Gentlebot is a modular Discord bot composed of several **cogs** that handle different features.  It uses `discord.py` v2 and integrates with third‑party APIs such as Gemini and Yahoo Finance.
 
 ## Features
 - **SportsCog** – `/nextf1` and `/f1standings` plus `/bigdumper` for Mariners stats.
@@ -9,12 +9,12 @@ Gentlebot is a modular Discord bot composed of several **cogs** that handle diff
   Admins can still run `/refreshroles` to fetch 14 days of history and refresh
   roles manually. Ensure the bot's role is above these vanity roles and has the
   **Manage Roles** permission so it can assign and remove them.
-- **PromptCog** – Posts a daily prompt generated via the Hugging Face API at
+- **PromptCog** – Posts a daily prompt generated via the Gemini API at
   12:30 pm Pacific time by default. Categories rotate randomly among recent
   server discussion, general sports news, and engagement bait without
   repeating recent types. The rotation state persists in
   `prompt_state.json` so redeployments keep things fresh.
-- **HuggingFaceCog** – Adds AI conversation and emoji reactions using Hugging Face models.
+- **GeminiCog** – Adds AI conversation and emoji reactions using Gemini models.
 - **StatsCog** – `/engagement` now replies "Working on it..." and then gathers
   unlimited history in the background before posting the stats and optional
   activity chart.
@@ -29,7 +29,7 @@ gentlebot/cogs/               # feature cogs
   sports_cog.py     # F1 and baseball commands
   market_cog.py     # market commands and weekly game
   prompt_cog.py     # daily prompts
-  huggingface_cog.py # conversation + emoji reactions
+  gemini_cog.py    # conversation + emoji reactions
   stats_cog.py      # engagement statistics
 scripts/start.sh   # container entrypoint
 setup.sh           # install dependencies and create the venv
@@ -45,9 +45,7 @@ setup.sh           # install dependencies and create the venv
    DISCORD_GUILD_ID=<guild id>
     ALPHA_VANTAGE_KEY=<alpha vantage api key>
    MONEY_TALK_CHANNEL=<market channel id>
-   HF_API_TOKEN=<hugging face token>
-   # optional fallback if the primary token hits a billing error
-   HF_API_TOKEN_ALT=<secondary hugging face token>
+   GEMINI_API_KEY=<gemini api key>
    # optional Postgres credentials for logging
    PG_HOST=db
    PG_PORT=5432
@@ -143,9 +141,8 @@ roles at 08:30 PT.
 
 ## Notes
 - `BOT_ENV` controls whether `bot_config.py` loads **TEST** or **PROD** IDs.
- - The Hugging Face cogs require an API key in `HF_API_TOKEN` and optionally `HF_MODEL`.
-   You can provide a backup key in `HF_API_TOKEN_ALT` which will be used if the
-   primary token hits a billing error.
+ - Gemini features require a `GEMINI_API_KEY`. Optional overrides like `MODEL_GENERAL`
+   can customize which Gemini model is used.
  - Set `PG_DSN` (or PG_* creds) to enable writing bot logs to a Postgres database.
 
 ## Contributing

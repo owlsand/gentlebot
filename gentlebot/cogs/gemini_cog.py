@@ -1,4 +1,4 @@
-"""HuggingFace-powered conversational responses and emoji reactions."""
+"""Gemini-powered conversational responses and emoji reactions."""
 
 import re
 import time
@@ -19,7 +19,7 @@ from ..infra.quotas import RateLimited
 log = logging.getLogger(f"gentlebot.{__name__}")
 
 
-class HuggingFaceCog(commands.Cog):
+class GeminiCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
@@ -129,8 +129,9 @@ class HuggingFaceCog(commands.Cog):
 
     async def choose_emoji_llm(self, message_content: str, available_emojis: list[str]) -> str | None:
         """
-        Ask the HF model to select an emoji from the provided available_emojis list that humorously reacts to the message_content.
-        Returns the selected emoji string from available_emojis, or None on failure.
+        Ask the Gemini model to select an emoji from the provided available_emojis list
+        that humorously reacts to the message_content. Returns the selected emoji string
+        from available_emojis, or None on failure.
         """
         emoji_list_str = ", ".join(available_emojis)
         prompt = (
@@ -145,7 +146,7 @@ class HuggingFaceCog(commands.Cog):
                     return emoji
             return None
         except Exception as e:
-            log.exception("HF emoji selection failed: %s", e)
+            log.exception("Gemini emoji selection failed: %s", e)
             return None
 
     @commands.Cog.listener()
@@ -283,4 +284,4 @@ class HuggingFaceCog(commands.Cog):
                 await interaction.followup.send(chunk)
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(HuggingFaceCog(bot))
+    await bot.add_cog(GeminiCog(bot))
