@@ -9,8 +9,13 @@ from typing import List, Dict, Any
 from .providers.gemini import GeminiClient
 from ..infra.retries import call_with_backoff
 from ..infra.quotas import QuotaGuard, Limit, RateLimited
+from dotenv import load_dotenv
 
 log = logging.getLogger(f"gentlebot.{__name__}")
+
+# Ensure environment variables from a local .env are loaded so the Gemini
+# API key is available even when this module is imported before bot_config.
+load_dotenv()
 
 
 class SafetyBlocked(Exception):
