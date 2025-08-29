@@ -43,6 +43,7 @@ def test_presence_logged(monkeypatch, caplog):
         before = type("M", (), {
             "guild": guild,
             "id": 2,
+            "display_name": "TestUser",
             "activities": [],
             "raw_status": "offline",
             "desktop_status": discord.Status.offline,
@@ -52,6 +53,7 @@ def test_presence_logged(monkeypatch, caplog):
         after = type("M", (), {
             "guild": guild,
             "id": 2,
+            "display_name": "TestUser",
             "activities": [DummyActivity()],
             "raw_status": "online",
             "desktop_status": discord.Status.online,
@@ -60,7 +62,7 @@ def test_presence_logged(monkeypatch, caplog):
         })()
         with caplog.at_level(logging.INFO, logger="gentlebot.gentlebot.cogs.presence_archive_cog"):
             await cog.on_presence_update(before, after)
-        assert "Presence update for 2 -> online" in caplog.text
+        assert "Presence update for TestUser -> online" in caplog.text
         assert len(pool.executed) == 2
         insert_query, insert_args = pool.executed[0]
         assert "INSERT INTO discord.presence_update" in insert_query

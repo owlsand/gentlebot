@@ -43,7 +43,11 @@ class PresenceArchiveCog(commands.Cog):
         guild_id = getattr(after.guild, "id", None)
         if guild_id is None:
             return
-        log.info("Presence update for %s -> %s", after.id, after.raw_status)
+        log.info(
+            "Presence update for %s -> %s",
+            getattr(after, "display_name", after.id),
+            after.raw_status,
+        )
         activities = [getattr(a, "to_dict", lambda: {})() for a in after.activities]
         client_status = {
             k: v.value
