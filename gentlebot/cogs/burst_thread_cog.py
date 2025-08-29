@@ -59,13 +59,11 @@ class BurstThreadCog(commands.Cog):
                 [{"role": "user", "content": prompt}],
                 self.temperature,
             )
-        except RateLimited:
-            return "Let me get back to you on this... I'm a bit busy right now."
-        except SafetyBlocked:
-            return "Your inquiry is being blocked by my policy commitments."
+        except (RateLimited, SafetyBlocked) as exc:
+            log.warning("Summary blocked: %s", exc)
         except Exception as exc:  # pragma: no cover - network
             log.exception("Summary failed: %s", exc)
-            return "Chat Burst Thread"
+        return "Chat Burst Thread"
 
     async def _alert_text(self, topic: str, thread_mention: str) -> str:
         """Generate an enthusiastic notice suggesting a thread."""
@@ -87,15 +85,8 @@ class BurstThreadCog(commands.Cog):
             if content:
                 content = content.replace("<THREAD>", thread_mention)
                 return "📈 " + content
-        except RateLimited:
-            return (
-                "📈 Wow, looks like you're getting pretty into "
-                f"{topic}! Here's a thread if you want to take it offline "
-                "to avoid blowing up everyone else's notifications: "
-                f"{thread_mention}"
-            )
-        except SafetyBlocked:
-            return "Your inquiry is being blocked by my policy commitments."
+        except (RateLimited, SafetyBlocked) as exc:
+            log.warning("Alert text blocked: %s", exc)
         except Exception as exc:  # pragma: no cover - network
             log.exception("Alert text failed: %s", exc)
         return (
