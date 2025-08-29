@@ -107,11 +107,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-async def main() -> None:
-    args = parse_args()
-    bot = BackfillBot(days=args.days)
+async def run_backfill(days: int) -> None:
+    """Run the reaction backfill for the given number of days."""
+    bot = BackfillBot(days=days)
     async with bot:
         await bot.start(cfg.TOKEN)
+
+
+async def main() -> None:
+    args = parse_args()
+    await run_backfill(args.days)
 
 
 if __name__ == "__main__":

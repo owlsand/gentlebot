@@ -124,10 +124,15 @@ class BackfillBot(commands.Bot):
         await self.close()
 
 
-async def main() -> None:
+async def run_backfill() -> None:
+    """Run the role backfill."""
     bot = BackfillBot()
     async with bot:
         await bot.start(cfg.TOKEN)
+
+
+async def main() -> None:
+    await run_backfill()
 
 
 if __name__ == "__main__":
