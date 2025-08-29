@@ -7,6 +7,7 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from . import bot_config as cfg
@@ -30,6 +31,17 @@ console_handler.setLevel(logging.INFO)
 root_logger = logging.getLogger()
 root_logger.setLevel(level)
 root_logger.addHandler(console_handler)
+
+# Suppress noisy CommandNotFound errors from the app command tree
+class _IgnoreMissingCommand(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        return not isinstance(exc, app_commands.CommandNotFound)
+
+
+logging.getLogger("discord.app_commands.tree").addFilter(
+    _IgnoreMissingCommand()
+)
 
 logger.info(
     "Starting GentleBot in %s environment with level %s",
