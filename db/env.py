@@ -9,8 +9,8 @@ import logging
 
 # log Alembic messages at INFO level
 logging.getLogger('alembic').setLevel(logging.INFO)
-# optionally, see full SQLAlchemy engine debugging
-logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+# reduce SQLAlchemy engine log verbosity
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -82,7 +82,7 @@ def run_migrations_online() -> None:
         section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        echo=True
+        echo=False
     )
 
     with connectable.connect() as connection:
