@@ -42,20 +42,30 @@ class CommandLogCog(commands.Cog):
     ) -> None:
         if not self.enabled or not self.pool:
             return
+
+        # guild_id is None for DMs, which violates the NOT NULL constraint.
+        if interaction.guild_id is None:
+            log.debug("Skipping command log for DM interaction")
+            return
+
         opts = interaction.data.get("options", []) if interaction.data else []
-        await self.pool.execute(
-            """
-            INSERT INTO discord.command_invocations (
-                guild_id, channel_id, user_id, command, args_json
-            ) VALUES ($1,$2,$3,$4,$5)
-            ON CONFLICT ON CONSTRAINT uniq_cmd_inv_guild_chan_user_cmd_ts DO NOTHING
-            """,
-            interaction.guild_id,
-            interaction.channel_id,
-            interaction.user.id,
-            command.name,
-            json.dumps(opts),
-        )
+
+        try:
+            await self.pool.execute(
+                """
+                INSERT INTO discord.command_invocations (
+                    guild_id, channel_id, user_id, command, args_json
+                ) VALUES ($1,$2,$3,$4,$5)
+                ON CONFLICT ON CONSTRAINT uniq_cmd_inv_guild_chan_user_cmd_ts DO NOTHING
+                """,
+                interaction.guild_id,
+                interaction.channel_id,
+                interaction.user.id,
+                command.name,
+                json.dumps(opts),
+            )
+        except Exception:
+            log.exception("Failed to log command invocation")
 
 
 async def setup(bot: commands.Bot):
