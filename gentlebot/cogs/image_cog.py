@@ -21,22 +21,51 @@ class ImageCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    async def _send_friendly_error(
+        self, interaction: discord.Interaction, error: Exception
+    ) -> None:
+        """Reply with a friendly message about an error.
+
+        This uses ``generate_content`` via ``router.generate`` to craft a short
+        apology that includes the error details.  If that fails (for example due
+        to quota limits) a generic fallback message is sent instead.
+        """
+        try:
+            message = await asyncio.to_thread(
+                router.generate,
+                "general",
+                [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Write a brief friendly apology explaining that the"
+                            f" image request failed because: {error}"
+                        ),
+                    }
+                ],
+            )
+            await interaction.followup.send(message)
+        except Exception:
+            await interaction.followup.send(
+                "Unfortunately I've exceeded quota and am being told to wait. "
+                "Try again in a bit."
+            )
+
     @app_commands.command(name="image", description="Generate an image with Gemini")
     async def image(self, interaction: discord.Interaction, prompt: str) -> None:
         await interaction.response.defer(thinking=True)
         try:
             data = await asyncio.to_thread(router.generate_image, prompt)
-        except RateLimited:
-            await interaction.followup.send(
-                "Let me get back to you on this... I'm a bit busy right now.")
+        except RateLimited as exc:
+            await self._send_friendly_error(interaction, exc)
             return
         except SafetyBlocked:
             await interaction.followup.send(
                 "Your inquiry is being blocked by my policy commitments.")
             return
-        except Exception:
+        except Exception as exc:
             log.exception("Image generation failed")
-            await interaction.followup.send("Something's wrong... I need a mechanic.")
+            await self._send_friendly_error(interaction, exc)
             return
         if data:
             file = discord.File(io.BytesIO(data), filename="gemini.png")
