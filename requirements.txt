@@ -16,4 +16,4 @@ pandas
 watchfiles
 watchdog
 APScheduler==3.10.4
-google-genai
+google-genai>=1.32.0
