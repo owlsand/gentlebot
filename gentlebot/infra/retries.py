@@ -20,9 +20,14 @@ def call_with_backoff(
             return fn()
         except Exception as exc:  # pragma: no cover - network
             status = getattr(getattr(exc, "response", None), "status_code", None)
-            if status not in {408, 409, 429} and not (status and 500 <= status < 600):
+            # Only retry on a small set of transient HTTP errors.
+            if status not in {408, 409} and not (status and 500 <= status < 600):
+                raise
+            # Bail out if we've exhausted all retry attempts.
+            if attempt == retries:
                 raise
             delay = min(max_delay, base * (2 ** attempt))
             delay += random.uniform(0, 0.1)
             time.sleep(delay)
-    return fn()
+    # Should be unreachable because either fn() succeeds or an exception is raised.
+    raise RuntimeError("call_with_backoff reached an unreachable state")
