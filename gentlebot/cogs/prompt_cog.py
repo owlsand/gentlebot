@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from collections import deque
 import discord
 from discord.ext import commands
-from ..util import chan_name
+from ..util import chan_name, user_name
 from ..db import get_pool
 from .. import bot_config as cfg
 from ..llm.router import router, SafetyBlocked
@@ -425,7 +425,7 @@ class PromptCog(commands.Cog):
 
     @commands.command(name='skip_prompt')
     async def skip_prompt(self, ctx: commands.Context):
-        log.info("skip_prompt invoked by %s in %s", ctx.author.id, chan_name(ctx.channel))
+        log.info("skip_prompt invoked by %s in %s", user_name(ctx.author), chan_name(ctx.channel))
         prompt = await self.fetch_prompt()
         await ctx.send(f"{prompt}")
 

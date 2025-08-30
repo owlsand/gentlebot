@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
-from ..util import chan_name
+from ..util import chan_name, user_name
 import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
@@ -134,7 +134,7 @@ class MarketCog(commands.Cog):
     @app_commands.describe(symbol="Ticker symbol", period="Time period")
     @app_commands.choices(period=[app_commands.Choice(name=n, value=v) for n,v in period_choices])
     async def stock(self, itx: discord.Interaction, symbol: str, period: app_commands.Choice[str]):
-        log.info("/stock invoked by %s in %s", itx.user.id, chan_name(itx.channel))
+        log.info("/stock invoked by %s in %s", user_name(itx.user), chan_name(itx.channel))
         await itx.response.defer(thinking=True)
         symbol = symbol.upper()
         tk = yf.Ticker(symbol)
@@ -172,7 +172,7 @@ class MarketCog(commands.Cog):
     @app_commands.command(name="earnings", description="Next earnings date for a ticker")
     @app_commands.describe(symbol="Ticker symbol")
     async def earnings(self, itx: discord.Interaction, symbol: str):
-        log.info("/earnings invoked by %s in %s", itx.user.id, chan_name(itx.channel))
+        log.info("/earnings invoked by %s in %s", user_name(itx.user), chan_name(itx.channel))
         await itx.response.defer(thinking=True)
         tk = yf.Ticker(symbol.upper())
         try:
@@ -392,7 +392,7 @@ class MarketCog(commands.Cog):
     @app_commands.command(name="marketmood", description="US market sentiment snapshot")
     @app_commands.describe(ephemeral="Only you can see the response")
     async def marketmood(self, itx: discord.Interaction, ephemeral: Optional[bool] = False):
-        log.info("/marketmood invoked by %s in %s", itx.user.id, chan_name(itx.channel))
+        log.info("/marketmood invoked by %s in %s", user_name(itx.user), chan_name(itx.channel))
         await itx.response.defer(thinking=True, ephemeral=ephemeral)
         data = await self._gather_data()
         ts = data["timestamp"].astimezone(PT_TZ).strftime("%b %d, %-I:%M %p PT")
@@ -426,7 +426,7 @@ class MarketCog(commands.Cog):
     @app_commands.command(name="marketbet", description="Place a weekly bull/bear bet or set reminder")
     @app_commands.describe(direction="bullish or bearish", reminder="Enable DM reminder on Monday")
     async def marketbet(self, itx: discord.Interaction, direction: Optional[Literal["bullish", "bearish"]] = None, reminder: Optional[bool] = None):
-        log.info("/marketbet invoked by %s in %s", itx.user.id, chan_name(itx.channel))
+        log.info("/marketbet invoked by %s in %s", user_name(itx.user), chan_name(itx.channel))
         await itx.response.defer(thinking=True, ephemeral=True)
         now = datetime.now(NY_TZ)
         week_start = _week_start(now)

@@ -17,7 +17,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..util import chan_name
+from ..util import chan_name, user_name
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -413,7 +413,7 @@ class StatsCog(commands.Cog):
     ):
         log.info(
             "/engagement invoked by %s in %s",
-            interaction.user.id,
+            user_name(interaction.user),
             chan_name(interaction.channel),
         )
         await interaction.response.send_message("Working on it...")

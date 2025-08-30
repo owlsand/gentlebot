@@ -10,6 +10,7 @@ class ReactionAction(IntEnum):
     MESSAGE_REACTION_ADD = 0
     MESSAGE_REACTION_REMOVE = 1
 
+
 def build_db_url() -> str | None:
     """Return a Postgres DSN built from env vars."""
     url = os.getenv("PG_DSN") or os.getenv("DATABASE_URL")
@@ -22,15 +23,45 @@ def build_db_url() -> str | None:
         return f"postgresql+asyncpg://{user}:{pwd}@db:5432/{db}"
     return None
 
+
+def user_name(user: discord.abc.Snowflake | int | None) -> str:
+    """Return a user's display name or fallback to their ID."""
+    if user is None:
+        return "unknown"
+    if isinstance(user, int):
+        return str(user)
+    name = getattr(user, "display_name", None) or getattr(user, "name", None)
+    if name:
+        return name
+    uid = getattr(user, "id", None)
+    return str(uid) if uid is not None else "unknown"
+
+
 def chan_name(channel: discord.abc.Connectable | None) -> str:
     """Return a readable channel name or fallback to ID."""
     if channel is None:
         return "unknown"
     name = getattr(channel, "name", None)
     if name:
-        return name
+        return f"#{name}"
+    recipient = getattr(channel, "recipient", None)
+    if recipient:
+        return f"DM with {user_name(recipient)}"
     channel_id = getattr(channel, "id", None)
     return str(channel_id) if channel_id is not None else "unknown"
+
+
+def guild_name(guild: discord.abc.Snowflake | int | None) -> str:
+    """Return a guild's name or fallback to ID."""
+    if guild is None:
+        return "unknown"
+    if isinstance(guild, int):
+        return str(guild)
+    name = getattr(guild, "name", None)
+    if name:
+        return name
+    gid = getattr(guild, "id", None)
+    return str(gid) if gid is not None else "unknown"
 
 
 def int_env(var: str, default: int = 0) -> int:

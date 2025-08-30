@@ -12,6 +12,7 @@ from discord.ext import commands
 
 from gentlebot import bot_config as cfg
 from gentlebot.cogs.message_archive_cog import MessageArchiveCog
+from gentlebot.util import chan_name
 
 log = logging.getLogger("gentlebot.backfill")
 
@@ -64,7 +65,9 @@ class BackfillBot(commands.Bot):
                 try:
                     self.counts["channel"] += await self.archive._upsert_channel(channel)
                 except Exception as exc:
-                    log.exception("Failed to record channel %s: %s", channel.name, exc)
+                    log.exception(
+                        "Failed to record channel %s: %s", chan_name(channel), exc
+                    )
                     continue
                 try:
                     async for msg in channel.history(limit=None, after=cutoff):
@@ -76,9 +79,17 @@ class BackfillBot(commands.Bot):
                         except Exception as msg_exc:
                             log.exception("Failed to record message %s: %s", msg.id, msg_exc)
                 except discord.Forbidden as exc:
-                    log.warning("History fetch failed for channel %s: %s", channel.name, exc)
+                      log.warning(
+                          "History fetch failed for channel %s: %s",
+                          chan_name(channel),
+                          exc,
+                      )
                 except Exception as exc:  # pragma: no cover - best effort logging
-                    log.exception("History fetch failed for channel %s: %s", channel.name, exc)
+                      log.exception(
+                          "History fetch failed for channel %s: %s",
+                          chan_name(channel),
+                          exc,
+                      )
 
 
 def parse_args() -> argparse.Namespace:
