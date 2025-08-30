@@ -33,8 +33,8 @@ except Exception:  # pragma: no cover - optional dependency
 log = logging.getLogger(f"gentlebot.{__name__}")
 
 
-# Gemini only accepts "user" or "model" roles; "system" prompts are coerced to
-# a "user" role because google-genai v1.32.0 lacks a dedicated parameter.
+# Gemini accepts only ``user`` or ``model`` roles; map assistant messages to
+# ``model`` and treat all others as ``user``.
 ROLE_MAP = {"user": "user", "assistant": "model"}
 
 
@@ -86,8 +86,11 @@ class GeminiClient:
         temperature: float = 0.6,
         json_mode: bool = False,
         thinking_budget: int = 0,
+        system_instruction: str | None = None,
     ) -> Any:
-        config = genai.types.GenerateContentConfig(temperature=temperature)
+        config = genai.types.GenerateContentConfig(
+            temperature=temperature, system_instruction=system_instruction
+        )
         if json_mode:
             config.response_mime_type = "application/json"
         if thinking_budget:
