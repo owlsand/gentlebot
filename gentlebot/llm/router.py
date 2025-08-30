@@ -78,8 +78,13 @@ class LLMRouter:
             }
         )
 
-    def _tokens_estimate(self, messages: List[Dict[str, Any]]) -> int:
-        return sum(len(m.get("content", "").split()) for m in messages)
+    def _tokens_estimate(
+        self, messages: List[Dict[str, Any]], system_instruction: str | None = None
+    ) -> int:
+        count = sum(len(m.get("content", "").split()) for m in messages)
+        if system_instruction:
+            count += len(system_instruction.split())
+        return count
 
     def generate(
         self,
@@ -92,7 +97,7 @@ class LLMRouter:
         model = self.models.get(route)
         if not model:
             raise ValueError(f"unknown route {route}")
-        tokens_in = self._tokens_estimate(messages)
+        tokens_in = self._tokens_estimate(messages, SYSTEM_INSTRUCTION)
         temp_delta = self.quota.check(route, tokens_in)
         temp = max(0.0, temperature + temp_delta)
         start = time.time()
