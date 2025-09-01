@@ -188,3 +188,109 @@ def test_fetch_prompt_strips_outer_quotes(monkeypatch):
     assert prompt == "Quoted prompt"
     assert not prompt.startswith('"') and not prompt.endswith('"')
 
+
+def test_send_prompt_posts_message(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.sent = None
+                self.id = 123
+
+            async def send(self, content):
+                self.sent = content
+                return types.SimpleNamespace(id=456, channel=self)
+
+            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
+                raise AssertionError("create_thread should not be used")
+
+        channel = DummyChannel()
+        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return "hello"
+
+        async def fake_archive(self, *args):
+            pass
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert channel.sent == "hello"
+
+    asyncio.run(run())
+
+
+def test_send_prompt_handles_long_message(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.sent = None
+                self.id = 123
+
+            async def send(self, content):
+                self.sent = content
+                return types.SimpleNamespace(id=456, channel=self)
+
+            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
+                raise AssertionError("create_thread should not be used")
+
+        long_prompt = "A" * 200
+        channel = DummyChannel()
+        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return long_prompt
+
+        async def fake_archive(self, *args):
+            pass
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert channel.sent == long_prompt
+
+    asyncio.run(run())
+
+
+def test_send_prompt_archives_channel_id(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.id = 123
+
+            async def send(self, content):
+                return types.SimpleNamespace(id=456, channel=self)
+
+        channel = DummyChannel()
+        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return "hi"
+
+        captured = {}
+
+        async def fake_archive(self, prompt, category, channel_id, topic=None):
+            captured["channel_id"] = channel_id
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert captured["channel_id"] == 123
+
+    asyncio.run(run())
+
