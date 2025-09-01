@@ -90,11 +90,8 @@ def test_on_message_missing_table():
         cog = prompt_cog.PromptCog(bot)
 
         class DummyPool:
-            async def fetchrow(self, *args):
+            async def execute(self, *args):
                 raise prompt_cog.asyncpg.UndefinedTableError("msg", "detail", "hint")
-
-            async def execute(self, *args):  # pragma: no cover - shouldn't be called
-                raise AssertionError("execute should not be called")
 
         cog.pool = DummyPool()
         msg = types.SimpleNamespace(
@@ -114,9 +111,8 @@ def test_on_message_uses_schema():
         captured = []
 
         class DummyPool:
-            async def fetchrow(self, query, *args):
+            async def execute(self, query, *args):
                 captured.append(query)
-                return None
 
         cog.pool = DummyPool()
         msg = types.SimpleNamespace(
@@ -138,28 +134,39 @@ def test_duplicate_prompt_updates_message_count():
         class DummyPool:
             def __init__(self):
                 self.rows = {}
+                self.next_id = 1
 
             async def execute(self, query, *args):
                 query = query.strip()
                 if query.startswith("INSERT INTO discord.daily_prompt"):
-                    prompt, category, thread_id, topic = args
-                    self.rows[prompt] = {
-                        "category": category,
-                        "thread_id": thread_id,
-                        "message_count": 0,
-                        "topic": topic,
-                    }
-                elif query.startswith("UPDATE discord.daily_prompt SET message_count"):
-                    (thread_id,) = args
+                    prompt, category, channel_id, topic = args
+                    now = prompt_cog.datetime.now(prompt_cog.ZoneInfo("UTC"))
+                    row = self.rows.get(prompt)
+                    if row:
+                        row.update(
+                            {
+                                "category": category,
+                                "channel_id": channel_id,
+                                "message_count": 0,
+                                "topic": topic,
+                                "created_at": now,
+                            }
+                        )
+                    else:
+                        self.rows[prompt] = {
+                            "id": self.next_id,
+                            "category": category,
+                            "channel_id": channel_id,
+                            "message_count": 0,
+                            "topic": topic,
+                            "created_at": now,
+                        }
+                        self.next_id += 1
+                elif query.startswith("UPDATE discord.daily_prompt"):
+                    channel_id, start, end = args
                     for row in self.rows.values():
-                        if row["thread_id"] == thread_id:
+                        if row["channel_id"] == channel_id and start <= row["created_at"] < end:
                             row["message_count"] += 1
-
-            async def fetchrow(self, query, thread_id):
-                for row in self.rows.values():
-                    if row["thread_id"] == thread_id:
-                        return object()
-                return None
 
         pool = DummyPool()
         cog.pool = pool
@@ -177,6 +184,102 @@ def test_duplicate_prompt_updates_message_count():
 
     asyncio.run(run())
 
+def test_on_message_updates_all_today_prompts():
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            def __init__(self):
+                self.rows = {}
+                self.next_id = 1
+
+            async def execute(self, query, *args):
+                query = query.strip()
+                if query.startswith("INSERT INTO discord.daily_prompt"):
+                    prompt, category, channel_id, topic = args
+                    now = prompt_cog.datetime.now(prompt_cog.ZoneInfo("UTC"))
+                    self.rows[prompt] = {
+                        "id": self.next_id,
+                        "prompt": prompt,
+                        "channel_id": channel_id,
+                        "message_count": 0,
+                        "created_at": now,
+                        "topic": topic,
+                    }
+                    self.next_id += 1
+                elif query.startswith("UPDATE discord.daily_prompt"):
+                    channel_id, start, end = args
+                    for row in self.rows.values():
+                        if row["channel_id"] == channel_id and start <= row["created_at"] < end:
+                            row["message_count"] += 1
+
+        pool = DummyPool()
+        cog.pool = pool
+
+        await cog._archive_prompt("first", "cat", 5)
+        await cog._archive_prompt("second", "cat", 5)
+
+        msg = types.SimpleNamespace(
+            author=types.SimpleNamespace(bot=False),
+            channel=types.SimpleNamespace(id=5),
+        )
+        await cog.on_message(msg)
+
+        counts = {row["prompt"]: row["message_count"] for row in pool.rows.values()}
+        assert counts["first"] == 1
+        assert counts["second"] == 1
+
+    asyncio.run(run())
+
+
+def test_on_message_ignores_previous_day():
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            def __init__(self):
+                self.rows = {}
+                self.next_id = 1
+
+            async def execute(self, query, *args):
+                query = query.strip()
+                if query.startswith("INSERT INTO discord.daily_prompt"):
+                    prompt, category, channel_id, topic = args
+                    now = prompt_cog.datetime.now(prompt_cog.ZoneInfo("UTC"))
+                    self.rows[prompt] = {
+                        "id": self.next_id,
+                        "prompt": prompt,
+                        "channel_id": channel_id,
+                        "message_count": 0,
+                        "created_at": now,
+                        "topic": topic,
+                    }
+                    self.next_id += 1
+                elif query.startswith("UPDATE discord.daily_prompt"):
+                    channel_id, start, end = args
+                    for row in self.rows.values():
+                        if row["channel_id"] == channel_id and start <= row["created_at"] < end:
+                            row["message_count"] += 1
+
+        pool = DummyPool()
+        cog.pool = pool
+
+        await cog._archive_prompt("old", "cat", 5)
+        pool.rows["old"]["created_at"] -= prompt_cog.timedelta(days=1)
+        await cog._archive_prompt("new", "cat", 5)
+
+        msg = types.SimpleNamespace(
+            author=types.SimpleNamespace(bot=False),
+            channel=types.SimpleNamespace(id=5),
+        )
+        await cog.on_message(msg)
+
+        assert pool.rows["old"]["message_count"] == 0
+        assert pool.rows["new"]["message_count"] == 1
+
+    asyncio.run(run())
 
 def test_fetch_prompt_strips_outer_quotes(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "token")
@@ -187,4 +290,110 @@ def test_fetch_prompt_strips_outer_quotes(monkeypatch):
     prompt = asyncio.run(cog.fetch_prompt())
     assert prompt == "Quoted prompt"
     assert not prompt.startswith('"') and not prompt.endswith('"')
+
+
+def test_send_prompt_posts_message(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.sent = None
+                self.id = 123
+
+            async def send(self, content):
+                self.sent = content
+                return types.SimpleNamespace(id=456, channel=self)
+
+            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
+                raise AssertionError("create_thread should not be used")
+
+        channel = DummyChannel()
+        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return "hello"
+
+        async def fake_archive(self, *args):
+            pass
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert channel.sent == "hello"
+
+    asyncio.run(run())
+
+
+def test_send_prompt_handles_long_message(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.sent = None
+                self.id = 123
+
+            async def send(self, content):
+                self.sent = content
+                return types.SimpleNamespace(id=456, channel=self)
+
+            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
+                raise AssertionError("create_thread should not be used")
+
+        long_prompt = "A" * 200
+        channel = DummyChannel()
+        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return long_prompt
+
+        async def fake_archive(self, *args):
+            pass
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert channel.sent == long_prompt
+
+    asyncio.run(run())
+
+
+def test_send_prompt_archives_channel_id(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.id = 123
+
+            async def send(self, content):
+                return types.SimpleNamespace(id=456, channel=self)
+
+        channel = DummyChannel()
+        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return "hi"
+
+        captured = {}
+
+        async def fake_archive(self, prompt, category, channel_id, topic=None):
+            captured["channel_id"] = channel_id
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert captured["channel_id"] == 123
+
+    asyncio.run(run())
 
