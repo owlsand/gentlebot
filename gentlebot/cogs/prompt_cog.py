@@ -366,22 +366,11 @@ class PromptCog(commands.Cog):
         prompt = await self.fetch_prompt()
         category = self.last_category
         try:
-            date = datetime.now(LOCAL_TZ).strftime("%b %d")
-            prompt_single = prompt.replace("\n", " ").strip()
-            name = f"({date}) {prompt_single}"
-            if len(name) > 100:
-                name = name[:97] + "..."
-            thread = await channel.create_thread(
-                name=name,
-                auto_archive_duration=1440,
-                type=discord.ChannelType.public_thread,
-            )
+            msg = await channel.send(f"{prompt}")
         except Exception as exc:
-            log.error("Failed to create prompt thread: %s", exc)
+            log.error("Failed to send prompt message: %s", exc)
             return
-        await thread.send(f"{prompt}")
-        await self._archive_prompt(prompt, category, thread.id, self.last_topic)
-        # The thread is public, so we no longer add members individually.
+        await self._archive_prompt(prompt, category, msg.id, self.last_topic)
 
     async def _scheduler(self):
         await self.bot.wait_until_ready()
