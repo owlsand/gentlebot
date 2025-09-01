@@ -263,7 +263,7 @@ class PromptCog(commands.Cog):
         return prompt
 
     async def _archive_prompt(
-        self, prompt: str, category: str, thread_id: int, topic: str | None = None
+        self, prompt: str, category: str, channel_id: int, topic: str | None = None
     ) -> None:
         if not self.pool:
             return
@@ -282,7 +282,7 @@ class PromptCog(commands.Cog):
                 """,
                 prompt,
                 category,
-                thread_id,
+                channel_id,
                 topic,
             )
         except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):  # pragma: no cover - requires DB
@@ -366,22 +366,11 @@ class PromptCog(commands.Cog):
         prompt = await self.fetch_prompt()
         category = self.last_category
         try:
-            date = datetime.now(LOCAL_TZ).strftime("%b %d")
-            prompt_single = prompt.replace("\n", " ").strip()
-            name = f"({date}) {prompt_single}"
-            if len(name) > 100:
-                name = name[:97] + "..."
-            thread = await channel.create_thread(
-                name=name,
-                auto_archive_duration=1440,
-                type=discord.ChannelType.public_thread,
-            )
+            await channel.send(f"{prompt}")
         except Exception as exc:
-            log.error("Failed to create prompt thread: %s", exc)
+            log.error("Failed to send prompt message: %s", exc)
             return
-        await thread.send(f"{prompt}")
-        await self._archive_prompt(prompt, category, thread.id, self.last_topic)
-        # The thread is public, so we no longer add members individually.
+        await self._archive_prompt(prompt, category, channel.id, self.last_topic)
 
     async def _scheduler(self):
         await self.bot.wait_until_ready()
@@ -411,15 +400,22 @@ class PromptCog(commands.Cog):
         if msg.author.bot or not self.pool:
             return
         try:
-            row = await self.pool.fetchrow(
-                "SELECT 1 FROM discord.daily_prompt WHERE thread_channel_id=$1",
+            today = datetime.now(tz=LOCAL_TZ).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ).astimezone(ZoneInfo("UTC"))
+            tomorrow = today + timedelta(days=1)
+            await self.pool.execute(
+                """
+                UPDATE discord.daily_prompt
+                   SET message_count = message_count + 1
+                 WHERE thread_channel_id=$1
+                   AND created_at >= $2
+                   AND created_at < $3
+                """,
                 msg.channel.id,
+                today,
+                tomorrow,
             )
-            if row:
-                await self.pool.execute(
-                    "UPDATE discord.daily_prompt SET message_count = message_count + 1 WHERE thread_channel_id=$1",
-                    msg.channel.id,
-                )
         except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
             pass
 
