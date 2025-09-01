@@ -43,3 +43,25 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     asyncio.run(cog.on_message(message))
 
     message.reply.assert_not_called()
+
+
+def test_call_llm_robot_persona(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+
+    captured: dict[str, list[dict]] = {}
+
+    def fake_generate(route: str, messages: list[dict], temperature: float):
+        captured["messages"] = messages
+        return "hi"
+
+    monkeypatch.setattr(gemini_cog.router, "generate", fake_generate)
+
+    asyncio.run(cog.call_llm(0, "hello"))
+
+    system_msg = next(m for m in captured["messages"] if m["role"] == "system")
+    assert system_msg["content"] == (
+        "Speak like a helpful and concise robot interacting with a Discord server of friends."
+    )

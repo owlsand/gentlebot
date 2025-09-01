@@ -82,24 +82,12 @@ class GeminiCog(commands.Cog):
 
     async def call_llm(self, channel_id: int, user_prompt: str) -> str:
         """Send chat history to Gemini and return the reply."""
-        # Fetch channel info for tone adjustment
         channel = self.bot.get_channel(channel_id)
-        if isinstance(channel, discord.TextChannel):
-            channel_name = channel.name
-            channel_topic = channel.topic or "No description"
-            channel_info = f"This conversation is happening in the '{channel_name}' channel (topic/description: {channel_topic}). "
-        else:
-            channel_info = ""
 
         history = self.histories[channel_id]
 
         system_directive = (
-            f"{channel_info}"
-            "Please keep your response under 1900 characters to fit Discord's limits and finish your response with a complete sentence before stopping. "
-            "Speak like a helpful British butler from the 1800's (but don't ever reference this directly) with a helpful wit."
-            "Adapt your formality to the channel: be more formal in informational channels and more casual in informal channels."
-            "Never start your response with filler words or interjections like 'Ah' or 'Well' and never reference physical gestures like 'adjusts cravat'."
-            "Be concise and never ask follow-up questions."
+            "Speak like a helpful and concise robot interacting with a Discord server of friends."
         )
 
         messages = []
