@@ -44,13 +44,13 @@ class GeminiCog(commands.Cog):
         self.MENTION_CLEANUP = re.compile(r"<@!?(\d+)>")  # strip user mentions
 
         # === Emoji reaction settings ===
-        self.base_reaction_chance = 0.01  # 2% chance per message by default
+        self.base_reaction_chance = 0.02  # 2% chance per message by default
         self.mention_reaction_chance = 0.25  # 45% chance when content mentions "gentlebot"
         # static fallback unicode emojis
         self.default_emojis = ["😂", "🤔", "😅", "🔥", "🙃", "😎"]
 
         # === Ambient response chance ===
-        self.ambient_chance = 0.005  # 0.5% chance to respond without prompt
+        self.ambient_chance = 0  # ambient message responses disabled
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -186,18 +186,11 @@ class GeminiCog(commands.Cog):
             ref_msg = message.reference.resolved
             if ref_msg.author.id == self.bot.user.id:
                 prompt = content
-        # 7) Ambient response: increased chance if 'gentlebot' mentioned, else rare chance
-        else:
-            if 'gentlebot' in content.lower():
-                if random.random() < self.mention_reaction_chance:
-                    prompt = content
-            elif random.random() < self.ambient_chance:
-                prompt = content
 
         if not prompt:
             return
 
-        # 8) Rate‑limit per user: wait instead of immediate reply
+        # 7) Rate‑limit per user: wait instead of immediate reply
         now = time.time()
         last = self.cooldowns[message.author.id]
         elapsed = now - last
@@ -206,7 +199,7 @@ class GeminiCog(commands.Cog):
             await asyncio.sleep(wait_time)
         self.cooldowns[message.author.id] = time.time()
 
-        # 9) Build user_prompt, including last 10 messages if ambient
+        # 8) Build user_prompt, including last 10 messages if ambient
         is_ambient = (
             prompt == content
             and 'gentlebot' not in content.lower()
@@ -227,13 +220,13 @@ class GeminiCog(commands.Cog):
         else:
             user_prompt = prompt
 
-        # 10) Sanitize prompt
+        # 9) Sanitize prompt
         sanitized = self.sanitize_prompt(user_prompt)
         if sanitized is None:
             log.info("Rejected prompt: too long, empty, or disallowed mentions.")
             return
 
-        # 11) Typing indicator while fetching
+        # 10) Typing indicator while fetching
         async with message.channel.typing():
             try:
                 response = await self.call_llm(message.channel.id, sanitized)
@@ -241,7 +234,7 @@ class GeminiCog(commands.Cog):
                 log.exception("Model call failed: %s", e)
                 return
 
-        # 12) Paginate if needed
+        # 11) Paginate if needed
         if len(response) <= 2000:
             await message.reply(response)
         else:
