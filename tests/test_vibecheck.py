@@ -1,21 +1,18 @@
 import pytest
-from gentlebot.cogs.vibecheck_cog import VibeCheckCog
+
+from gentlebot.cogs.vibecheck_cog import z_to_bar
+
 
 @pytest.mark.parametrize(
-    "score,label",
+    "z,bar",
     [
-        (95, "Chaos Gremlin"),
-        (80, "Chaos Gremlin"),
-        (79, "Hype Train"),
-        (60, "Hype Train"),
-        (59, "Cozy Chill"),
-        (40, "Cozy Chill"),
-        (39, "Quiet Focus"),
-        (20, "Quiet Focus"),
-        (19, "Dead Server"),
-        (0, "Dead Server"),
+        (-3.0, "▁"),
+        (-1.5, "▂"),
+        (0.0, "▄"),
+        (1.0, "▅"),
+        (2.6, "▇"),
     ],
 )
-def test_score_to_label(score, label):
-    assert VibeCheckCog.score_to_label(score)[0] == label
+def test_z_to_bar(z, bar):
+    assert z_to_bar(z) == bar
 

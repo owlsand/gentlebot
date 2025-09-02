@@ -1,217 +1,289 @@
-"""VibeCheckCog - summarize recent server activity with a vibe score.
+"""VibeCheckCog - summarize recent server activity with an overall score.
 
-Implements the `/vibecheck` slash command which looks back 24 hours of
-messages and produces a short summary embed with a vibe label, stats and
-an AI generated one-liner.
+This cog implements the `/vibecheck` slash command.  It inspects recent
+messages in public channels and produces a compact text report including an
+overall score, activity bars, top posters, hot channels and media mix.  The
+command posts an ephemeral response.
 """
 from __future__ import annotations
 
-import re
-import time
-import asyncio
 import logging
-from collections import Counter
+import math
+import re
+import statistics
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Iterable, Sequence
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-from ..util import chan_name, user_name
-from .. import bot_config as cfg
-from ..llm.router import router, SafetyBlocked
-from ..infra.quotas import RateLimited
 
-# Use a hierarchical logger so messages propagate to the main gentlebot logger
+from .. import bot_config as cfg
+from ..util import chan_name, user_name
+
+# Hierarchical logger as required by project guidelines
 log = logging.getLogger(f"gentlebot.{__name__}")
 
-
-UNICODE_EMOJI_RE = re.compile(
-    r"[\U0001F300-\U0001FAFF\U00002600-\U000026FF\U00002700-\U000027BF]"
-)
-CUSTOM_EMOJI_RE = re.compile(r"<a?:\w+:\d+>")
+BAR_CHARS = "▁▂▃▄▅▆▇"
 
 
 def clamp(val: float, lo: float, hi: float) -> float:
     return max(lo, min(val, hi))
 
 
+def z_to_bar(z: float) -> str:
+    """Map a z-score to one of seven block characters."""
+    z = clamp(z, -2.5, 2.5)
+    idx = int(round((z + 2.5) / 5 * (len(BAR_CHARS) - 1)))
+    return BAR_CHARS[idx]
+
+
+def gini(values: Sequence[int]) -> float:
+    """Return the Gini coefficient for a list of positive numbers."""
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    height, area = 0, 0
+    for v in sorted_vals:
+        height += v
+        area += height - v / 2
+    fair_area = height * len(values) / 2
+    return 1 - area / fair_area if fair_area else 0.0
+
+
 class VibeCheckCog(commands.Cog):
-    """Slash command `/vibecheck` returning a quick vibe read."""
+    """Slash command `/vibecheck` returning a server vibe report."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.max_tokens = 60
-        self.temperature = 0.6
-        self._cache: tuple[float, discord.Embed] | None = None
 
-    # --- scoring helpers -------------------------------------------------
-    @staticmethod
-    def score_to_label(score: float) -> tuple[str, str]:
-        table = [
-            (80, "Chaos Gremlin", "🤯"),
-            (60, "Hype Train", "🚂"),
-            (40, "Cozy Chill", "🛋️"),
-            (20, "Quiet Focus", "🤫"),
-            (0, "Dead Server", "🌵"),
-        ]
-        for threshold, label, emoji in table:
-            if score >= threshold:
-                return label, emoji
-        return "Dead Server", "🌵"
-
-    async def _generate_blurb(self, data: str) -> str | None:
-        prompt = (
-            "You are Gentlebot, a cheeky but concise Discord concierge. "
-            "Write ONE or TWO sentences describing the vibe in this server. "
-            "Add one emoji. No line breaks.\nDATA:\n" + data
-        )
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(
-                    router.generate,
-                    "general",
-                    [{"role": "user", "content": prompt}],
-                    self.temperature,
-                ),
-                timeout=8,
-            )
-        except asyncio.TimeoutError:
-            log.error("Model blurb timed out")
-            return None
-        except RateLimited:
-            return "Let me get back to you on this... I'm a bit busy right now."
-        except SafetyBlocked:
-            return "Your inquiry is being blocked by my policy commitments."
-        except Exception as e:
-            log.exception("Model blurb failed: %s", e)
-            return None
-
-    async def _collect_stats(self) -> dict:
-        guild = self.bot.get_guild(cfg.GUILD_ID)
-        if not guild:
-            return {}
-        now = datetime.now(timezone.utc)
-        since = now - timedelta(hours=24)
-        msg_count = 0
-        users: set[int] = set()
-        channels: set[int] = set()
-        emoji_ctr: Counter[str] = Counter()
-        caps = 0
-        exclam = 0
-        links = 0
-        top_msg: discord.Message | None = None
-        top_reacts = 0
+    # --- statistics helpers -------------------------------------------------
+    async def _gather_messages(
+        self, guild: discord.Guild, start: datetime, end: datetime
+    ) -> list[discord.Message]:
+        msgs: list[discord.Message] = []
         for channel in guild.text_channels:
+            # include only public channels readable by @everyone
             perms = channel.permissions_for(guild.me)
             if not (perms.read_messages and perms.read_message_history):
                 continue
+            if not channel.permissions_for(guild.default_role).read_messages:
+                continue
             try:
-                async for msg in channel.history(limit=None, after=since):
-                    if msg_count >= 2000:
-                        break
-                    msg_count += 1
-                    users.add(msg.author.id)
-                    channels.add(channel.id)
-                    text = msg.content or ""
-                    if text:
-                        if sum(c.isupper() for c in text if c.isalpha()) > 0.5 * sum(
-                            c.isalpha() for c in text
-                        ):
-                            caps += 1
-                        if "!" in text:
-                            exclam += 1
-                        if "http" in text:
-                            links += 1
-                        for e in CUSTOM_EMOJI_RE.findall(text):
-                            emoji_ctr[e] += 1
-                        for e in UNICODE_EMOJI_RE.findall(text):
-                            emoji_ctr[e] += 1
-                    reacts = sum(r.count for r in msg.reactions)
-                    if reacts > top_reacts and text:
-                        top_reacts = reacts
-                        top_msg = msg
-                if msg_count >= 2000:
-                    break
-            except discord.Forbidden as e:
-                log.warning("History fetch forbidden for %s: %s", chan_name(channel), e)
-            except Exception as e:
-                log.exception("History fetch failed for %s: %s", chan_name(channel), e)
-        caps_ratio = caps / msg_count if msg_count else 0
-        exc_ratio = exclam / msg_count if msg_count else 0
-        link_ratio = links / msg_count if msg_count else 0
-        top_emojis = [e for e, _ in emoji_ctr.most_common(3)]
-        quote = ""
-        author = ""
-        if top_msg:
-            quote = top_msg.content.strip().replace("\n", " ")[:120]
-            author = top_msg.author.display_name
-        return {
-            "msg_count": msg_count,
-            "unique_users": len(users),
-            "active_channels": len(channels),
-            "caps_ratio": caps_ratio,
-            "exc_ratio": exc_ratio,
-            "link_ratio": link_ratio,
-            "top_emojis": top_emojis,
-            "quote": quote,
-            "quote_author": author,
-        }
+                async for msg in channel.history(limit=None, after=start, before=end):
+                    msgs.append(msg)
+            except Exception as e:  # pragma: no cover - permission edge cases
+                log.warning("History fetch failed for %s: %s", chan_name(channel), e)
+        return msgs
 
-    @staticmethod
-    def _compute_score(data: dict) -> float:
-        energy = min(data["msg_count"] / 20, 25)
-        spread = min(data["active_channels"] * 4, 15)
-        crowd = min(data["unique_users"] * 2, 20)
-        chaos = (data["caps_ratio"] * 15) + (data["exc_ratio"] * 15)
-        brainy = data["link_ratio"] * 10
-        return clamp(energy + spread + crowd + chaos + brainy, 0, 100)
+    def _media_bucket(self, msg: discord.Message) -> str:
+        """Classify message into link/image/text buckets."""
+        text = msg.content or ""
+        has_link = bool(re.search(r"https?://", text))
+        has_image = any(
+            (a.content_type or "").startswith("image/") for a in msg.attachments
+        )
+        if has_link:
+            return "link"
+        if has_image:
+            return "image"
+        return "text"
 
-    @app_commands.command(name="vibecheck", description="Check the server vibe")
-    async def vibecheck(self, interaction: discord.Interaction):
-        """Return a quick read on how things feel in the server."""
+    # --- core command -------------------------------------------------------
+    @app_commands.command(name="vibecheck", description="Summarize server vibes")
+    async def vibecheck(self, interaction: discord.Interaction) -> None:
+        """Inspect recent activity and return a vibe report."""
         log.info(
             "/vibecheck invoked by %s in %s",
             user_name(interaction.user),
             chan_name(interaction.channel),
         )
-        now = time.time()
-        if self._cache and now - self._cache[0] < 60:
-            await interaction.response.send_message(embed=self._cache[1])
+        guild = self.bot.get_guild(cfg.GUILD_ID)
+        if not guild:
+            await interaction.response.send_message("Guild not configured", ephemeral=True)
             return
-        await interaction.response.defer(thinking=True)
-        data = await self._collect_stats()
-        if not data:
-            await interaction.followup.send("Could not read history.")
-            return
-        score = self._compute_score(data)
-        if data["msg_count"] < 20 and data["unique_users"] < 5:
-            label, emoji = "Dead Server", "🌵"
-        else:
-            label, emoji = self.score_to_label(score)
-        e1, e2, e3 = (data["top_emojis"] + ["", "", ""])[:3]
-        quote_line = f'"{data["quote"]}" – {data["quote_author"]}' if data["quote"] else ""
-        blurb_data = (
-            f"messages:{data['msg_count']} users:{data['unique_users']} "
-            f"channels:{data['active_channels']} caps_ratio:{data['caps_ratio']:.2f} "
-            f"exc_ratio:{data['exc_ratio']:.2f} link_ratio:{data['link_ratio']:.2f}\n"
-            f"Top emojis: {e1} {e2} {e3}\nQuote: \"{data['quote']}\" – {data['quote_author']}"
+
+        now = datetime.now(timezone.utc)
+        cur_start = now - timedelta(days=7)
+        prior_start = now - timedelta(days=14)
+        baseline_start = now - timedelta(days=44)
+
+        msgs = await self._gather_messages(guild, baseline_start, now)
+
+        cur_msgs: list[discord.Message] = []
+        prior_msgs: list[discord.Message] = []
+        baseline_days: defaultdict[datetime.date, int] = defaultdict(int)
+
+        for m in msgs:
+            ts = m.created_at
+            if ts >= cur_start:
+                cur_msgs.append(m)
+            elif ts >= prior_start:
+                prior_msgs.append(m)
+            else:
+                baseline_days[ts.date()] += 1
+
+        cur_count = len(cur_msgs)
+        prior_count = len(prior_msgs)
+
+        # activity statistics -------------------------------------------------
+        cur_per_day = cur_count / 7
+        baseline_counts = list(baseline_days.values())
+        if len(baseline_counts) < 2:
+            baseline_counts = [0, 0]
+        base_mean = statistics.mean(baseline_counts)
+        base_std = statistics.stdev(baseline_counts) if len(baseline_counts) > 1 else 0
+        z = (cur_per_day - base_mean) / base_std if base_std else 0.0
+        bar = z_to_bar(z)
+        delta_pct = (cur_count / max(1, prior_count)) - 1
+
+        # poster statistics ---------------------------------------------------
+        posters = Counter(m.author.id for m in cur_msgs if not m.author.bot)
+        top_posters = posters.most_common(3)
+
+        reactions_total = sum(sum(r.count for r in m.reactions) for m in cur_msgs)
+        rxn_per_msg = reactions_total / cur_count if cur_count else 0.0
+
+        # channel hotness -----------------------------------------------------
+        channel_msgs: dict[int, list[discord.Message]] = defaultdict(list)
+        for m in cur_msgs:
+            channel_msgs[m.channel.id].append(m)
+        channel_counts = {cid: len(lst) for cid, lst in channel_msgs.items()}
+        prior_channel_counts: Counter[int] = Counter(m.channel.id for m in prior_msgs)
+        top_channels = sorted(
+            channel_counts.items(), key=lambda kv: kv[1], reverse=True
+        )[:3]
+
+        # media mix -----------------------------------------------------------
+        mix_ctr = Counter(self._media_bucket(m) for m in cur_msgs)
+        link_pct = mix_ctr.get("link", 0) / cur_count * 100 if cur_count else 0
+        img_pct = mix_ctr.get("image", 0) / cur_count * 100 if cur_count else 0
+        text_pct = mix_ctr.get("text", 0) / cur_count * 100 if cur_count else 0
+
+        # unanswered questions ------------------------------------------------
+        unanswered: tuple[discord.TextChannel, discord.Message] | None = None
+        for cid, messages in channel_msgs.items():
+            messages.sort(key=lambda m: m.created_at)
+            for msg in reversed(messages):
+                if not msg.content or not msg.content.strip().endswith("?"):
+                    continue
+                cutoff = msg.created_at + timedelta(hours=12)
+                answered = False
+                for reply in messages:
+                    if reply.created_at <= msg.created_at or reply.created_at > cutoff:
+                        continue
+                    if reply.author.id != msg.author.id:
+                        answered = True
+                        break
+                if not answered:
+                    unanswered = (msg.channel, msg)
+                    break
+            if unanswered:
+                break
+
+        unanswered_penalty = 10 if unanswered else 0
+
+        # overall score -------------------------------------------------------
+        # Activity
+        activity_score = clamp((z + 2.5) / 5.0, 0, 1) * 100
+        # Engagement (simple scale from reactions per message)
+        engagement_score = clamp(rxn_per_msg / 3, 0, 1) * 100
+        # Breadth
+        breadth_val = clamp(
+            len(posters) / math.sqrt(max(1, cur_count)), 0, 1
+        ) + (1 - gini(list(posters.values()))) / 2
+        breadth_score = clamp(breadth_val / 2, 0, 1) * 100
+        # Momentum
+        vol_ratio = cur_count / max(1, prior_count)
+        poster_ratio = len(posters) / max(1, len(set(m.author.id for m in prior_msgs)))
+        momentum_score = clamp((vol_ratio + poster_ratio) / 2 - 1, 0, 1) * 100
+        # Hygiene
+        hygiene_score = max(0, 100 - unanswered_penalty)
+
+        overall = (
+            activity_score * 0.30
+            + engagement_score * 0.25
+            + breadth_score * 0.20
+            + momentum_score * 0.15
+            + hygiene_score * 0.10
         )
-        blurb = await self._generate_blurb(blurb_data)
-        lines = [f"Overall: **{label}** ({int(score)}/100) {emoji}"]
-        if blurb:
-            lines.append(f"> {blurb}")
+        overall = int(clamp(overall, 0, 100))
+
+        # assemble output -----------------------------------------------------
+        lines: list[str] = []
+        lines.append("*Vibe Check*")
+        lines.append(
+            f"*Gentlefolk* ({now.strftime('%b %-d')}) ▷ {overall}/100 Overall Score"
+        )
+        lines.append(
+            f"Activity Level: {bar}  (↑ {delta_pct*100:.0f}% vs prior)  | "
+            f"{len(posters)} Total Posters | {rxn_per_msg:.2f} Reactions/Msg"
+        )
         lines.append("")
-        lines.append("Stats:")
-        lines.append(f"• Messages: {data['msg_count']}")
-        lines.append(f"• Active users: {data['unique_users']}")
-        lines.append(f"• Active channels: {data['active_channels']}")
-        lines.append(f"• Top emojis: {e1} {e2} {e3}")
-        if quote_line:
-            lines.append(f"Quote of the day: {quote_line}")
-        embed = discord.Embed(title="Current Gentlefolk Vibes", description="\n".join(lines))
-        await interaction.followup.send(embed=embed)
-        self._cache = (time.time(), embed)
+        lines.append("*Top Posters*")
+        medals = ["🥇", "🥈", "🥉"]
+        for medal, (uid, cnt) in zip(medals, top_posters):
+            member = guild.get_member(uid)
+            name = member.display_name if member else f"<@{uid}>"
+            lines.append(f"{medal} @{name} ({cnt} msgs)")
+        if not top_posters:
+            lines.append("No posters found")
+
+        lines.append("")
+        lines.append("*The Hotness*")
+        for cid, count in top_channels:
+            channel = guild.get_channel(cid)
+            prior = prior_channel_counts.get(cid, 0)
+            delta = ((count / max(1, prior)) - 1) * 100
+            rising = ", ⬆ rising" if count >= 20 and count / max(1, prior) >= 1.5 else ""
+            topics = self._derive_topics(channel_msgs[cid])
+            lines.append(
+                f"- #{channel.name} › \"{topics[0]}\", \"{topics[1]}\" "
+                f"({count} msgs, {delta:.0f}%{rising})"
+            )
+        lines.append(
+            f"- Media Mix: {link_pct:.0f}% links, {img_pct:.0f}% images/gifs, {text_pct:.0f}% text only"
+        )
+
+        lines.append("")
+        lines.append("*Better Friendship*")
+        if unanswered:
+            ch, msg = unanswered
+            lines.append(
+                f"• Unanswered question in {chan_name(ch)} from {user_name(msg.author)}"
+            )
+        else:
+            lines.append("• Everyone's getting answers!")
+        if top_channels:
+            ch = guild.get_channel(top_channels[0][0])
+            lines.append(f"• Keep the heat going with a mini-demo thread in #{ch.name}")
+
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+    # ------------------------------------------------------------------
+    def _derive_topics(self, messages: Iterable[discord.Message]) -> tuple[str, str]:
+        """Return two naive topic words extracted from message text."""
+        words: Counter[str] = Counter()
+        stop = {
+            "the",
+            "and",
+            "that",
+            "with",
+            "this",
+            "have",
+            "what",
+            "your",
+            "from",
+        }
+        for msg in messages:
+            for w in re.findall(r"[a-zA-Z]{4,}", msg.content.lower()):
+                if w not in stop:
+                    words[w] += 1
+        top = [w for w, _ in words.most_common(2)]
+        return (top + ["..."] * 2)[:2]
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(VibeCheckCog(bot))
+
