@@ -21,16 +21,14 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 LA = pytz.timezone("America/Los_Angeles")
 
 PROMPT_TEMPLATE = (
-    "You are Gentlebot, a refined British butler announcing Discord honours.\n\n"
+    "You are Gentlebot, a sophisticated bot announcing Discord congratulations.\n\n"
     "Compose a single-sentence direct message to {display_name} that:\n"
     "• greets the user (Good day / Greetings / Salutations / Well met)  \n"
-    "• states they earned the “Daily Hero” role in Gentlefolk for yesterday’s contributions  \n"
-    "• notes the role expires at midnight  \n"
+    "• states they've earned the “Daily Hero” role in Gentlefolk for yesterday’s contributions  \n"
+    "• notes the role is only good for today  \n"
     "• mentions this is their {ordinal} time receiving it  \n"
     "• contains no requests, tasks, or calls-to-action  \n"
-    "• uses formal British-but-warm diction  \n"
-    "• 25-30 words total\n"
-    "Output only the sentence. No markdown, no extra lines."
+    "Output only the sentence. No markdown, no quotation marks, no extra lines."
 )
 
 FALLBACK_TEMPLATE = (
