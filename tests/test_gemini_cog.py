@@ -45,6 +45,34 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     message.reply.assert_not_called()
 
 
+def test_on_message_no_ambient_reply(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+    cog.mention_strs = ["<@123>"]
+
+    message = MagicMock(spec=discord.Message)
+    message.author.bot = False
+    message.author.id = 456
+    message.flags = MagicMock(ephemeral=False)
+    message.content = "hello world"
+    message.guild = None
+    message.reference = None
+    message.channel = MagicMock()
+    message.channel.id = 789
+    message.channel.typing.return_value = dummy_typing()
+    message.reply = AsyncMock()
+    message.add_reaction = AsyncMock()
+
+    monkeypatch.setattr(gemini_cog.random, "random", lambda: 0)
+
+    asyncio.run(cog.on_message(message))
+
+    message.reply.assert_not_called()
+    message.add_reaction.assert_called_once()
+
+
 def test_call_llm_robot_persona(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     intents = discord.Intents.none()
