@@ -118,6 +118,7 @@ class VibeCheckCog(commands.Cog):
               AND m.created_at >= $2 AND m.created_at < $3
               AND c.type = 0
               AND (c.nsfw IS FALSE OR c.nsfw IS NULL)
+              AND (c.is_private IS FALSE OR c.is_private IS NULL)
               AND (u.is_bot IS NOT TRUE)
             """,
             cfg.GUILD_ID,
@@ -139,6 +140,39 @@ class VibeCheckCog(commands.Cog):
                 )
             )
         return msgs
+
+    async def _public_channel_ids(self) -> set[int]:
+        """Return the IDs of public text channels from the archive."""
+        if not self.pool:
+            return set()
+        rows = await self.pool.fetch(
+            """
+            SELECT channel_id
+            FROM discord.channel
+            WHERE guild_id = $1
+              AND type = 0
+              AND (is_private IS FALSE OR is_private IS NULL)
+              AND (nsfw IS FALSE OR nsfw IS NULL)
+            """,
+            cfg.GUILD_ID,
+        )
+        return {r["channel_id"] for r in rows}
+
+    async def _daily_hero_wins(self, user_ids: Iterable[int]) -> dict[int, int]:
+        """Return total Daily Hero wins for the given users."""
+        if not self.pool:
+            return {}
+        role_id = getattr(cfg, "ROLE_DAILY_HERO", 0)
+        wins: dict[int, int] = {}
+        for uid in user_ids:
+            row = await self.pool.fetchrow(
+                "SELECT COUNT(*) AS c FROM discord.role_event WHERE role_id=$1 AND user_id=$2 AND action=1",
+                role_id,
+                uid,
+            )
+            if row and row["c"]:
+                wins[int(uid)] = int(row["c"])
+        return wins
 
     def _media_bucket(self, msg: ArchivedMessage) -> str:
         """Classify message into link/image/text buckets."""
@@ -171,17 +205,19 @@ class VibeCheckCog(commands.Cog):
         cur_text = _fmt(cur_msgs)
         prior_text = _fmt(prior_msgs)
         prompt = (
-            "Using these Discord messages, give 2-3 sentences suggesting how members "
-            "can be better friends. Then give 2-3 sentences comparing the current "
-            "period to the prior period. Write in plain sentences without bullets or "
-            "extra formatting.\n\n"
+            "Using these Discord messages, first give 1-2 sentences suggesting how "
+            "members can be better friends. Then give 1-2 sentences comparing the "
+            "current period to the prior period. Output two paragraphs separated by "
+            "a newline, with no extra formatting.\n\n"
             f"Current period messages:\n{cur_text}\n\nPrior period messages:\n{prior_text}"
         )
         data = [{"role": "user", "content": prompt}]
         try:
             resp = await asyncio.to_thread(router.generate, "general", data, 0.6)
-            text = " ".join(l.strip() for l in resp.splitlines() if l.strip())
-            return [text]
+            parts = [p.strip() for p in resp.splitlines() if p.strip()]
+            if len(parts) >= 2:
+                return parts[:2]
+            return parts or ["Friendship tips currently unavailable"]
         except (RateLimited, SafetyBlocked):
             return ["Friendship tips currently unavailable"]
         except Exception as exc:  # pragma: no cover - unexpected errors
@@ -251,15 +287,7 @@ class VibeCheckCog(commands.Cog):
         posters = Counter(m.author_id for m in cur_msgs)
         top_posters = posters.most_common(3)
         author_names = {m.author_id: m.author_name for m in cur_msgs}
-
-        day_user_counts: defaultdict[datetime.date, Counter[int]] = defaultdict(Counter)
-        for m in cur_msgs:
-            day_user_counts[m.created_at.date()][m.author_id] += 1
-        hero_counts: defaultdict[int, int] = defaultdict(int)
-        for counts in day_user_counts.values():
-            if counts:
-                uid, _ = counts.most_common(1)[0]
-                hero_counts[uid] += 1
+        hero_counts = await self._daily_hero_wins(uid for uid, _ in top_posters)
 
         reactions_total = sum(m.reactions for m in cur_msgs)
         rxn_per_msg = reactions_total / cur_count if cur_count else 0.0
@@ -270,8 +298,12 @@ class VibeCheckCog(commands.Cog):
             channel_msgs[m.channel_id].append(m)
         channel_counts = {cid: len(lst) for cid, lst in channel_msgs.items()}
         channel_names = {m.channel_id: m.channel_name for m in cur_msgs}
+
+        public_ids = await self._public_channel_ids()
         top_channels = sorted(
-            channel_counts.items(), key=lambda kv: kv[1], reverse=True
+            [(cid, count) for cid, count in channel_counts.items() if cid in public_ids],
+            key=lambda kv: kv[1],
+            reverse=True,
         )[:3]
 
         # media mix -----------------------------------------------------------
