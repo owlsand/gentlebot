@@ -102,9 +102,13 @@ class VibeCheckCog(commands.Cog):
                          AND (a.content_type ILIKE 'image/%' OR a.url ~ '\\.(?:png|jpe?g|gif)$')
                    ) AS has_image,
                    COALESCE(
-                       (SELECT COUNT(*) FILTER (WHERE action = 0) - COUNT(*) FILTER (WHERE action = 1)
-                        FROM discord.reaction_event r
-                        WHERE r.message_id = m.message_id),
+                       (
+                           SELECT
+                               COUNT(*) FILTER (WHERE reaction_action = 'MESSAGE_REACTION_ADD')
+                               - COUNT(*) FILTER (WHERE reaction_action = 'MESSAGE_REACTION_REMOVE')
+                           FROM discord.reaction_event r
+                           WHERE r.message_id = m.message_id
+                       ),
                        0
                    ) AS reactions
             FROM discord.message m
