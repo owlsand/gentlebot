@@ -243,6 +243,74 @@ def test_third_place_includes_hero_counts(monkeypatch):
     assert "Daily Hero" in third_line
 
 
+def test_vibecheck_omits_private_channels(monkeypatch):
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+    cog = VibeCheckCog(bot)
+    cog.pool = object()
+    now = datetime.now(timezone.utc)
+    msgs = [
+        ArchivedMessage(1, "public", 1, "u1", "m", now, False, 0),
+        ArchivedMessage(2, "secret", 2, "u2", "m", now, False, 0),
+    ]
+
+    async def fake_gather(start, end):
+        return msgs
+
+    async def fake_tips(cur, prior):
+        return []
+
+    monkeypatch.setattr(cog, "_gather_messages", fake_gather)
+    monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
+    monkeypatch.setattr(cog, "_derive_topics", lambda m: ("t1", "t2"))
+
+    class DummyGuild:
+        def __init__(self):
+            self.default_role = object()
+
+    class DummyChannel:
+        def __init__(self, visible: bool):
+            self.visible = visible
+            self.guild = DummyGuild()
+
+        def permissions_for(self, role):
+            if role is self.guild.default_role:
+                return SimpleNamespace(read_messages=self.visible)
+            return SimpleNamespace(read_messages=False)
+
+    def fake_get_channel(cid):
+        return DummyChannel(visible=(cid == 1))
+
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+
+    class DummyResponse:
+        async def defer(self, **kwargs):
+            pass
+
+    class DummyFollowup:
+        def __init__(self):
+            self.sent = None
+
+        async def send(self, content, **kwargs):
+            self.sent = (content, kwargs)
+
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(display_name="u", id=1),
+        channel=SimpleNamespace(name="c"),
+        response=DummyResponse(),
+        followup=DummyFollowup(),
+    )
+
+    async def run():
+        await VibeCheckCog.vibecheck.callback(cog, interaction)
+        await bot.close()
+
+    asyncio.run(run())
+
+    output = interaction.followup.sent[0]
+    assert "#secret" not in output
+    assert "#public" in output
+
+
 def test_gather_messages_uses_reaction_action():
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)
