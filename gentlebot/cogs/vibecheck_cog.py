@@ -351,7 +351,7 @@ class VibeCheckCog(commands.Cog):
         for medal, (uid, cnt) in zip(medals, top_posters):
             name = author_names.get(uid, str(uid))
             hero = hero_counts.get(uid, 0)
-            hero_note = f", {hero}x Daily Hero" if hero else ""
+            hero_note = f", {hero}x Daily Hero"
             lines.append(f"{medal} @{name} ({cnt} msgs{hero_note})")
         if not top_posters:
             lines.append("No posters found")
@@ -387,6 +387,15 @@ class VibeCheckCog(commands.Cog):
             "your",
             "from",
         }
+        # Exclude author display names from topic generation
+        names: set[str] = set()
+        for msg in messages:
+            if msg.author_name:
+                names.update(
+                    re.findall(r"[a-zA-Z]{4,}", msg.author_name.lower())
+                )
+        stop.update(names)
+
         for msg in messages:
             text = (msg.content or "").lower()
             tokens = [
@@ -398,8 +407,15 @@ class VibeCheckCog(commands.Cog):
                 for i in range(len(tokens) - n + 1):
                     phrase = " ".join(tokens[i : i + n])
                     phrases[phrase] += 1
-        top = [p for p, _ in phrases.most_common(2)]
-        return (top + ["..."] * 2)[:2]
+
+        topics: list[str] = []
+        for phrase, _ in phrases.most_common():
+            words = set(phrase.split())
+            if all(words.isdisjoint(set(t.split())) for t in topics):
+                topics.append(phrase)
+            if len(topics) == 2:
+                break
+        return (topics + ["..."] * 2)[:2]
 
 
 async def setup(bot: commands.Bot) -> None:
