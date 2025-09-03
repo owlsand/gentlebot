@@ -125,3 +125,32 @@ def test_vibecheck_defers(monkeypatch):
     assert interaction.followup.sent is not None
     assert interaction.followup.sent[1].get("ephemeral") is True
 
+
+def test_gather_messages_uses_reaction_action():
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+    cog = VibeCheckCog(bot)
+
+    class DummyPool:
+        def __init__(self):
+            self.queries = []
+
+        async def fetch(self, query, *args):
+            self.queries.append(query)
+            return []
+
+    pool = DummyPool()
+    cog.pool = pool
+
+    async def run():
+        now = datetime.now(timezone.utc)
+        await cog._gather_messages(now, now)
+        await bot.close()
+
+    asyncio.run(run())
+
+    assert pool.queries, "query not executed"
+    q = pool.queries[0]
+    assert "reaction_action" in q
+    assert "action = 0" not in q
+    assert "action = 1" not in q
+
