@@ -47,79 +47,50 @@ def test_friendship_tips(monkeypatch):
     assert tips == ["tip1 tip2"]
 
 
-def test_derive_topics_handles_none_content():
+def test_derive_topics_uses_gemini(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)
     now = datetime.now(timezone.utc)
     msgs = [
-        ArchivedMessage(
-            channel_id=1,
-            channel_name="c",
-            author_id=1,
-            author_name="a",
-            content=None,
-            created_at=now,
-            has_image=False,
-            reactions=0,
-        ),
-        ArchivedMessage(
-            channel_id=1,
-            channel_name="c",
-            author_id=2,
-            author_name="b",
-            content="hello world",
-            created_at=now,
-            has_image=False,
-            reactions=0,
-        ),
+        ArchivedMessage(1, "c", 1, "a", "hello world", now, False, 0),
+        ArchivedMessage(1, "c", 2, "b", "more chats", now, False, 0),
     ]
-    topics = cog._derive_topics(msgs)
-    asyncio.run(bot.close())
-    assert topics == ["hello world", "..."]
+
+    def fake_generate(route, messages, temperature, think_budget=0, json_mode=False):
+        assert route == "general"
+        return "topic one\ntopic two"
+
+    monkeypatch.setattr(vibecheck_cog.router, "generate", fake_generate)
+
+    async def run():
+        topics = await cog._derive_topics(msgs)
+        await bot.close()
+        return topics
+
+    topics = asyncio.run(run())
+    assert topics == ("topic one", "topic two")
 
 
-def test_derive_topics_filters_names_and_diff():
+def test_derive_topics_skips_empty(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)
     now = datetime.now(timezone.utc)
     msgs = [
-        ArchivedMessage(
-            channel_id=1,
-            channel_name="c",
-            author_id=1,
-            author_name="Alice",
-            content="Alice loves pizza and pasta",
-            created_at=now,
-            has_image=False,
-            reactions=0,
-        ),
-        ArchivedMessage(
-            channel_id=1,
-            channel_name="c",
-            author_id=2,
-            author_name="Bob",
-            content="Bob loves pizza and chess",
-            created_at=now,
-            has_image=False,
-            reactions=0,
-        ),
-        ArchivedMessage(
-            channel_id=1,
-            channel_name="c",
-            author_id=3,
-            author_name="Eve",
-            content="dogs chase cats daily",
-            created_at=now,
-            has_image=False,
-            reactions=0,
-        ),
+        ArchivedMessage(1, "c", 1, "a", None, now, False, 0),
     ]
-    topics = cog._derive_topics(msgs)
-    asyncio.run(bot.close())
-    assert all(
-        name not in t.lower() for name in ["alice", "bob"] for t in topics
-    )
-    assert set(topics[0].split()).isdisjoint(set(topics[1].split()))
+
+    def boom(*args, **kwargs):
+        raise AssertionError("should not call")
+
+    monkeypatch.setattr(vibecheck_cog.router, "generate", boom)
+
+    async def run():
+        topics = await cog._derive_topics(msgs)
+        await bot.close()
+        return topics
+
+    topics = asyncio.run(run())
+    assert topics == ("...", "...")
 
 
 def test_vibecheck_defers(monkeypatch):
@@ -209,7 +180,11 @@ def test_third_place_includes_hero_counts(monkeypatch):
 
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
-    monkeypatch.setattr(cog, "_derive_topics", lambda msgs: ("t1", "t2"))
+
+    async def fake_topics(msgs):
+        return ("t1", "t2")
+
+    monkeypatch.setattr(cog, "_derive_topics", fake_topics)
 
     class DummyResponse:
         def __init__(self):
