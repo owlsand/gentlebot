@@ -155,7 +155,7 @@ class VibeCheckCog(commands.Cog):
         cur_msgs: Iterable[ArchivedMessage],
         prior_msgs: Iterable[ArchivedMessage],
     ) -> list[str]:
-        """Return bullet tips on friendship using an LLM."""
+        """Return suggestion and comparison sentences on friendship via LLM."""
 
         def _fmt(messages: Iterable[ArchivedMessage]) -> str:
             lines = []
@@ -171,22 +171,22 @@ class VibeCheckCog(commands.Cog):
         cur_text = _fmt(cur_msgs)
         prior_text = _fmt(prior_msgs)
         prompt = (
-            "Using these Discord messages, give one suggestion for how members can "
-            "be better friends. Then briefly state whether they are being better "
-            "friends in the current period compared to the prior period. Respond "
-            "with two bullet points.\n\n"
+            "Using these Discord messages, give 2-3 sentences suggesting how members "
+            "can be better friends. Then give 2-3 sentences comparing the current "
+            "period to the prior period. Write in plain sentences without bullets or "
+            "extra formatting.\n\n"
             f"Current period messages:\n{cur_text}\n\nPrior period messages:\n{prior_text}"
         )
         data = [{"role": "user", "content": prompt}]
         try:
             resp = await asyncio.to_thread(router.generate, "general", data, 0.6)
-            lines = [l.strip("-• ") for l in resp.splitlines() if l.strip()]
-            return [f"• {l}" for l in lines[:2]]
+            text = " ".join(l.strip() for l in resp.splitlines() if l.strip())
+            return [text]
         except (RateLimited, SafetyBlocked):
-            return ["• Friendship tips currently unavailable"]
+            return ["Friendship tips currently unavailable"]
         except Exception as exc:  # pragma: no cover - unexpected errors
             log.exception("Friendship tip generation failed: %s", exc)
-            return ["• Friendship tips currently unavailable"]
+            return ["Friendship tips currently unavailable"]
 
     # --- core command -------------------------------------------------------
     @app_commands.command(name="vibecheck", description="Summarize server vibes")
@@ -228,20 +228,38 @@ class VibeCheckCog(commands.Cog):
         prior_count = len(prior_msgs)
 
         # activity statistics -------------------------------------------------
-        cur_per_day = cur_count / 7
         baseline_counts = list(baseline_days.values())
         if len(baseline_counts) < 2:
             baseline_counts = [0, 0]
         base_mean = statistics.mean(baseline_counts)
         base_std = statistics.stdev(baseline_counts) if len(baseline_counts) > 1 else 0
-        z = (cur_per_day - base_mean) / base_std if base_std else 0.0
-        bar = z_to_bar(z)
+        day_counts: defaultdict[datetime.date, int] = defaultdict(int)
+        for m in cur_msgs:
+            day_counts[m.created_at.date()] += 1
+        bars = []
+        for i in range(7):
+            day = (now - timedelta(days=6 - i)).date()
+            cnt = day_counts.get(day, 0)
+            z = (cnt - base_mean) / base_std if base_std else 0.0
+            bars.append(z_to_bar(z))
+        bar = "".join(bars)
+        cur_per_day = cur_count / 7
+        z_avg = (cur_per_day - base_mean) / base_std if base_std else 0.0
         delta_pct = (cur_count / max(1, prior_count)) - 1
 
         # poster statistics ---------------------------------------------------
         posters = Counter(m.author_id for m in cur_msgs)
         top_posters = posters.most_common(3)
         author_names = {m.author_id: m.author_name for m in cur_msgs}
+
+        day_user_counts: defaultdict[datetime.date, Counter[int]] = defaultdict(Counter)
+        for m in cur_msgs:
+            day_user_counts[m.created_at.date()][m.author_id] += 1
+        hero_counts: defaultdict[int, int] = defaultdict(int)
+        for counts in day_user_counts.values():
+            if counts:
+                uid, _ = counts.most_common(1)[0]
+                hero_counts[uid] += 1
 
         reactions_total = sum(m.reactions for m in cur_msgs)
         rxn_per_msg = reactions_total / cur_count if cur_count else 0.0
@@ -251,7 +269,6 @@ class VibeCheckCog(commands.Cog):
         for m in cur_msgs:
             channel_msgs[m.channel_id].append(m)
         channel_counts = {cid: len(lst) for cid, lst in channel_msgs.items()}
-        prior_channel_counts: Counter[int] = Counter(m.channel_id for m in prior_msgs)
         channel_names = {m.channel_id: m.channel_name for m in cur_msgs}
         top_channels = sorted(
             channel_counts.items(), key=lambda kv: kv[1], reverse=True
@@ -288,7 +305,7 @@ class VibeCheckCog(commands.Cog):
 
         # overall score -------------------------------------------------------
         # Activity
-        activity_score = clamp((z + 2.5) / 5.0, 0, 1) * 100
+        activity_score = clamp((z_avg + 2.5) / 5.0, 0, 1) * 100
         # Engagement (simple scale from reactions per message)
         engagement_score = clamp(rxn_per_msg / 3, 0, 1) * 100
         # Breadth
@@ -314,41 +331,42 @@ class VibeCheckCog(commands.Cog):
 
         # assemble output -----------------------------------------------------
         lines: list[str] = []
-        lines.append("*Vibe Check*")
+        lines.append(f"**Vibe Check** ({now.strftime('%b %-d')})")
         lines.append(
-            f"*Gentlefolk* ({now.strftime('%b %-d')}) ▷ {overall}/100 Overall Score"
+            f" **Gentlefolk** (Last 7 days) ▷ **{overall}/100** Overall Score"
         )
         lines.append(
-            f"Activity Level: {bar}  (↑ {delta_pct*100:.0f}% vs prior)  | "
-            f"{len(posters)} Total Posters | {rxn_per_msg:.2f} Reactions/Msg"
+            f"*Activity Level*: {bar}  (↑ {delta_pct*100:.0f}% vs prior)"
         )
+        lines.append(
+            f"*Posting*: {len(posters)} Total Posters & {rxn_per_msg:.2f} Reactions/Msg"
+        )
+        lines.append(
+            f"*Media Mix*: {link_pct:.0f}% links, {img_pct:.0f}% images/gifs, {text_pct:.0f}% text only"
+        )
+
         lines.append("")
-        lines.append("*Top Posters*")
+        lines.append("**Top Posters**")
         medals = ["🥇", "🥈", "🥉"]
         for medal, (uid, cnt) in zip(medals, top_posters):
             name = author_names.get(uid, str(uid))
-            lines.append(f"{medal} @{name} ({cnt} msgs)")
+            hero = hero_counts.get(uid, 0)
+            hero_note = f", {hero}x Daily Hero" if hero else ""
+            lines.append(f"{medal} @{name} ({cnt} msgs{hero_note})")
         if not top_posters:
             lines.append("No posters found")
 
         lines.append("")
-        lines.append("*The Hotness*")
+        lines.append("**The Hotness**")
         for cid, count in top_channels:
-            prior = prior_channel_counts.get(cid, 0)
-            delta = ((count / max(1, prior)) - 1) * 100
-            rising = ", ⬆ rising" if count >= 20 and count / max(1, prior) >= 1.5 else ""
             topics = self._derive_topics(channel_msgs[cid])
             name = channel_names.get(cid, str(cid))
             lines.append(
-                f"- #{name} › \"{topics[0]}\", \"{topics[1]}\" "
-                f"({count} msgs, {delta:.0f}%{rising})"
+                f"- #{name} › \"{topics[0]}\", \"{topics[1]}\" ({count} msgs)"
             )
-        lines.append(
-            f"- Media Mix: {link_pct:.0f}% links, {img_pct:.0f}% images/gifs, {text_pct:.0f}% text only"
-        )
 
         lines.append("")
-        lines.append("*Better Friendship*")
+        lines.append("**Better Friendship**")
         tips = await self._friendship_tips(cur_msgs, prior_msgs)
         lines.extend(tips)
 
@@ -356,8 +374,8 @@ class VibeCheckCog(commands.Cog):
 
     # ------------------------------------------------------------------
     def _derive_topics(self, messages: Iterable[ArchivedMessage]) -> tuple[str, str]:
-        """Return two naive topic words extracted from message text."""
-        words: Counter[str] = Counter()
+        """Return two naive topic phrases (2-3 words) from message text."""
+        phrases: Counter[str] = Counter()
         stop = {
             "the",
             "and",
@@ -371,10 +389,16 @@ class VibeCheckCog(commands.Cog):
         }
         for msg in messages:
             text = (msg.content or "").lower()
-            for w in re.findall(r"[a-zA-Z]{4,}", text):
-                if w not in stop:
-                    words[w] += 1
-        top = [w for w, _ in words.most_common(2)]
+            tokens = [
+                w
+                for w in re.findall(r"[a-zA-Z]{4,}", text)
+                if w not in stop
+            ]
+            for n in (2, 3):
+                for i in range(len(tokens) - n + 1):
+                    phrase = " ".join(tokens[i : i + n])
+                    phrases[phrase] += 1
+        top = [p for p, _ in phrases.most_common(2)]
         return (top + ["..."] * 2)[:2]
 
 

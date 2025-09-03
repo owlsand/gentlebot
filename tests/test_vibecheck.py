@@ -34,7 +34,7 @@ def test_friendship_tips(monkeypatch):
     prior = [SimpleNamespace(content="hi", author=SimpleNamespace(display_name="b"))]
 
     def fake_generate(route, messages, temperature, think_budget=0, json_mode=False):
-        return "• tip1\n• tip2"
+        return "tip1\ntip2"
 
     monkeypatch.setattr(vibecheck_cog.router, "generate", fake_generate)
 
@@ -44,7 +44,7 @@ def test_friendship_tips(monkeypatch):
         return tips
 
     tips = asyncio.run(run())
-    assert tips == ["• tip1", "• tip2"]
+    assert tips == ["tip1 tip2"]
 
 
 def test_derive_topics_handles_none_content():
@@ -75,7 +75,7 @@ def test_derive_topics_handles_none_content():
     ]
     topics = cog._derive_topics(msgs)
     asyncio.run(bot.close())
-    assert topics == ["hello", "world"]
+    assert topics == ["hello world", "..."]
 
 
 def test_vibecheck_defers(monkeypatch):
@@ -87,7 +87,7 @@ def test_vibecheck_defers(monkeypatch):
         return []
 
     async def fake_tips(cur, prior):
-        return ["• tip"]
+        return ["tip"]
 
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
