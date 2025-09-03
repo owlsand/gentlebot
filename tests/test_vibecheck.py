@@ -133,8 +133,12 @@ def test_vibecheck_defers(monkeypatch):
     async def fake_tips(cur, prior):
         return ["tip"]
 
+    async def fake_public_ids():
+        return set()
+
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
+    monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
 
     class DummyResponse:
         def __init__(self):
@@ -211,6 +215,11 @@ def test_third_place_includes_hero_counts(monkeypatch):
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
     monkeypatch.setattr(cog, "_derive_topics", lambda msgs: ("t1", "t2"))
 
+    async def fake_public_ids():
+        return {1}
+
+    monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
+
     class DummyResponse:
         def __init__(self):
             self.deferred = False
@@ -243,7 +252,60 @@ def test_third_place_includes_hero_counts(monkeypatch):
     assert "Daily Hero" in third_line
 
 
-def test_gather_messages_uses_reaction_action():
+def test_vibecheck_omits_private_channels(monkeypatch):
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+    cog = VibeCheckCog(bot)
+    cog.pool = object()
+    now = datetime.now(timezone.utc)
+    msgs = [
+        ArchivedMessage(1, "public", 1, "u1", "m", now, False, 0),
+        ArchivedMessage(2, "secret", 2, "u2", "m", now, False, 0),
+    ]
+
+    async def fake_gather(start, end):
+        return msgs
+
+    async def fake_tips(cur, prior):
+        return []
+
+    async def fake_public_ids():
+        return {1}
+
+    monkeypatch.setattr(cog, "_gather_messages", fake_gather)
+    monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
+    monkeypatch.setattr(cog, "_derive_topics", lambda m: ("t1", "t2"))
+    monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
+
+    class DummyResponse:
+        async def defer(self, **kwargs):
+            pass
+
+    class DummyFollowup:
+        def __init__(self):
+            self.sent = None
+
+        async def send(self, content, **kwargs):
+            self.sent = (content, kwargs)
+
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(display_name="u", id=1),
+        channel=SimpleNamespace(name="c"),
+        response=DummyResponse(),
+        followup=DummyFollowup(),
+    )
+
+    async def run():
+        await VibeCheckCog.vibecheck.callback(cog, interaction)
+        await bot.close()
+
+    asyncio.run(run())
+
+    output = interaction.followup.sent[0]
+    assert "#secret" not in output
+    assert "#public" in output
+
+
+def test_gather_messages_filters_private_channels():
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)
 
@@ -266,8 +328,35 @@ def test_gather_messages_uses_reaction_action():
     asyncio.run(run())
 
     assert pool.queries, "query not executed"
-    q = pool.queries[0]
+    q = pool.queries[0].lower()
     assert "reaction_action" in q
+    assert "is_private" in q
     assert "action = 0" not in q
     assert "action = 1" not in q
+
+
+def test_public_channel_ids_query():
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+    cog = VibeCheckCog(bot)
+
+    class DummyPool:
+        def __init__(self):
+            self.queries = []
+
+        async def fetch(self, query, *args):
+            self.queries.append(query)
+            return []
+
+    pool = DummyPool()
+    cog.pool = pool
+
+    async def run():
+        await cog._public_channel_ids()
+        await bot.close()
+
+    asyncio.run(run())
+
+    assert pool.queries, "query not executed"
+    q = pool.queries[0].lower()
+    assert "is_private" in q
 

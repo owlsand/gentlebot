@@ -118,6 +118,7 @@ class VibeCheckCog(commands.Cog):
               AND m.created_at >= $2 AND m.created_at < $3
               AND c.type = 0
               AND (c.nsfw IS FALSE OR c.nsfw IS NULL)
+              AND (c.is_private IS FALSE OR c.is_private IS NULL)
               AND (u.is_bot IS NOT TRUE)
             """,
             cfg.GUILD_ID,
@@ -139,6 +140,23 @@ class VibeCheckCog(commands.Cog):
                 )
             )
         return msgs
+
+    async def _public_channel_ids(self) -> set[int]:
+        """Return the IDs of public text channels from the archive."""
+        if not self.pool:
+            return set()
+        rows = await self.pool.fetch(
+            """
+            SELECT channel_id
+            FROM discord.channel
+            WHERE guild_id = $1
+              AND type = 0
+              AND (is_private IS FALSE OR is_private IS NULL)
+              AND (nsfw IS FALSE OR nsfw IS NULL)
+            """,
+            cfg.GUILD_ID,
+        )
+        return {r["channel_id"] for r in rows}
 
     def _media_bucket(self, msg: ArchivedMessage) -> str:
         """Classify message into link/image/text buckets."""
@@ -270,8 +288,12 @@ class VibeCheckCog(commands.Cog):
             channel_msgs[m.channel_id].append(m)
         channel_counts = {cid: len(lst) for cid, lst in channel_msgs.items()}
         channel_names = {m.channel_id: m.channel_name for m in cur_msgs}
+
+        public_ids = await self._public_channel_ids()
         top_channels = sorted(
-            channel_counts.items(), key=lambda kv: kv[1], reverse=True
+            [(cid, count) for cid, count in channel_counts.items() if cid in public_ids],
+            key=lambda kv: kv[1],
+            reverse=True,
         )[:3]
 
         # media mix -----------------------------------------------------------
