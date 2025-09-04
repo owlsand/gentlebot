@@ -249,6 +249,98 @@ def test_third_place_includes_hero_counts(monkeypatch):
     assert "@u3" in third and "4 msgs" in third and "1x Daily Hero" in third
 
 
+def test_vibecheck_uses_top_poster_roles(monkeypatch):
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
+    cog = VibeCheckCog(bot)
+    cog.pool = object()
+
+    now = datetime.now(timezone.utc)
+    msgs = []
+    for _ in range(10):
+        msgs.append(ArchivedMessage(1, "c", 1, "u1", "m", now, False, 0))
+    for _ in range(5):
+        msgs.append(ArchivedMessage(1, "c", 2, "u2", "m", now, False, 0))
+    for _ in range(3):
+        msgs.append(ArchivedMessage(1, "c", 3, "u3", "m", now, False, 0))
+
+    async def fake_gather(start, end):
+        return msgs
+
+    async def fake_tips(cur, prior):
+        return []
+
+    async def fake_topics(msgs):
+        return ("t1", "t2")
+
+    async def fake_public_ids():
+        return {1}
+
+    async def fake_hero_wins(uids):
+        return {uid: 0 for uid in uids}
+
+    monkeypatch.setattr(cog, "_gather_messages", fake_gather)
+    monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
+    monkeypatch.setattr(cog, "_derive_topics", fake_topics)
+    monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
+    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
+
+    monkeypatch.setattr(
+        cfg,
+        "TIERED_BADGES",
+        {"top_poster": {"roles": {"silver": 2, "bronze": 3}}},
+        raising=False,
+    )
+    silver_id, bronze_id = 2, 3
+    members = {
+        2: SimpleNamespace(id=2, display_name="u2"),
+        3: SimpleNamespace(id=3, display_name="u3"),
+    }
+    roles = {
+        silver_id: SimpleNamespace(id=silver_id, members=[members[2]]),
+        bronze_id: SimpleNamespace(id=bronze_id, members=[members[3]]),
+    }
+
+    class DummyGuild:
+        def get_role(self, rid):
+            return roles.get(rid)
+
+    class DummyResponse:
+        def __init__(self):
+            self.deferred = False
+
+        async def defer(self, **kwargs):
+            self.deferred = True
+
+    class DummyFollowup:
+        def __init__(self):
+            self.sent = None
+
+        async def send(self, content, **kwargs):
+            self.sent = (content, kwargs)
+
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(display_name="u", id=1),
+        channel=SimpleNamespace(name="c"),
+        response=DummyResponse(),
+        followup=DummyFollowup(),
+        guild=DummyGuild(),
+    )
+
+    async def run():
+        await VibeCheckCog.vibecheck.callback(cog, interaction)
+        await bot.close()
+
+    asyncio.run(run())
+
+    lines = interaction.followup.sent[0].splitlines()
+    assert not any(l.startswith("🥇") for l in lines)
+    second = next(l for l in lines if l.startswith("🥈"))
+    third = next(l for l in lines if l.startswith("🥉"))
+    assert "@u2" in second and "5 msgs" in second
+    assert "@u3" in third and "3 msgs" in third
+    assert all("@u1" not in l for l in lines)
+
+
 def test_vibecheck_omits_private_channels(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)

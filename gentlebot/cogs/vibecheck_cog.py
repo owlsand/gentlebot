@@ -288,7 +288,7 @@ class VibeCheckCog(commands.Cog):
         posters = Counter(m.author_id for m in cur_msgs)
         author_names = {m.author_id: m.author_name for m in cur_msgs}
 
-        # Determine current Top Poster role holders (gold/silver/bronze)
+        # Determine Top Poster role holders from configured tiered badges
         role_ids = (
             getattr(cfg, "TIERED_BADGES", {})
             .get("top_poster", {})
@@ -300,7 +300,8 @@ class VibeCheckCog(commands.Cog):
         top_posters: list[tuple[int, str]] = []
         if guild and role_ids:
             for tier, medal in zip(tiers, medals):
-                role = guild.get_role(role_ids.get(tier))
+                rid = role_ids.get(tier)
+                role = guild.get_role(rid) if rid else None
                 member = role.members[0] if role and getattr(role, "members", None) else None
                 if member:
                     top_posters.append((member.id, medal))
