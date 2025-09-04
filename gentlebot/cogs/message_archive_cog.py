@@ -13,6 +13,31 @@ from ..util import rows_from_tag, ReactionAction
 log = logging.getLogger(f"gentlebot.{__name__}")
 
 
+def _privacy_kind(channel: discord.abc.GuildChannel | discord.abc.PrivateChannel) -> str:
+    """Return privacy kind for a Discord channel."""
+    ctype = getattr(channel, "type", None)
+    value = getattr(ctype, "value", ctype)
+    if value == 1:
+        return "dm"
+    if value == 3:
+        return "group_dm"
+    if value == 12:
+        return "private_thread"
+    if value in (10, 11):
+        parent = getattr(channel, "parent", None)
+        return _privacy_kind(parent) if parent else "public"
+    if value in {0, 2, 5, 13, 15, 16, 14}:
+        guild = getattr(channel, "guild", None)
+        if guild and hasattr(channel, "permissions_for"):
+            everyone = getattr(guild, "default_role", None)
+            if everyone is not None:
+                perms = channel.permissions_for(everyone)
+                if getattr(perms, "view_channel", None) is False:
+                    return "guild_restricted"
+        return "public"
+    return "public"
+
+
 class MessageArchiveCog(commands.Cog):
     """Persist messages and reaction events to Postgres."""
 
@@ -120,14 +145,16 @@ class MessageArchiveCog(commands.Cog):
         if not self.pool:
             return 0
         guild_id = getattr(channel.guild, "id", None)
+        privacy_kind = _privacy_kind(channel)
         inserted = await self.pool.fetchval(
             """
             INSERT INTO discord.channel (
                 channel_id, guild_id, name, type, position, parent_id,
                 topic, nsfw, rate_limit_per_user, last_message_id,
-                bitrate, user_limit, created_at, last_message_at
+                bitrate, user_limit, created_at, last_message_at,
+                privacy_kind
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
             ON CONFLICT (channel_id)
             DO UPDATE SET
                 name=$3,
@@ -140,7 +167,8 @@ class MessageArchiveCog(commands.Cog):
                 last_message_id=$10,
                 bitrate=$11,
                 user_limit=$12,
-                last_message_at=$14
+                last_message_at=$14,
+                privacy_kind=$15
             RETURNING xmax = 0
             """,
             channel.id,
@@ -157,6 +185,7 @@ class MessageArchiveCog(commands.Cog):
             getattr(channel, "user_limit", None),
             getattr(channel, "created_at", None),
             discord.utils.utcnow(),
+            privacy_kind,
         )
         return int(bool(inserted))
 

@@ -183,6 +183,8 @@ def test_third_place_includes_hero_counts(monkeypatch):
     async def fake_hero_wins(uids):
         return {1: 5, 2: 2, 3: 1}
 
+    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
+
     class DummyResponse:
         def __init__(self):
             self.deferred = False
@@ -253,6 +255,26 @@ def test_vibecheck_omits_private_channels(monkeypatch):
 
     monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins2)
 
+    class DummyGuild:
+        def __init__(self):
+            self.default_role = object()
+
+    class DummyChannel:
+        def __init__(self, cid, visible):
+            self.id = cid
+            self.guild = DummyGuild()
+            self.visible = visible
+
+        def permissions_for(self, role):
+            if role is self.guild.default_role:
+                return SimpleNamespace(read_messages=self.visible)
+            return SimpleNamespace(read_messages=False)
+
+    def fake_get_channel(cid):
+        return DummyChannel(cid, visible=(cid == 1))
+
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+
     class DummyResponse:
         async def defer(self, **kwargs):
             pass
@@ -282,7 +304,7 @@ def test_vibecheck_omits_private_channels(monkeypatch):
     assert "#public" in output
 
 
-def test_gather_messages_filters_private_channels():
+def test_gather_messages_filters_private_channels(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)
     cog.pool = object()
@@ -300,7 +322,16 @@ def test_gather_messages_filters_private_channels():
 
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
-    monkeypatch.setattr(cog, "_derive_topics", lambda m: ("t1", "t2"))
+
+    async def fake_topics(m):
+        return ("t1", "t2")
+
+    monkeypatch.setattr(cog, "_derive_topics", fake_topics)
+
+    async def fake_hero_wins(_: object):
+        return {}
+
+    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
 
     class DummyGuild:
         def __init__(self):
