@@ -101,7 +101,7 @@ def test_vibecheck_defers(monkeypatch):
     async def fake_gather(start, end):
         return []
 
-    async def fake_tips(cur, prior):
+    async def fake_tips(cur, prior, route="general"):
         return ["tip"]
 
     async def fake_public_ids():
@@ -169,13 +169,13 @@ def test_third_place_includes_hero_counts(monkeypatch):
     async def fake_gather(start, end):
         return msgs
 
-    async def fake_tips(cur, prior):
+    async def fake_tips(cur, prior, route="general"):
         return []
 
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
 
-    async def fake_topics(msgs):
+    async def fake_topics(msgs, route="general"):
         return ("t1", "t2")
 
     monkeypatch.setattr(cog, "_derive_topics", fake_topics)
@@ -268,10 +268,10 @@ def test_vibecheck_uses_top_poster_roles(monkeypatch):
     async def fake_gather(start, end):
         return msgs
 
-    async def fake_tips(cur, prior):
+    async def fake_tips(cur, prior, route="general"):
         return []
 
-    async def fake_topics(msgs):
+    async def fake_topics(msgs, route="general"):
         return ("t1", "t2")
 
     async def fake_public_ids():
@@ -356,7 +356,7 @@ def test_vibecheck_omits_private_channels(monkeypatch):
     async def fake_gather(start, end):
         return msgs
 
-    async def fake_tips(cur, prior):
+    async def fake_tips(cur, prior, route="general"):
         return []
 
     async def fake_public_ids():
@@ -365,7 +365,7 @@ def test_vibecheck_omits_private_channels(monkeypatch):
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
 
-    async def fake_topics(msgs):
+    async def fake_topics(msgs, route="general"):
         return ("t1", "t2")
 
     monkeypatch.setattr(cog, "_derive_topics", fake_topics)
@@ -438,13 +438,13 @@ def test_gather_messages_filters_private_channels(monkeypatch):
     async def fake_gather(start, end):
         return msgs
 
-    async def fake_tips(cur, prior):
+    async def fake_tips(cur, prior, route="general"):
         return []
 
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
 
-    async def fake_topics(m):
+    async def fake_topics(m, route="general"):
         return ("t1", "t2")
 
     monkeypatch.setattr(cog, "_derive_topics", fake_topics)
