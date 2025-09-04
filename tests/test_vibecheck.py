@@ -11,16 +11,17 @@ from gentlebot.cogs.vibecheck_cog import (
     VibeCheckCog,
     ArchivedMessage,
 )
+from gentlebot import bot_config as cfg
 
 
 @pytest.mark.parametrize(
     "z,bar",
     [
-        (-3.0, "▁"),
-        (-1.5, "▂"),
-        (0.0, "▄"),
-        (1.0, "▅"),
-        (2.6, "▇"),
+        (-3.0, "⣀"),
+        (-1.5, "⣄"),
+        (0.0, "⣇"),
+        (1.0, "⣧"),
+        (2.6, "⣿"),
     ],
 )
 def test_z_to_bar(z, bar):
@@ -145,6 +146,8 @@ def test_vibecheck_defers(monkeypatch):
     assert interaction.response.deferred is True
     assert interaction.followup.sent is not None
     assert interaction.followup.sent[1].get("ephemeral") is True
+    output = interaction.followup.sent[0]
+    assert "- tip" in output.splitlines()
 
 
 def test_third_place_includes_hero_counts(monkeypatch):
@@ -154,11 +157,11 @@ def test_third_place_includes_hero_counts(monkeypatch):
 
     now = datetime.now(timezone.utc)
     msgs = []
-    for _ in range(5):
-        msgs.append(ArchivedMessage(1, "c", 1, "u1", "m", now, False, 0))
-    for _ in range(4):
-        msgs.append(ArchivedMessage(1, "c", 2, "u2", "m", now, False, 0))
     for _ in range(3):
+        msgs.append(ArchivedMessage(1, "c", 1, "u1", "m", now, False, 0))
+    for _ in range(5):
+        msgs.append(ArchivedMessage(1, "c", 2, "u2", "m", now, False, 0))
+    for _ in range(4):
         msgs.append(ArchivedMessage(1, "c", 3, "u3", "m", now, False, 0))
 
     async def fake_gather(start, end):
@@ -199,11 +202,35 @@ def test_third_place_includes_hero_counts(monkeypatch):
         async def send(self, content, **kwargs):
             self.sent = (content, kwargs)
 
+    # Setup guild with top poster roles
+    monkeypatch.setattr(
+        cfg,
+        "TIERED_BADGES",
+        {"top_poster": {"roles": {"gold": 1, "silver": 2, "bronze": 3}}},
+        raising=False,
+    )
+    gold_id, silver_id, bronze_id = 1, 2, 3
+    members = {
+        1: SimpleNamespace(id=1, display_name="u1"),
+        2: SimpleNamespace(id=2, display_name="u2"),
+        3: SimpleNamespace(id=3, display_name="u3"),
+    }
+    roles = {
+        gold_id: SimpleNamespace(id=gold_id, members=[members[1]]),
+        silver_id: SimpleNamespace(id=silver_id, members=[members[2]]),
+        bronze_id: SimpleNamespace(id=bronze_id, members=[members[3]]),
+    }
+
+    class DummyGuild:
+        def get_role(self, rid):
+            return roles.get(rid)
+
     interaction = SimpleNamespace(
         user=SimpleNamespace(display_name="u", id=1),
         channel=SimpleNamespace(name="c"),
         response=DummyResponse(),
         followup=DummyFollowup(),
+        guild=DummyGuild(),
     )
 
     async def run():
@@ -217,9 +244,9 @@ def test_third_place_includes_hero_counts(monkeypatch):
     first = next(l for l in lines if l.startswith("🥇"))
     second = next(l for l in lines if l.startswith("🥈"))
     third = next(l for l in lines if l.startswith("🥉"))
-    assert "5x Daily Hero" in first
-    assert "2x Daily Hero" in second
-    assert "1x Daily Hero" in third
+    assert "@u1" in first and "3 msgs" in first and "5x Daily Hero" in first
+    assert "@u2" in second and "5 msgs" in second and "2x Daily Hero" in second
+    assert "@u3" in third and "4 msgs" in third and "1x Daily Hero" in third
 
 
 def test_vibecheck_omits_private_channels(monkeypatch):

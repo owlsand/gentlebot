@@ -30,7 +30,8 @@ from ..llm.router import router, RateLimited, SafetyBlocked
 # Hierarchical logger as required by project guidelines
 log = logging.getLogger(f"gentlebot.{__name__}")
 
-BAR_CHARS = "▁▂▃▄▅▆▇"
+# Unicode braille density ramp from low to high
+BAR_CHARS = "⣀⣄⣆⣇⣧⣷⣿"
 
 
 def clamp(val: float, lo: float, hi: float) -> float:
@@ -38,7 +39,7 @@ def clamp(val: float, lo: float, hi: float) -> float:
 
 
 def z_to_bar(z: float) -> str:
-    """Map a z-score to one of seven block characters."""
+    """Map a z-score to one of seven braille density characters."""
     z = clamp(z, -2.5, 2.5)
     idx = int(round((z + 2.5) / 5 * (len(BAR_CHARS) - 1)))
     return BAR_CHARS[idx]
@@ -285,8 +286,28 @@ class VibeCheckCog(commands.Cog):
 
         # poster statistics ---------------------------------------------------
         posters = Counter(m.author_id for m in cur_msgs)
-        top_posters = posters.most_common(3)
         author_names = {m.author_id: m.author_name for m in cur_msgs}
+
+        # Determine current Top Poster role holders (gold/silver/bronze)
+        role_ids = (
+            getattr(cfg, "TIERED_BADGES", {})
+            .get("top_poster", {})
+            .get("roles", {})
+        )
+        tiers = ["gold", "silver", "bronze"]
+        medals = ["🥇", "🥈", "🥉"]
+        guild = getattr(interaction, "guild", None) or self.bot.get_guild(cfg.GUILD_ID)
+        top_posters: list[tuple[int, str]] = []
+        if guild and role_ids:
+            for tier, medal in zip(tiers, medals):
+                role = guild.get_role(role_ids.get(tier))
+                member = role.members[0] if role and getattr(role, "members", None) else None
+                if member:
+                    top_posters.append((member.id, medal))
+                    author_names.setdefault(
+                        member.id, getattr(member, "display_name", str(member.id))
+                    )
+
         hero_counts = await self._daily_hero_wins(uid for uid, _ in top_posters)
 
         reactions_total = sum(m.reactions for m in cur_msgs)
@@ -386,8 +407,8 @@ class VibeCheckCog(commands.Cog):
 
         lines.append("")
         lines.append("**Top Posters**")
-        medals = ["🥇", "🥈", "🥉"]
-        for medal, (uid, cnt) in zip(medals, top_posters):
+        for uid, medal in top_posters:
+            cnt = posters.get(uid, 0)
             name = author_names.get(uid, str(uid))
             hero = hero_counts.get(uid, 0)
             hero_note = f", {hero}x Daily Hero"
@@ -407,7 +428,7 @@ class VibeCheckCog(commands.Cog):
         lines.append("")
         lines.append("**Better Friendship**")
         tips = await self._friendship_tips(cur_msgs, prior_msgs)
-        lines.extend(tips)
+        lines.extend(f"- {t}" for t in tips)
 
         await interaction.followup.send("\n".join(lines), ephemeral=True)
 
