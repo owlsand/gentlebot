@@ -6,7 +6,7 @@ from discord.ext import commands
 import asyncpg
 
 from gentlebot import db
-from gentlebot.cogs.message_archive_cog import MessageArchiveCog
+from gentlebot.cogs.message_archive_cog import MessageArchiveCog, _privacy_kind
 from gentlebot.util import build_db_url, ReactionAction
 
 
@@ -28,6 +28,48 @@ class DummyPool:
 def fake_create_pool(url, *args, **kwargs):
     assert url.startswith("postgresql://")
     return DummyPool()
+
+
+def test_privacy_kind_basic():
+    class Dummy:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    ch_dm = Dummy(type=discord.ChannelType.private)
+    assert _privacy_kind(ch_dm) == "dm"
+
+    ch_group = Dummy(type=discord.ChannelType.group)
+    assert _privacy_kind(ch_group) == "group_dm"
+
+
+def test_privacy_kind_guild_restricted():
+    class Dummy:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    class Channel(Dummy):
+        def permissions_for(self, role):
+            return Dummy(view_channel=False)
+
+    guild = Dummy(default_role=object())
+    parent = Channel(type=discord.ChannelType.text, guild=guild)
+    thread = Dummy(type=discord.ChannelType.public_thread, parent=parent)
+    assert _privacy_kind(parent) == "guild_restricted"
+    assert _privacy_kind(thread) == "guild_restricted"
+
+
+def test_privacy_kind_public():
+    class Dummy:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    class Channel(Dummy):
+        def permissions_for(self, role):
+            return Dummy(view_channel=True)
+
+    guild = Dummy(default_role=object())
+    channel = Channel(type=discord.ChannelType.text, guild=guild)
+    assert _privacy_kind(channel) == "public"
 
 
 def test_build_db_url_env(monkeypatch):
