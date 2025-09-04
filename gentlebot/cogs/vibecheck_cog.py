@@ -391,10 +391,10 @@ class VibeCheckCog(commands.Cog):
         overall = int(clamp(overall, 0, 100))
 
         # assemble output -----------------------------------------------------
+        title = f"Vibe Check ({now.strftime('%b %-d')})"
         lines: list[str] = []
-        lines.append(f"**Vibe Check** ({now.strftime('%b %-d')})")
         lines.append(
-            f" **Gentlefolk** (Last 7 days) ▷ **{overall}/100** Overall Score"
+            f"**Gentlefolk** (Last 7 days) ▷ **{overall}/100** Overall Score"
         )
         lines.append(
             f"*Activity Level*: {bar}  (↑ {delta_pct*100:.0f}% vs prior)"
@@ -431,7 +431,8 @@ class VibeCheckCog(commands.Cog):
         tips = await self._friendship_tips(cur_msgs, prior_msgs)
         lines.extend(f"- {t}" for t in tips)
 
-        await interaction.followup.send("\n".join(lines), ephemeral=True)
+        embed = discord.Embed(title=title, description="\n".join(lines))
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
     async def _derive_topics(
