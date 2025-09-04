@@ -127,7 +127,7 @@ def test_vibecheck_defers(monkeypatch):
         def __init__(self):
             self.sent = None
 
-        async def send(self, content, **kwargs):
+        async def send(self, content=None, **kwargs):
             self.sent = (content, kwargs)
 
     interaction = SimpleNamespace(
@@ -146,7 +146,9 @@ def test_vibecheck_defers(monkeypatch):
     assert interaction.response.deferred is True
     assert interaction.followup.sent is not None
     assert interaction.followup.sent[1].get("ephemeral") is True
-    output = interaction.followup.sent[0]
+    embed = interaction.followup.sent[1]["embed"]
+    assert embed.title.startswith("Vibe Check")
+    output = embed.description
     assert "- tip" in output.splitlines()
 
 
@@ -199,7 +201,7 @@ def test_third_place_includes_hero_counts(monkeypatch):
         def __init__(self):
             self.sent = None
 
-        async def send(self, content, **kwargs):
+        async def send(self, content=None, **kwargs):
             self.sent = (content, kwargs)
 
     # Setup guild with top poster roles
@@ -239,7 +241,7 @@ def test_third_place_includes_hero_counts(monkeypatch):
 
     asyncio.run(run())
 
-    output = interaction.followup.sent[0]
+    output = interaction.followup.sent[1]["embed"].description
     lines = output.splitlines()
     first = next(l for l in lines if l.startswith("🥇"))
     second = next(l for l in lines if l.startswith("🥈"))
@@ -315,7 +317,7 @@ def test_vibecheck_uses_top_poster_roles(monkeypatch):
         def __init__(self):
             self.sent = None
 
-        async def send(self, content, **kwargs):
+        async def send(self, content=None, **kwargs):
             self.sent = (content, kwargs)
 
     interaction = SimpleNamespace(
@@ -332,7 +334,7 @@ def test_vibecheck_uses_top_poster_roles(monkeypatch):
 
     asyncio.run(run())
 
-    lines = interaction.followup.sent[0].splitlines()
+    lines = interaction.followup.sent[1]["embed"].description.splitlines()
     assert not any(l.startswith("🥇") for l in lines)
     second = next(l for l in lines if l.startswith("🥈"))
     third = next(l for l in lines if l.startswith("🥉"))
@@ -402,7 +404,7 @@ def test_vibecheck_omits_private_channels(monkeypatch):
         def __init__(self):
             self.sent = None
 
-        async def send(self, content, **kwargs):
+        async def send(self, content=None, **kwargs):
             self.sent = (content, kwargs)
 
     interaction = SimpleNamespace(
@@ -418,7 +420,7 @@ def test_vibecheck_omits_private_channels(monkeypatch):
 
     asyncio.run(run())
 
-    output = interaction.followup.sent[0]
+    output = interaction.followup.sent[1]["embed"].description
     assert "#secret" not in output
     assert "#public" in output
 
@@ -479,7 +481,7 @@ def test_gather_messages_filters_private_channels(monkeypatch):
         def __init__(self):
             self.sent = None
 
-        async def send(self, content, **kwargs):
+        async def send(self, content=None, **kwargs):
             self.sent = (content, kwargs)
 
     interaction = SimpleNamespace(
@@ -495,7 +497,7 @@ def test_gather_messages_filters_private_channels(monkeypatch):
 
     asyncio.run(run())
 
-    output = interaction.followup.sent[0]
+    output = interaction.followup.sent[1]["embed"].description
     assert "#secret" not in output
     assert "#public" in output
 
