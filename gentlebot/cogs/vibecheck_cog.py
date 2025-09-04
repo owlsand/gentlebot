@@ -299,11 +299,18 @@ class VibeCheckCog(commands.Cog):
         channel_counts = {cid: len(lst) for cid, lst in channel_msgs.items()}
         channel_names = {m.channel_id: m.channel_name for m in cur_msgs}
 
-        public_ids = await self._public_channel_ids()
+        # Only consider channels visible to @everyone
+        public_channels: list[tuple[int, int]] = []
+        for cid, count in channel_counts.items():
+            channel = self.bot.get_channel(cid)
+            if channel is None or channel.guild is None:
+                continue
+            perms = channel.permissions_for(channel.guild.default_role)
+            if getattr(perms, "read_messages", False):
+                public_channels.append((cid, count))
+
         top_channels = sorted(
-            [(cid, count) for cid, count in channel_counts.items() if cid in public_ids],
-            key=lambda kv: kv[1],
-            reverse=True,
+            public_channels, key=lambda kv: kv[1], reverse=True
         )[:3]
 
         # media mix -----------------------------------------------------------
