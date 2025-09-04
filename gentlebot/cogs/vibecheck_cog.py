@@ -189,6 +189,7 @@ class VibeCheckCog(commands.Cog):
         self,
         cur_msgs: Iterable[ArchivedMessage],
         prior_msgs: Iterable[ArchivedMessage],
+        route: str = "general",
     ) -> list[str]:
         """Return suggestion and comparison sentences on friendship via LLM."""
 
@@ -214,7 +215,7 @@ class VibeCheckCog(commands.Cog):
         )
         data = [{"role": "user", "content": prompt}]
         try:
-            resp = await asyncio.to_thread(router.generate, "general", data, 0.6)
+            resp = await asyncio.to_thread(router.generate, route, data, 0.6)
             parts = [p.strip() for p in resp.splitlines() if p.strip()]
             if len(parts) >= 2:
                 return parts[:2]
@@ -225,21 +226,21 @@ class VibeCheckCog(commands.Cog):
             log.exception("Friendship tip generation failed: %s", exc)
             return ["Friendship tips currently unavailable"]
 
-    # --- core command -------------------------------------------------------
-    @app_commands.command(name="vibecheck", description="Summarize server vibes")
-    async def vibecheck(self, interaction: discord.Interaction) -> None:
-        """Inspect recent activity and return a vibe report."""
-        log.info(
-            "/vibecheck invoked by %s in %s",
-            user_name(interaction.user),
-            chan_name(interaction.channel),
-        )
-        await interaction.response.defer(thinking=True, ephemeral=True)
+    async def build_embed(
+        self, guild: discord.Guild | None = None, llm_route: str = "general"
+    ) -> discord.Embed | None:
+        """Generate a vibe check report embed.
+
+        Parameters
+        ----------
+        guild:
+            Optional guild used for resolving role names.
+        llm_route:
+            LLM routing key, ``"general"`` for slash responses or
+            ``"scheduled"`` for weekly posts.
+        """
         if not self.pool:
-            await interaction.followup.send(
-                "Message archive unavailable", ephemeral=True
-            )
-            return
+            return None
 
         now = datetime.now(timezone.utc)
         cur_start = now - timedelta(days=7)
@@ -264,12 +265,13 @@ class VibeCheckCog(commands.Cog):
         cur_count = len(cur_msgs)
         prior_count = len(prior_msgs)
 
-        # activity statistics -------------------------------------------------
         baseline_counts = list(baseline_days.values())
         if len(baseline_counts) < 2:
             baseline_counts = [0, 0]
         base_mean = statistics.mean(baseline_counts)
-        base_std = statistics.stdev(baseline_counts) if len(baseline_counts) > 1 else 0
+        base_std = (
+            statistics.stdev(baseline_counts) if len(baseline_counts) > 1 else 0
+        )
         day_counts: defaultdict[datetime.date, int] = defaultdict(int)
         for m in cur_msgs:
             day_counts[m.created_at.date()] += 1
@@ -284,19 +286,15 @@ class VibeCheckCog(commands.Cog):
         z_avg = (cur_per_day - base_mean) / base_std if base_std else 0.0
         delta_pct = (cur_count / max(1, prior_count)) - 1
 
-        # poster statistics ---------------------------------------------------
         posters = Counter(m.author_id for m in cur_msgs)
         author_names = {m.author_id: m.author_name for m in cur_msgs}
 
-        # Determine Top Poster role holders from configured tiered badges
         role_ids = (
-            getattr(cfg, "TIERED_BADGES", {})
-            .get("top_poster", {})
-            .get("roles", {})
+            getattr(cfg, "TIERED_BADGES", {}).get("top_poster", {}).get("roles", {})
         )
         tiers = ["gold", "silver", "bronze"]
         medals = ["🥇", "🥈", "🥉"]
-        guild = getattr(interaction, "guild", None) or self.bot.get_guild(cfg.GUILD_ID)
+        guild = guild or self.bot.get_guild(cfg.GUILD_ID)
         top_posters: list[tuple[int, str]] = []
         if guild and role_ids:
             for tier, medal in zip(tiers, medals):
@@ -314,14 +312,12 @@ class VibeCheckCog(commands.Cog):
         reactions_total = sum(m.reactions for m in cur_msgs)
         rxn_per_msg = reactions_total / cur_count if cur_count else 0.0
 
-        # channel hotness -----------------------------------------------------
         channel_msgs: dict[int, list[ArchivedMessage]] = defaultdict(list)
         for m in cur_msgs:
             channel_msgs[m.channel_id].append(m)
         channel_counts = {cid: len(lst) for cid, lst in channel_msgs.items()}
         channel_names = {m.channel_id: m.channel_name for m in cur_msgs}
 
-        # Only consider channels visible to @everyone
         public_channels: list[tuple[int, int]] = []
         for cid, count in channel_counts.items():
             channel = self.bot.get_channel(cid)
@@ -335,13 +331,11 @@ class VibeCheckCog(commands.Cog):
             public_channels, key=lambda kv: kv[1], reverse=True
         )[:3]
 
-        # media mix -----------------------------------------------------------
         mix_ctr = Counter(self._media_bucket(m) for m in cur_msgs)
         link_pct = mix_ctr.get("link", 0) / cur_count * 100 if cur_count else 0
         img_pct = mix_ctr.get("image", 0) / cur_count * 100 if cur_count else 0
         text_pct = mix_ctr.get("text", 0) / cur_count * 100 if cur_count else 0
 
-        # unanswered questions ------------------------------------------------
         has_unanswered = False
         for cid, messages in channel_msgs.items():
             messages.sort(key=lambda m: m.created_at)
@@ -364,21 +358,17 @@ class VibeCheckCog(commands.Cog):
 
         unanswered_penalty = 10 if has_unanswered else 0
 
-        # overall score -------------------------------------------------------
-        # Activity
         activity_score = clamp((z_avg + 2.5) / 5.0, 0, 1) * 100
-        # Engagement (simple scale from reactions per message)
         engagement_score = clamp(rxn_per_msg / 3, 0, 1) * 100
-        # Breadth
         breadth_val = clamp(
             len(posters) / math.sqrt(max(1, cur_count)), 0, 1
         ) + (1 - gini(list(posters.values()))) / 2
         breadth_score = clamp(breadth_val / 2, 0, 1) * 100
-        # Momentum
         vol_ratio = cur_count / max(1, prior_count)
-        poster_ratio = len(posters) / max(1, len(set(m.author_id for m in prior_msgs)))
+        poster_ratio = len(posters) / max(
+            1, len(set(m.author_id for m in prior_msgs))
+        )
         momentum_score = clamp((vol_ratio + poster_ratio) / 2 - 1, 0, 1) * 100
-        # Hygiene
         hygiene_score = max(0, 100 - unanswered_penalty)
 
         overall = (
@@ -390,7 +380,6 @@ class VibeCheckCog(commands.Cog):
         )
         overall = int(clamp(overall, 0, 100))
 
-        # assemble output -----------------------------------------------------
         title = f"Vibe Check ({now.strftime('%b %-d')})"
         lines: list[str] = []
         lines.append(
@@ -405,7 +394,6 @@ class VibeCheckCog(commands.Cog):
         lines.append(
             f"*Media Mix*: {link_pct:.0f}% links, {img_pct:.0f}% images/gifs, {text_pct:.0f}% text only"
         )
-
         lines.append("")
         lines.append("**Top Posters**")
         for uid, medal in top_posters:
@@ -416,27 +404,42 @@ class VibeCheckCog(commands.Cog):
             lines.append(f"{medal} @{name} ({cnt} msgs{hero_note})")
         if not top_posters:
             lines.append("No posters found")
-
         lines.append("")
         lines.append("**The Hotness**")
         for cid, count in top_channels:
-            topics = await self._derive_topics(channel_msgs[cid])
+            topics = await self._derive_topics(channel_msgs[cid], llm_route)
             name = channel_names.get(cid, str(cid))
             lines.append(
                 f"- #{name} › \"{topics[0]}\", \"{topics[1]}\" ({count} msgs)"
             )
-
         lines.append("")
         lines.append("**Better Friendship**")
-        tips = await self._friendship_tips(cur_msgs, prior_msgs)
+        tips = await self._friendship_tips(cur_msgs, prior_msgs, llm_route)
         lines.extend(f"- {t}" for t in tips)
 
-        embed = discord.Embed(title=title, description="\n".join(lines))
+        return discord.Embed(title=title, description="\n".join(lines))
+
+    # --- core command -------------------------------------------------------
+    @app_commands.command(name="vibecheck", description="Summarize server vibes")
+    async def vibecheck(self, interaction: discord.Interaction) -> None:
+        """Inspect recent activity and return a vibe report."""
+        log.info(
+            "/vibecheck invoked by %s in %s",
+            user_name(interaction.user),
+            chan_name(interaction.channel),
+        )
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        embed = await self.build_embed(getattr(interaction, "guild", None))
+        if not embed:
+            await interaction.followup.send(
+                "Message archive unavailable", ephemeral=True
+            )
+            return
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
     async def _derive_topics(
-        self, messages: Iterable[ArchivedMessage]
+        self, messages: Iterable[ArchivedMessage], route: str = "general"
     ) -> tuple[str, str]:
         """Return two short topic phrases using the Gemini API."""
         text = "\n".join(m.content for m in messages if m.content)
@@ -450,7 +453,7 @@ class VibeCheckCog(commands.Cog):
         data = [{"role": "user", "content": prompt}]
         try:
             resp = await asyncio.to_thread(
-                router.generate, "general", data, 0.2
+                router.generate, route, data, 0.2
             )
             topics = [t.strip().strip("\"") for t in resp.splitlines() if t.strip()]
             return tuple((topics + ["..."] * 2)[:2])
