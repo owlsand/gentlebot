@@ -391,7 +391,7 @@ class VibeCheckCog(commands.Cog):
         lines.append("")
         lines.append("**The Hotness**")
         for cid, count in top_channels:
-            topics = self._derive_topics(channel_msgs[cid])
+            topics = await self._derive_topics(channel_msgs[cid])
             name = channel_names.get(cid, str(cid))
             lines.append(
                 f"- #{name} › \"{topics[0]}\", \"{topics[1]}\" ({count} msgs)"
@@ -405,49 +405,30 @@ class VibeCheckCog(commands.Cog):
         await interaction.followup.send("\n".join(lines), ephemeral=True)
 
     # ------------------------------------------------------------------
-    def _derive_topics(self, messages: Iterable[ArchivedMessage]) -> tuple[str, str]:
-        """Return two naive topic phrases (2-3 words) from message text."""
-        phrases: Counter[str] = Counter()
-        stop = {
-            "the",
-            "and",
-            "that",
-            "with",
-            "this",
-            "have",
-            "what",
-            "your",
-            "from",
-        }
-        # Exclude author display names from topic generation
-        names: set[str] = set()
-        for msg in messages:
-            if msg.author_name:
-                names.update(
-                    re.findall(r"[a-zA-Z]{4,}", msg.author_name.lower())
-                )
-        stop.update(names)
-
-        for msg in messages:
-            text = (msg.content or "").lower()
-            tokens = [
-                w
-                for w in re.findall(r"[a-zA-Z]{4,}", text)
-                if w not in stop
-            ]
-            for n in (2, 3):
-                for i in range(len(tokens) - n + 1):
-                    phrase = " ".join(tokens[i : i + n])
-                    phrases[phrase] += 1
-
-        topics: list[str] = []
-        for phrase, _ in phrases.most_common():
-            words = set(phrase.split())
-            if all(words.isdisjoint(set(t.split())) for t in topics):
-                topics.append(phrase)
-            if len(topics) == 2:
-                break
-        return (topics + ["..."] * 2)[:2]
+    async def _derive_topics(
+        self, messages: Iterable[ArchivedMessage]
+    ) -> tuple[str, str]:
+        """Return two short topic phrases using the Gemini API."""
+        text = "\n".join(m.content for m in messages if m.content)
+        if not text.strip():
+            return ("...", "...")
+        prompt = (
+            "From these Discord messages, extract exactly two brief topic phrases "
+            "(2-3 words each). Respond with one topic per line and no extra text.\n"
+            f"{text}"
+        )
+        data = [{"role": "user", "content": prompt}]
+        try:
+            resp = await asyncio.to_thread(
+                router.generate, "general", data, 0.2
+            )
+            topics = [t.strip().strip("\"") for t in resp.splitlines() if t.strip()]
+            return tuple((topics + ["..."] * 2)[:2])
+        except (RateLimited, SafetyBlocked):
+            return ("topics unavailable", "...")
+        except Exception as exc:  # pragma: no cover - unexpected errors
+            log.exception("Topic generation failed: %s", exc)
+            return ("topics unavailable", "...")
 
 
 async def setup(bot: commands.Bot) -> None:
