@@ -360,9 +360,12 @@ class PromptCog(commands.Cog):
             log.error("DAILY_PING_CHANNEL not set in config.")
             return
         channel = self.bot.get_channel(channel_id)
-        if not channel:
-            log.error("Unable to find channel with ID %s", channel_id)
-            return
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+            except Exception as exc:
+                log.error("Unable to find channel with ID %s: %s", channel_id, exc)
+                return
         prompt = await self.fetch_prompt()
         category = self.last_category
         try:
