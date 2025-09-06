@@ -397,3 +397,43 @@ def test_send_prompt_archives_channel_id(monkeypatch):
 
     asyncio.run(run())
 
+
+def test_send_prompt_fetches_missing_channel(monkeypatch):
+    async def run():
+        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
+
+        class DummyChannel:
+            def __init__(self):
+                self.sent = None
+                self.id = 123
+
+            async def send(self, content):
+                self.sent = content
+                return types.SimpleNamespace(id=456, channel=self)
+
+            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
+                raise AssertionError("create_thread should not be used")
+
+        channel = DummyChannel()
+
+        async def fake_fetch_channel(_id):
+            return channel
+
+        bot = types.SimpleNamespace(get_channel=lambda _id: None, fetch_channel=fake_fetch_channel)
+        cog = prompt_cog.PromptCog(bot)
+
+        async def fake_fetch_prompt(self):
+            self.last_category = "cat"
+            return "hello"
+
+        async def fake_archive(self, *args):
+            pass
+
+        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
+        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+
+        await cog._send_prompt()
+        assert channel.sent == "hello"
+
+    asyncio.run(run())
+
