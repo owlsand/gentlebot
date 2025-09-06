@@ -24,6 +24,7 @@ from discord import app_commands
 from discord.ext import commands
 from ..util import chan_name, user_name
 import requests
+from requests.adapters import HTTPAdapter, Retry
 from dateutil import parser
 import pytz
 from timezonefinder import TimezoneFinder
@@ -52,6 +53,8 @@ SESSION_EMOJI = {
 # MLB constants
 PLAYER_ID = 663728
 TEAM_ID = 136
+# timeout for statsapi calls in seconds
+STATS_TIMEOUT = 30
 
 class SportsCog(commands.Cog):
     """Provides Formula 1 schedule & standings commands plus Mariners stats."""
@@ -59,6 +62,15 @@ class SportsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[500, 502, 503, 504],
+            allowed_methods=["GET"],
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
     def fetch_f1_schedule(self) -> list[dict]:
         """Fetch and parse F1 schedule sessions sorted by UTC time."""
@@ -203,7 +215,7 @@ class SportsCog(commands.Cog):
         year = datetime.now().year
         url = f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}/stats"
         params = {"stats": "season", "group": "hitting", "season": year}
-        resp = self.session.get(url, params=params, timeout=10)
+        resp = self.session.get(url, params=params, timeout=STATS_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         return data["stats"][0]["splits"][0]["stat"]
@@ -219,7 +231,7 @@ class SportsCog(commands.Cog):
                 resp = self.session.get(
                     f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}",
                     params=params,
-                    timeout=10,
+                    timeout=STATS_TIMEOUT,
                 )
                 stats = resp.json().get("people", [{}])[0].get("stats", [])
                 if not stats or not stats[0]["splits"]:
@@ -235,12 +247,12 @@ class SportsCog(commands.Cog):
                         "startDate": day,
                         "endDate": day,
                     },
-                    timeout=10,
+                    timeout=STATS_TIMEOUT,
                 )
                 game_pk = sched.json()["dates"][0]["games"][0]["gamePk"]
                 content = self.session.get(
                     f"https://statsapi.mlb.com/api/v1/game/{game_pk}/content",
-                    timeout=10,
+                    timeout=STATS_TIMEOUT,
                 ).json()
                 items = (
                     content.get("highlights", {})
