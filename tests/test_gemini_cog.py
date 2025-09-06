@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 from discord.ext import commands
+import logging
 
 import gentlebot.cogs.gemini_cog as gemini_cog
 from gentlebot.cogs.gemini_cog import GeminiCog
@@ -93,3 +94,21 @@ def test_call_llm_robot_persona(monkeypatch):
     assert system_msg["content"] == (
         "Speak like a helpful and concise robot interacting with a Discord server of friends."
     )
+
+
+def test_call_llm_logs_output_not_input(monkeypatch, caplog):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+
+    def fake_generate(route: str, messages: list[dict], temperature: float):
+        return "logged output"
+
+    monkeypatch.setattr(gemini_cog.router, "generate", fake_generate)
+
+    with caplog.at_level(logging.INFO):
+        asyncio.run(cog.call_llm(0, "secret input"))
+
+    assert "secret input" not in caplog.text
+    assert "logged output" in caplog.text
