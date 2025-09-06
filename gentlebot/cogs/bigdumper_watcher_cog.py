@@ -10,7 +10,7 @@ from requests.adapters import HTTPAdapter, Retry
 import discord
 from discord.ext import commands, tasks
 
-from .sports_cog import PLAYER_ID
+from .sports_cog import PLAYER_ID, STATS_TIMEOUT
 from .sports_cog import SportsCog
 from .. import bot_config as cfg
 
@@ -49,7 +49,7 @@ class BigDumperWatcherCog(commands.Cog):
         year = datetime.now().year
         url = f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}/stats"
         params = {"stats": "season", "group": "hitting", "season": year}
-        resp = self.session.get(url, params=params, timeout=10)
+        resp = self.session.get(url, params=params, timeout=STATS_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         return int(data["stats"][0]["splits"][0]["stat"].get("homeRuns", 0))
