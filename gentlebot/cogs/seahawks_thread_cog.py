@@ -42,14 +42,22 @@ class SeahawksThreadCog(commands.Cog):
             comp = event.get("competitions", [{}])[0]
             start = parser.isoparse(comp.get("date")).astimezone(timezone.utc)
             gid = event.get("id")
-            opp = next(
-                c for c in comp.get("competitors", []) if c.get("team", {}).get("abbreviation") != "SEA"
+            try:
+                opp = next(
+                    c for c in comp.get("competitors", [])
+                    if c.get("team", {}).get("abbreviation") != "SEA"
+                )
+            except StopIteration:
+                # Bye week entries only list Seattle as a competitor
+                continue
+            games.append(
+                {
+                    "id": gid,
+                    "opponent": opp.get("team", {}).get("displayName", "Opponent"),
+                    "short": event.get("shortName", "SEA game"),
+                    "start": start,
+                }
             )
-            games.append({
-                "id": gid,
-                "opponent": opp.get("team", {}).get("displayName", "Opponent"),
-                "start": start,
-            })
         return games
 
     def fetch_projection(self, game_id: str) -> dict[str, float]:
@@ -72,9 +80,9 @@ class SeahawksThreadCog(commands.Cog):
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
 
-    def _thread_title(self, opponent: str, start_pst: datetime) -> str:
-        time_str = start_pst.strftime("%-I:%M%p").lower()
-        return f"Seahawks v. {opponent} ({time_str} PST)"
+    def _thread_title(self, short: str, start_pst: datetime) -> str:
+        time_str = start_pst.strftime("%-m/%-d, %-I:%M%p").lower()
+        return f"🏈 {short} ({time_str} PST)"
 
     def _thread_message(self, proj: dict[str, float], opponent: str) -> str:
         return (
@@ -101,7 +109,7 @@ class SeahawksThreadCog(commands.Cog):
                 log.error("Sports channel not found")
                 self.opened.add(g["id"])
                 continue
-            title = self._thread_title(g["opponent"], start_pst)
+            title = self._thread_title(g["short"], start_pst)
             try:
                 thread = await channel.create_thread(name=title, auto_archive_duration=1440)
             except Exception:  # pragma: no cover - network
