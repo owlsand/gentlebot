@@ -85,8 +85,7 @@ class DailyHeroDMCog(commands.Cog):
         return FALLBACK_TEMPLATE.format(username=name, ordinal=ordinal)
 
     def _is_valid(self, text: str) -> bool:
-        words = text.split()
-        return "Daily Hero" in text and 25 <= len(words) <= 30
+        return "daily hero" in text.lower()
 
     async def _generate_message(self, display_name: str, wins: int) -> str:
         prompt = self._build_prompt(display_name, wins)

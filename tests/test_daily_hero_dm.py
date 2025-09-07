@@ -40,6 +40,16 @@ def test_generate_message_success(cog, monkeypatch):
     assert msg == sample
 
 
+def test_generate_message_case_insens(cog, monkeypatch):
+    sample = (
+        "Salutations, Tester; your efforts in Gentlefolk yesterday earned you the daily hero title for the 5th time."
+    )
+
+    monkeypatch.setattr(router, "generate", lambda *a, **k: sample)
+    msg = asyncio.run(cog._generate_message("Tester", 5))
+    assert msg == sample
+
+
 def test_send_dm_logged(cog, monkeypatch, caplog):
     async def run_test():
         async def dummy_wait():
