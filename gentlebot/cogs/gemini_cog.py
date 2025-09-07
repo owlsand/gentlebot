@@ -112,7 +112,7 @@ class GeminiCog(commands.Cog):
         if len(history) > self.max_turns * 2:
             self.histories[channel_id] = history[-(self.max_turns * 2):]
 
-        log.info("Response invoked in channel %s with prompt: %s", chan_name(channel), user_prompt)
+        log.info("Model response in channel %s: %s", chan_name(channel), reply)
         return reply
 
     async def choose_emoji_llm(self, message_content: str, available_emojis: list[str]) -> str | None:
