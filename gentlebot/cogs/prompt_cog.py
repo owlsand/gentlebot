@@ -198,6 +198,9 @@ class PromptCog(commands.Cog):
             self.history.append(p)
 
     async def cog_unload(self) -> None:
+        if self._scheduler_task:
+            self._scheduler_task.cancel()
+            self._scheduler_task = None
         self.pool = None
 
     async def fetch_prompt(self) -> str:
@@ -387,14 +390,22 @@ class PromptCog(commands.Cog):
             wait_seconds = (next_run - now).total_seconds()
             await asyncio.sleep(wait_seconds)
             # Time to send prompt
-            log.info("firing scheduled prompt at %s", datetime.now(LOCAL_TZ).strftime("%I:%M:%S %p %Z"))
-            await self._send_prompt()
+            log.info(
+                "firing scheduled prompt at %s",
+                datetime.now(LOCAL_TZ).strftime("%I:%M:%S %p %Z"),
+            )
+            try:
+                await self._send_prompt()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("scheduled prompt failed")
             # Loop continues to schedule next day
 
     @commands.Cog.listener()
     async def on_ready(self):
         # Start scheduler once
-        if self._scheduler_task is None:
+        if self._scheduler_task is None or self._scheduler_task.done():
             log.info("Starting scheduler task.")
             self._scheduler_task = self.bot.loop.create_task(self._scheduler())
 
