@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 import asyncpg
@@ -60,6 +61,7 @@ class BackfillBot(commands.Bot):
                     if role.tags is not None
                     else None
                 )
+                tag_json = json.dumps(tag_dict) if tag_dict is not None else None
                 inserted = await self.pool.fetchval(
                     """
                     INSERT INTO discord.role (
@@ -88,7 +90,7 @@ class BackfillBot(commands.Bot):
                     getattr(role.icon, "key", None) if role.icon else None,
                     role.unicode_emoji,
                     role.flags.value,
-                    tag_dict,
+                    tag_json,
                 )
                 self.counts["role"] += int(bool(inserted))
             for member in guild.members:
