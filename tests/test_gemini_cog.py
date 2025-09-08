@@ -112,3 +112,24 @@ def test_call_llm_logs_output_not_input(monkeypatch, caplog):
 
     assert "secret input" not in caplog.text
     assert "logged output" in caplog.text
+
+
+def test_choose_emoji_llm_custom_and_standard(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+
+    async def fake_custom(_cid: int, _prompt: str) -> str:
+        return "<:party:123>"
+
+    cog.call_llm = fake_custom
+    result = asyncio.run(cog.choose_emoji_llm("hello", ["<:party:123>"]))
+    assert result == "<:party:123>"
+
+    async def fake_standard(_cid: int, _prompt: str) -> str:
+        return "🔥"
+
+    cog.call_llm = fake_standard
+    result = asyncio.run(cog.choose_emoji_llm("hello", []))
+    assert result == "🔥"

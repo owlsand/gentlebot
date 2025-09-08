@@ -115,24 +115,26 @@ class GeminiCog(commands.Cog):
         log.info("Model response in channel %s: %s", chan_name(channel), reply)
         return reply
 
-    async def choose_emoji_llm(self, message_content: str, available_emojis: list[str]) -> str | None:
+    async def choose_emoji_llm(self, message_content: str, custom_emojis: list[str]) -> str | None:
         """
-        Ask the Gemini model to select an emoji from the provided available_emojis list
-        that humorously reacts to the message_content. Returns the selected emoji string
-        from available_emojis, or None on failure.
+        Ask the Gemini model to select either a standard emoji or one of the
+        provided custom_emojis that humorously reacts to the message_content.
+        Returns the chosen emoji string or ``None`` on failure.
         """
-        emoji_list_str = ", ".join(available_emojis)
+        custom_list = ", ".join(custom_emojis) if custom_emojis else ""
         prompt = (
-            f"Here is a list of emojis available in the server: {emoji_list_str}. "
-            f"Select one emoji from this list that best expresses how a friendly person would react to the following message: '{message_content}'. Respond only with the emoji."
+            "You may react using any standard emoji or one of these custom"
+            f" emojis: {custom_list}. Select a single emoji that best expresses"
+            f" how a friendly person would react to the following message:"
+            f" '{message_content}'. Respond only with the emoji."
         )
         try:
             # Use dummy channel to avoid polluting histories
-            response = await self.call_llm(0, prompt)
-            for emoji in available_emojis:
+            response = (await self.call_llm(0, prompt)).strip()
+            for emoji in custom_emojis:
                 if emoji in response:
                     return emoji
-            return None
+            return response.split()[0] if response else None
         except Exception as e:
             log.exception("Gemini emoji selection failed: %s", e)
             return None
@@ -157,12 +159,10 @@ class GeminiCog(commands.Cog):
 
         # 3) React based on chance
         if random.random() < chance:
-            available = []
-            if message.guild and message.guild.emojis:
-                available.extend(str(e) for e in message.guild.emojis)
-            available.extend(self.default_emojis)
-            emoji_resp = await self.choose_emoji_llm(message.content, available) if available else None
-            emoji_to_use = emoji_resp if emoji_resp else random.choice(available)
+            custom = [str(e) for e in message.guild.emojis] if message.guild and message.guild.emojis else []
+            emoji_resp = await self.choose_emoji_llm(message.content, custom)
+            pool = custom + self.default_emojis
+            emoji_to_use = emoji_resp if emoji_resp else random.choice(pool)
             try:
                 await message.add_reaction(emoji_to_use)
             except Exception as e:
