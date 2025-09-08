@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from gentlebot.cogs import image_cog
 from gentlebot.infra.quotas import RateLimited
 
-def test_image_cog_loads(monkeypatch):
+def test_imagine_cog_loads(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     async def run():
         intents = discord.Intents.none()
@@ -41,7 +41,7 @@ class DummyInteraction:
         self.channel = SimpleNamespace(id=1, name="chan")
 
 
-def test_image_error_uses_generate(monkeypatch):
+def test_imagine_error_uses_generate(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
 
     async def run():
@@ -61,14 +61,14 @@ def test_image_error_uses_generate(monkeypatch):
         monkeypatch.setattr(image_cog.router, "generate_image", fake_generate_image)
         monkeypatch.setattr(image_cog.router, "generate", fake_generate)
 
-        await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
+        await image_cog.ImageCog.imagine.callback(cog, interaction, prompt="hi")
         assert interaction.followup.sent[0][0] == "friendly"
         await bot.close()
 
     asyncio.run(run())
 
 
-def test_image_error_fallback(monkeypatch):
+def test_imagine_error_fallback(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
 
     async def run():
@@ -88,7 +88,7 @@ def test_image_error_fallback(monkeypatch):
         monkeypatch.setattr(image_cog.router, "generate_image", raise_rate_limited)
         monkeypatch.setattr(image_cog.router, "generate", fail_generate)
 
-        await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
+        await image_cog.ImageCog.imagine.callback(cog, interaction, prompt="hi")
         assert interaction.followup.sent[0][0] == (
             "Unfortunately I've exceeded quota and am being told to wait. Try again in a bit."
         )
@@ -97,7 +97,7 @@ def test_image_error_fallback(monkeypatch):
     asyncio.run(run())
 
 
-def test_image_includes_prompt(monkeypatch):
+def test_imagine_includes_prompt(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
 
     async def run():
@@ -113,7 +113,7 @@ def test_image_includes_prompt(monkeypatch):
 
         monkeypatch.setattr(image_cog.router, "generate_image", fake_generate_image)
 
-        await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
+        await image_cog.ImageCog.imagine.callback(cog, interaction, prompt="hi")
         content, kwargs = interaction.followup.sent[0]
         assert content == "||hi||"
         assert isinstance(kwargs["file"], discord.File)
