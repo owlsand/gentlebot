@@ -69,9 +69,10 @@ class ImageCog(commands.Cog):
             return
         if data:
             file = discord.File(io.BytesIO(data), filename="gemini.png")
-            message = f"> {prompt}"
-            if len(message) > 1900:
-                message = message[:1897] + "..."
+            safe_prompt = prompt
+            if len(prompt) > 1894:
+                safe_prompt = prompt[:1891] + "..."
+            message = f"> ||{safe_prompt}||"
             await interaction.followup.send(message, file=file)
         else:
             await interaction.followup.send("Image generation didn't work.")

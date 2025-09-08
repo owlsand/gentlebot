@@ -115,7 +115,7 @@ def test_image_includes_prompt(monkeypatch):
 
         await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
         content, kwargs = interaction.followup.sent[0]
-        assert content == "> hi"
+        assert content == "> ||hi||"
         assert isinstance(kwargs["file"], discord.File)
         await bot.close()
 
