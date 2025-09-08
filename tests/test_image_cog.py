@@ -29,8 +29,8 @@ class DummyFollowup:
     def __init__(self):
         self.sent = []
 
-    async def send(self, message=None, **_):
-        self.sent.append(message)
+    async def send(self, content=None, **kwargs):
+        self.sent.append((content, kwargs))
 
 
 class DummyInteraction:
@@ -62,7 +62,7 @@ def test_image_error_uses_generate(monkeypatch):
         monkeypatch.setattr(image_cog.router, "generate", fake_generate)
 
         await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
-        assert interaction.followup.sent == ["friendly"]
+        assert interaction.followup.sent[0][0] == "friendly"
         await bot.close()
 
     asyncio.run(run())
@@ -89,9 +89,34 @@ def test_image_error_fallback(monkeypatch):
         monkeypatch.setattr(image_cog.router, "generate", fail_generate)
 
         await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
-        assert interaction.followup.sent == [
+        assert interaction.followup.sent[0][0] == (
             "Unfortunately I've exceeded quota and am being told to wait. Try again in a bit."
-        ]
+        )
+        await bot.close()
+
+    asyncio.run(run())
+
+
+def test_image_includes_prompt(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+
+    async def run():
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        await bot.load_extension("gentlebot.cogs.image_cog")
+        cog = bot.get_cog("ImageCog")
+
+        interaction = DummyInteraction()
+
+        def fake_generate_image(prompt):
+            return b"img"
+
+        monkeypatch.setattr(image_cog.router, "generate_image", fake_generate_image)
+
+        await image_cog.ImageCog.image.callback(cog, interaction, prompt="hi")
+        content, kwargs = interaction.followup.sent[0]
+        assert content == "> hi"
+        assert isinstance(kwargs["file"], discord.File)
         await bot.close()
 
     asyncio.run(run())
