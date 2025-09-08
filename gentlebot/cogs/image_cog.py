@@ -16,7 +16,7 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 
 
 class ImageCog(commands.Cog):
-    """Expose an /image command using Gemini."""
+    """Expose an /imagine command using Gemini."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -51,8 +51,8 @@ class ImageCog(commands.Cog):
                 "Try again in a bit."
             )
 
-    @app_commands.command(name="image", description="Generate an image with Gemini")
-    async def image(self, interaction: discord.Interaction, prompt: str) -> None:
+    @app_commands.command(name="imagine", description="Generate an image with Gemini")
+    async def imagine(self, interaction: discord.Interaction, prompt: str) -> None:
         await interaction.response.defer(thinking=True)
         try:
             data = await asyncio.to_thread(router.generate_image, prompt)
