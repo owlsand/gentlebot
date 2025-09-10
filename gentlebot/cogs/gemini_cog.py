@@ -72,23 +72,24 @@ class GeminiCog(commands.Cog):
             self.pool = None
             log.warning("GeminiCog disabled archive due to missing database URL")
 
+    def strip_mentions(self, raw: str) -> str:
+        """Remove user and role mentions and collapse blank lines."""
+        text = self.MENTION_CLEANUP.sub("", raw)
+        text = self.DISALLOWED_PATTERN.sub("", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
     def sanitize_prompt(self, raw: str) -> str | None:
-        """
-        1. Reject if prompt too long.
-        2. Reject if it contains a role mention.
-        3. Strip all user mentions.
-        4. Collapse excessive blank lines.
-        """
+        """Validate user prompts before sending to the model."""
         if len(raw) > self.MAX_PROMPT_LEN:
             return None
 
         if self.DISALLOWED_PATTERN.search(raw):
             return None
 
-        prompt = self.MENTION_CLEANUP.sub("", raw).strip()
-        prompt = re.sub(r"\n{3,}", "\n\n", prompt)
+        prompt = self.strip_mentions(raw)
 
-        if not prompt or prompt.isspace():
+        if not prompt:
             return None
 
         return prompt
@@ -241,7 +242,13 @@ class GeminiCog(commands.Cog):
             await asyncio.sleep(wait_time)
         self.cooldowns[message.author.id] = time.time()
 
-        # 8) Build user_prompt, including last 10 messages if ambient
+        # 8) Sanitize user prompt
+        sanitized_prompt = self.sanitize_prompt(prompt)
+        if sanitized_prompt is None:
+            log.info("Rejected prompt: too long, empty, or disallowed mentions.")
+            return
+
+        # 9) Build user_prompt with optional context
         is_ambient = (
             prompt == content
             and 'gentlebot' not in content.lower()
@@ -254,31 +261,32 @@ class GeminiCog(commands.Cog):
                 if m.id != message.id and not m.author.bot:
                     recent_msgs.append(m.content.strip())
             recent_msgs.reverse()
-            context_str = "\n".join(recent_msgs)
-            user_prompt = (
-                f"You are jumping into an ongoing conversation that people probably don't want you involved in. Here are the last few messages:\n{context_str}\n"
-                f"Now react to the message: '{prompt}'"
+            context_str = self.strip_mentions("\n".join(recent_msgs))
+            prefix = (
+                "You are jumping into an ongoing conversation that people probably don't want you involved in. Here are the last few messages:\n"
             )
-        else:
-            context_str = await self._get_context_from_archive(message.channel.id)
-            if context_str:
-                user_prompt = (
-                    f"Recent conversation within the last 24 hours:\n{context_str}\n\n"
-                    f"User message: {prompt}"
-                )
+            suffix = f"\nNow react to the message: '{sanitized_prompt}'"
+            max_context = self.MAX_PROMPT_LEN - len(prefix) - len(suffix)
+            if context_str and max_context > 0:
+                context_part = context_str[-max_context:]
+                user_prompt = f"{prefix}{context_part}{suffix}"
             else:
-                user_prompt = prompt
-
-        # 9) Sanitize prompt
-        sanitized = self.sanitize_prompt(user_prompt)
-        if sanitized is None:
-            log.info("Rejected prompt: too long, empty, or disallowed mentions.")
-            return
+                user_prompt = sanitized_prompt
+        else:
+            context_str = self.strip_mentions(await self._get_context_from_archive(message.channel.id))
+            prefix = "Recent conversation within the last 24 hours:\n"
+            suffix = f"\n\nUser message: {sanitized_prompt}"
+            max_context = self.MAX_PROMPT_LEN - len(prefix) - len(suffix)
+            if context_str and max_context > 0:
+                context_part = context_str[-max_context:]
+                user_prompt = f"{prefix}{context_part}{suffix}"
+            else:
+                user_prompt = sanitized_prompt
 
         # 10) Typing indicator while fetching
         async with message.channel.typing():
             try:
-                response = await self.call_llm(message.channel.id, sanitized)
+                response = await self.call_llm(message.channel.id, user_prompt)
             except Exception as e:
                 log.exception("Model call failed: %s", e)
                 return
