@@ -69,7 +69,7 @@ def test_post_haiku_posts_message(cog, monkeypatch):
         class DummyPool:
             async def fetch(self, q, guild_id, start, end):
                 captured_start.append(start)
-                return [{"content": "one"}, {"content": "two"}]
+                return [{"content": str(i)} for i in range(51)]
 
             async def close(self):
                 pass
@@ -106,5 +106,40 @@ def test_post_haiku_posts_message(cog, monkeypatch):
 
         expected = module.LA.localize(dt.datetime(2024, 5, 15))
         assert captured_start == [expected]
+
+    asyncio.run(run_test())
+
+
+def test_post_haiku_skips_when_insufficient_messages(cog, monkeypatch):
+    async def run_test():
+        async def dummy_wait():
+            pass
+
+        monkeypatch.setattr(cog.bot, "wait_until_ready", dummy_wait)
+        monkeypatch.setattr(cfg, "GUILD_ID", 1, raising=False)
+        monkeypatch.setattr(cfg, "LOBBY_CHANNEL_ID", 2, raising=False)
+
+        class DummyPool:
+            async def fetch(self, q, guild_id, start, end):
+                return [{"content": "msg"} for _ in range(50)]
+
+            async def close(self):
+                pass
+
+        cog.pool = DummyPool()
+
+        sent: list[str] = []
+        import gentlebot.tasks.daily_haiku as module
+
+        class DummyChannel(SimpleNamespace):
+            async def send(self, message):
+                sent.append(message)
+
+        monkeypatch.setattr(module.discord, "TextChannel", DummyChannel)
+        channel = DummyChannel()
+        monkeypatch.setattr(cog.bot, "get_channel", lambda cid: channel)
+
+        await cog._post_haiku()
+        assert sent == []
 
     asyncio.run(run_test())
