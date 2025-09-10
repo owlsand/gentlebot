@@ -6,13 +6,16 @@ import random
 import asyncio
 import logging
 from collections import defaultdict
+from datetime import timedelta
 
+import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands
 from ..util import chan_name, user_name
 from ..llm.router import router, SafetyBlocked
 from ..infra.quotas import RateLimited
+from ..db import get_pool
 
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
@@ -52,11 +55,22 @@ class GeminiCog(commands.Cog):
         # === Ambient response chance ===
         self.ambient_chance = 0  # ambient message responses disabled
 
+        # === Database pool for archived messages ===
+        self.pool: asyncpg.Pool | None = None
+
     @commands.Cog.listener()
     async def on_ready(self):
         bot_id = self.bot.user.id
         self.mention_strs = [f"<@{bot_id}>", f"<@!{bot_id}>"]
         log.info("Ready to interact with the guild.")
+
+    async def cog_load(self) -> None:
+        """Initialize database pool for message archive retrieval."""
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
+            self.pool = None
+            log.warning("GeminiCog disabled archive due to missing database URL")
 
     def sanitize_prompt(self, raw: str) -> str | None:
         """
@@ -114,6 +128,34 @@ class GeminiCog(commands.Cog):
 
         log.info("Model response in channel %s: %s", chan_name(channel), reply)
         return reply
+
+    async def _get_context_from_archive(self, channel_id: int) -> str:
+        """Return messages from the last 24h in the given channel."""
+        if not self.pool:
+            return ""
+        since = discord.utils.utcnow() - timedelta(hours=24)
+        try:
+            rows = await self.pool.fetch(
+                """
+                SELECT m.content, u.display_name
+                  FROM discord.message m
+                  JOIN discord."user" u ON m.author_id = u.user_id
+                 WHERE m.channel_id=$1 AND m.created_at >= $2
+                 ORDER BY m.created_at ASC LIMIT 50
+                """,
+                channel_id,
+                since,
+            )
+        except Exception:
+            log.exception("Archive fetch failed")
+            return ""
+        lines = []
+        for r in rows:
+            content = r["content"]
+            author = r["display_name"] or "?"
+            if content:
+                lines.append(f"{author}: {content}")
+        return "\n".join(lines)
 
     async def choose_emoji_llm(self, message_content: str, custom_emojis: list[str]) -> str | None:
         """
@@ -218,7 +260,14 @@ class GeminiCog(commands.Cog):
                 f"Now react to the message: '{prompt}'"
             )
         else:
-            user_prompt = prompt
+            context_str = await self._get_context_from_archive(message.channel.id)
+            if context_str:
+                user_prompt = (
+                    f"Recent conversation within the last 24 hours:\n{context_str}\n\n"
+                    f"User message: {prompt}"
+                )
+            else:
+                user_prompt = prompt
 
         # 9) Sanitize prompt
         sanitized = self.sanitize_prompt(user_prompt)
