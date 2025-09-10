@@ -72,9 +72,9 @@ class DailyHaikuCog(commands.Cog):
             await self.pool.close()
             self.pool = None
 
-    async def _fetch_corpus(self, start: datetime, end: datetime) -> str:
+    async def _fetch_corpus(self, start: datetime, end: datetime) -> tuple[str, int]:
         if not self.pool:
-            return ""
+            return "", 0
         rows = await self.pool.fetch(
             """
             SELECT m.content
@@ -92,15 +92,16 @@ class DailyHaikuCog(commands.Cog):
             start,
             end,
         )
-        return "\n".join(r["content"] or "" for r in rows if r["content"])
+        messages = [r["content"] or "" for r in rows if r["content"]]
+        return "\n".join(messages), len(messages)
 
     async def _post_haiku(self) -> None:
         await self.bot.wait_until_ready()
         now = datetime.now(tz=LA)
         start = LA.localize(datetime(now.year, now.month, now.day))
-        corpus = await self._fetch_corpus(start, now)
-        if not corpus:
-            log.info("No messages available for haiku generation")
+        corpus, count = await self._fetch_corpus(start, now)
+        if count <= 50:
+            log.info("Only %d messages collected; skipping haiku", count)
             return
         prompt = build_prompt(start.strftime("%Y-%m-%d"), corpus)
         try:
