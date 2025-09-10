@@ -158,12 +158,11 @@ def _strip_outer_quotes(text: str) -> str:
 # Prompt categories
 PROMPT_CATEGORIES = [
     "Recent Server Discussion",
-    "Engagement Bait",
-    "Sports News",
+    # "Engagement Bait",
+    # "Sports News",
 ]
 
 SPORTS_NEWS_PATHS = [
-    "soccer/eng.1",
     "racing/f1",
     "football/nfl"
 ]
