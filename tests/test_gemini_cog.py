@@ -133,3 +133,43 @@ def test_choose_emoji_llm_custom_and_standard(monkeypatch):
     cog.call_llm = fake_standard
     result = asyncio.run(cog.choose_emoji_llm("hello", []))
     assert result == "🔥"
+
+
+def test_on_message_includes_archive_context(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+    cog.mention_strs = ["<@123>"]
+
+    message = MagicMock(spec=discord.Message)
+    message.author.bot = False
+    message.author.id = 456
+    message.flags = MagicMock(ephemeral=False)
+    message.content = "<@123> hi"
+    message.guild = None
+    message.reference = None
+    message.channel = MagicMock()
+    message.channel.id = 789
+    message.channel.typing.return_value = dummy_typing()
+    message.reply = AsyncMock()
+
+    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
+
+    captured: dict[str, str] = {}
+
+    async def fake_call(cid: int, prompt: str) -> str:
+        captured["prompt"] = prompt
+        return "ok"
+
+    async def fake_context(_cid: int) -> str:
+        return "Alice: hello\nBob: hey"
+
+    cog.call_llm = fake_call
+    cog._get_context_from_archive = fake_context
+
+    asyncio.run(cog.on_message(message))
+
+    assert "Alice: hello" in captured["prompt"]
+    assert "User message: hi" in captured["prompt"]
+    message.reply.assert_called_once_with("ok")
