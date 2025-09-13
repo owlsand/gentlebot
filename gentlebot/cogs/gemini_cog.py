@@ -73,8 +73,14 @@ class GeminiCog(commands.Cog):
             log.warning("GeminiCog disabled archive due to missing database URL")
 
     def strip_mentions(self, raw: str) -> str:
-        """Remove user and role mentions and collapse blank lines."""
-        text = self.MENTION_CLEANUP.sub("", raw)
+        """Replace user mentions with names, drop role mentions, collapse blanks."""
+
+        def repl(match: re.Match) -> str:
+            uid = int(match.group(1))
+            user = self.bot.get_user(uid)
+            return f"@{user_name(user) if user else uid}"
+
+        text = self.MENTION_CLEANUP.sub(repl, raw)
         text = self.DISALLOWED_PATTERN.sub("", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
