@@ -57,7 +57,7 @@ class LLMRouter:
         self.models = {
             "general": os.getenv("MODEL_GENERAL", "gemini-2.5-flash"),
             "scheduled": os.getenv("MODEL_SCHEDULED", "gemini-2.5-pro"),
-            "image": os.getenv("MODEL_IMAGE", "gemini-2.5-flash-image-preview"),
+            "image": os.getenv("MODEL_IMAGE", "gemini-2.0-flash-preview-image"),
         }
         def _limit(route: str, default: Limit) -> Limit:
             prefix = f"GEMINI_{route.upper()}_"
@@ -74,7 +74,7 @@ class LLMRouter:
             {
                 "general": _limit("general", Limit(rpm=15, tpm=1_000_000, rpd=1_500)),
                 "scheduled": _limit("scheduled", Limit(rpm=2, tpm=1_000_000, rpd=1_500)),
-                "image": _limit("image", Limit(rpm=15, tpm=1_000_000, rpd=1_500)),
+                "image": _limit("image", Limit(rpm=10, tpm=1_000_000, rpd=1_500)),
             }
         )
 
