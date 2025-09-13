@@ -23,10 +23,12 @@ def test_opens_thread_with_projection(monkeypatch):
         monkeypatch.setattr(cog, "fetch_projection", lambda gid: projection)
 
         created = []
+        thread_types = []
         sent = []
 
-        async def fake_create_thread(name, auto_archive_duration=None):
+        async def fake_create_thread(name, auto_archive_duration=None, type=None):
             created.append(name)
+            thread_types.append(type)
             return SimpleNamespace(send=lambda msg: sent.append(msg))
 
         channel = SimpleNamespace(create_thread=fake_create_thread)
@@ -39,6 +41,7 @@ def test_opens_thread_with_projection(monkeypatch):
 
         await cog._open_threads()
         assert created == ["🏈 LAR @ SEA (1/1, 5:30pm PST)"]
+        assert thread_types == [discord.ChannelType.public_thread]
         assert "Projected score: Seahawks 24 - Rams 21" in sent[0]
         assert "Win odds: Seahawks 55.0%, Rams 45.0%" in sent[0]
 
