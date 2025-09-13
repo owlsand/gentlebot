@@ -118,13 +118,19 @@ def test_fetch_projection(monkeypatch):
             "team": {
                 "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/teams/26?lang=en&region=us"
             },
-            "statistics": [{"name": "gameProjection", "value": 60.0}],
+            "statistics": [
+                {"name": "gameProjection", "value": 24.0},
+                {"name": "gameProjectionProbability", "value": 60.0},
+            ],
         },
         "awayTeam": {
             "team": {
                 "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/teams/10?lang=en&region=us"
             },
-            "statistics": [{"name": "gameProjection", "value": 40.0}],
+            "statistics": [
+                {"name": "gameProjection", "value": 16.0},
+                {"name": "teamOddsWinPercentage", "value": 40.0},
+            ],
         },
     }
 
