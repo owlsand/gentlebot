@@ -158,8 +158,8 @@ def _strip_outer_quotes(text: str) -> str:
 # Prompt categories
 PROMPT_CATEGORIES = [
     "Recent Server Discussion",
-    # "Engagement Bait",
-    # "Sports News",
+    "Engagement Bait",
+    "Sports News",
 ]
 
 SPORTS_NEWS_PATHS = [
@@ -296,9 +296,9 @@ class PromptCog(commands.Cog):
         rows = await self.pool.fetch(
             """
             SELECT m.content
-            FROM message m
-            JOIN "user" u ON u.user_id = m.author_id
-            JOIN channel c ON c.channel_id = m.channel_id
+            FROM discord.message m
+            JOIN discord."user" u ON u.user_id = m.author_id
+            JOIN discord.channel c ON c.channel_id = m.channel_id
             WHERE u.is_bot = FALSE
               AND c.type = 0
               AND m.created_at >= now() - interval '72 hours'

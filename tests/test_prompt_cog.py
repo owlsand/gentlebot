@@ -126,6 +126,30 @@ def test_on_message_uses_schema():
     asyncio.run(run())
 
 
+def test_recent_server_topic_uses_schema(monkeypatch):
+    async def run():
+        cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
+
+        captured = {}
+
+        class DummyPool:
+            async def fetch(self, query, *args):
+                captured['query'] = query
+                return [{"content": "hi"}]
+
+        cog.pool = DummyPool()
+        monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: "topic")
+
+        topic = await cog._recent_server_topic()
+
+        assert 'FROM discord.message' in captured['query']
+        assert 'JOIN discord."user"' in captured['query']
+        assert 'JOIN discord.channel' in captured['query']
+        assert topic == 'topic'
+
+    asyncio.run(run())
+
+
 def test_duplicate_prompt_updates_message_count():
     async def run():
         bot = types.SimpleNamespace()
