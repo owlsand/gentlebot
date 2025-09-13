@@ -135,6 +135,17 @@ def test_choose_emoji_llm_custom_and_standard(monkeypatch):
     assert result == "🔥"
 
 
+def test_sanitize_prompt_replaces_user_mentions(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+    user = MagicMock()
+    user.display_name = "Spencer"
+    monkeypatch.setattr(bot, "get_user", lambda uid: user if uid == 1 else None)
+    assert cog.sanitize_prompt("<@1> hello") == "@Spencer hello"
+
+
 def test_on_message_includes_archive_context(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     intents = discord.Intents.none()
