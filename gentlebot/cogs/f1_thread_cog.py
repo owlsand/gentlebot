@@ -214,7 +214,11 @@ class F1ThreadCog(commands.Cog):
         for row in sessions:
             title = self._make_title(row)
             try:
-                thread = await channel.create_thread(name=title, auto_archive_duration=1440)
+                thread = await channel.create_thread(
+                    name=title,
+                    auto_archive_duration=1440,
+                    type=discord.ChannelType.public_thread,
+                )
             except Exception:
                 log.exception("Failed to create thread %s", title)
                 continue

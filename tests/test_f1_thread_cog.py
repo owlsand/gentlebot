@@ -36,10 +36,12 @@ def test_open_threads(monkeypatch):
         monkeypatch.setattr(cog, "_due_sessions", fake_due_sessions)
 
         created = []
+        thread_types = []
 
-        async def fake_create_thread(name, auto_archive_duration=None):
+        async def fake_create_thread(name, auto_archive_duration=None, type=None):
             t = DummyThread(id=123, name=name, deleted=False, sent=[])
             created.append(name)
+            thread_types.append(type)
             return t
 
         class DummyChannel(SimpleNamespace):
@@ -63,6 +65,7 @@ def test_open_threads(monkeypatch):
         flag = iso_to_flag("HU")
         expected_title = f"{flag} 2025 Hungarian GP | Qualifying — Sat 07:00 PDT"
         assert created == [expected_title]
+        assert thread_types == [discord.ChannelType.public_thread]
         assert marked == [(1, 123)]
         assert sent[0].startswith(f"**{flag} 2025 Hungarian GP – Qualifying**")
 

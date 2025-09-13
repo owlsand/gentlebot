@@ -111,7 +111,11 @@ class SeahawksThreadCog(commands.Cog):
                 continue
             title = self._thread_title(g["short"], start_pst)
             try:
-                thread = await channel.create_thread(name=title, auto_archive_duration=1440)
+                thread = await channel.create_thread(
+                    name=title,
+                    auto_archive_duration=1440,
+                    type=discord.ChannelType.public_thread,
+                )
             except Exception:  # pragma: no cover - network
                 log.exception("Failed to create thread %s", title)
                 continue
