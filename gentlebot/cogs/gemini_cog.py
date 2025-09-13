@@ -297,13 +297,14 @@ class GeminiCog(commands.Cog):
                 log.exception("Model call failed: %s", e)
                 return
 
-        # 11) Paginate if needed
+        # 11) Replace placeholder mentions and send, paginating if needed
+        response = re.sub(r"@User\b", message.author.mention, response)
         if len(response) <= 2000:
-            await message.reply(response)
+            await message.reply(response, mention_author=True)
         else:
             chunks = [response[i : i + 1900] for i in range(0, len(response), 1900)]
             for chunk in chunks:
-                await message.reply(chunk)
+                await message.reply(chunk, mention_author=True)
 
     # === Slash command /ask ===
     @app_commands.command(name="ask", description="Ask Gentlebot a question.")

@@ -183,7 +183,7 @@ def test_on_message_includes_archive_context(monkeypatch):
 
     assert "Alice: hello" in captured["prompt"]
     assert "User message: hi" in captured["prompt"]
-    message.reply.assert_called_once_with("ok")
+    message.reply.assert_called_once_with("ok", mention_author=True)
 
 
 def test_on_message_context_sanitization(monkeypatch):
@@ -223,4 +223,39 @@ def test_on_message_context_sanitization(monkeypatch):
 
     assert "<@&5>" not in captured["prompt"]
     assert len(captured["prompt"]) <= cog.MAX_PROMPT_LEN
-    message.reply.assert_called_once_with("ok")
+    message.reply.assert_called_once_with("ok", mention_author=True)
+
+
+def test_on_message_replaces_user_placeholder(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+    cog.mention_strs = ["<@123>"]
+
+    message = MagicMock(spec=discord.Message)
+    message.author.bot = False
+    message.author.id = 456
+    message.author.mention = "<@456>"
+    message.flags = MagicMock(ephemeral=False)
+    message.content = "<@123> hi"
+    message.guild = None
+    message.reference = None
+    message.channel = MagicMock()
+    message.channel.id = 789
+    message.channel.typing.return_value = dummy_typing()
+    message.reply = AsyncMock()
+
+    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
+
+    async def fake_call(_cid: int, _prompt: str) -> str:
+        return "@User hello"
+
+    cog.call_llm = fake_call
+
+    asyncio.run(cog.on_message(message))
+
+    message.reply.assert_called_once()
+    args, kwargs = message.reply.call_args
+    assert args[0] == f"{message.author.mention} hello"
+    assert kwargs["mention_author"] is True
