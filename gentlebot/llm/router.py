@@ -98,7 +98,20 @@ class LLMRouter:
         if not model:
             raise ValueError(f"unknown route {route}")
         tokens_in = self._tokens_estimate(messages, SYSTEM_INSTRUCTION)
-        temp_delta = self.quota.check(route, tokens_in)
+        try:
+            temp_delta = self.quota.check(route, tokens_in)
+        except RateLimited:
+            if route == "scheduled":
+                log.info(
+                    "route=%s model=%s tokens_in=%s status=rate_limited fallback=general",
+                    route,
+                    model,
+                    tokens_in,
+                )
+                return self.generate(
+                    "general", messages, temperature, think_budget, json_mode
+                )
+            raise
         temp = max(0.0, temperature + temp_delta)
         start = time.time()
 
@@ -115,11 +128,29 @@ class LLMRouter:
         try:
             resp = call_with_backoff(_call)
         except RateLimited:
+            if route == "scheduled":
+                log.info(
+                    "route=%s model=%s tokens_in=%s status=rate_limited fallback=general",
+                    route,
+                    model,
+                    tokens_in,
+                )
+                return self.generate("general", messages, temperature, think_budget, json_mode)
             log.info(
                 "route=%s model=%s tokens_in=%s status=rate_limited", route, model, tokens_in
             )
             raise
         except Exception as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if route == "scheduled" and (status == 429 or (status and 500 <= status < 600)):
+                log.warning(
+                    "route=%s model=%s tokens_in=%s status=%s fallback=general",
+                    route,
+                    model,
+                    tokens_in,
+                    status,
+                )
+                return self.generate("general", messages, temperature, think_budget, json_mode)
             log.exception(
                 "route=%s model=%s tokens_in=%s status=error", route, model, tokens_in
             )
