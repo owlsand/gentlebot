@@ -62,18 +62,56 @@ class SeahawksThreadCog(commands.Cog):
 
     def fetch_projection(self, game_id: str) -> dict[str, float]:
         """Return projected score and win probability for each team."""
-        url = f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/{game_id}/competitions/{game_id}/predictor"
-        resp = requests.get(url, timeout=10)
+        # Win probability comes from the predictor endpoint
+        pred_url = (
+            "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/"
+            f"events/{game_id}/competitions/{game_id}/predictor"
+        )
+        resp = requests.get(pred_url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        home = data.get("homeTeam", {})
-        away = data.get("awayTeam", {})
-        # ESPN predictor uses 'gameProjection' and 'gameProjectionProb' fields
+
+        def _parse_team(team: dict[str, Any]) -> tuple[str, float]:
+            """Return (team_id, win_probability)."""
+            ref = team.get("team", {}).get("$ref", "")
+            team_id = ref.rstrip("/").split("/")[-1].split("?")[0]
+            stats = {s.get("name"): s for s in team.get("statistics", [])}
+            win = stats.get("gameProjection", {}).get("value", 0.0) / 100
+            return team_id, win
+
+        home_id, home_win = _parse_team(data.get("homeTeam", {}))
+        away_id, away_win = _parse_team(data.get("awayTeam", {}))
+
+        # Spread and over/under for projected scores come from the summary API
+        sum_url = (
+            "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?"
+            f"event={game_id}"
+        )
+        resp2 = requests.get(sum_url, timeout=10)
+        resp2.raise_for_status()
+        pick = resp2.json().get("pickcenter", [])
+        over_under = pick[0].get("overUnder") if pick else None
+        spread = pick[0].get("spread") if pick else None
+        if over_under is not None and spread is not None:
+            home_score = over_under / 2 - spread / 2
+            away_score = over_under - home_score
+            if home_id == "26":
+                sea_score, opp_score = home_score, away_score
+            else:
+                sea_score, opp_score = away_score, home_score
+        else:
+            sea_score = opp_score = 0.0
+
+        if home_id == "26":
+            sea_win, opp_win = home_win, away_win
+        else:
+            sea_win, opp_win = away_win, home_win
+
         return {
-            "sea_score": home.get("gameProjection", 0.0) if home.get("teamId") == "26" else away.get("gameProjection", 0.0),
-            "opp_score": away.get("gameProjection", 0.0) if home.get("teamId") == "26" else home.get("gameProjection", 0.0),
-            "sea_win": home.get("gameProjectionProbability", 0.0) if home.get("teamId") == "26" else away.get("gameProjectionProbability", 0.0),
-            "opp_win": away.get("gameProjectionProbability", 0.0) if home.get("teamId") == "26" else home.get("gameProjectionProbability", 0.0),
+            "sea_score": sea_score,
+            "opp_score": opp_score,
+            "sea_win": sea_win,
+            "opp_win": opp_win,
         }
 
     # ---- helpers ----------------------------------------------------------------

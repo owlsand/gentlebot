@@ -110,3 +110,55 @@ def test_fetch_schedule_skips_bye_week(monkeypatch):
     assert len(games) == 1
     assert games[0]["opponent"] == "Rams"
     assert games[0]["short"] == "SEA @ LAR"
+
+
+def test_fetch_projection(monkeypatch):
+    predictor = {
+        "homeTeam": {
+            "team": {
+                "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/teams/26?lang=en&region=us"
+            },
+            "statistics": [{"name": "gameProjection", "value": 60.0}],
+        },
+        "awayTeam": {
+            "team": {
+                "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/teams/10?lang=en&region=us"
+            },
+            "statistics": [{"name": "gameProjection", "value": 40.0}],
+        },
+    }
+
+    summary = {"pickcenter": [{"overUnder": 40.0, "spread": -4.0}]}
+
+    class FakeResp:
+        def __init__(self, data):
+            self._data = data
+
+        def json(self):
+            return self._data
+
+        def raise_for_status(self):
+            return None
+
+    def fake_get(url, timeout=10):
+        if "predictor" in url:
+            return FakeResp(predictor)
+        return FakeResp(summary)
+
+    monkeypatch.setattr(
+        "gentlebot.cogs.seahawks_thread_cog.requests.get", fake_get
+    )
+
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    monkeypatch.setattr(bot, "loop", SimpleNamespace(create_task=lambda c: None))
+    monkeypatch.setattr(SeahawksThreadCog, "game_task", SimpleNamespace(start=lambda: None))
+    cog = SeahawksThreadCog(bot)
+
+    proj = cog.fetch_projection("gid")
+    assert proj == {
+        "sea_score": 22.0,
+        "opp_score": 18.0,
+        "sea_win": 0.6,
+        "opp_win": 0.4,
+    }
