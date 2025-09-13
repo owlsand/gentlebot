@@ -76,7 +76,12 @@ class SeahawksThreadCog(commands.Cog):
             ref = team.get("team", {}).get("$ref", "")
             team_id = ref.rstrip("/").split("/")[-1].split("?")[0]
             stats = {s.get("name"): s for s in team.get("statistics", [])}
-            win = stats.get("gameProjection", {}).get("value", 0.0) / 100
+            win_stat = (
+                stats.get("gameProjectionProbability")
+                or stats.get("teamOddsWinPercentage")
+                or stats.get("gameProjection")
+            )
+            win = win_stat.get("value", 0.0) / 100 if win_stat else 0.0
             return team_id, win
 
         home_id, home_win = _parse_team(data.get("homeTeam", {}))
