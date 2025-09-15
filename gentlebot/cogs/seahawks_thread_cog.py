@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time, timezone
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import requests
 from dateutil import parser
@@ -26,10 +26,16 @@ class SeahawksThreadCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.opened: set[str] = set()
+        # Track created threads and score update progress
+        self.threads: Dict[str, discord.Thread] = {}
+        self.opponents: Dict[str, str] = {}
+        self.quarters_sent: Dict[str, int] = {}
         self.game_task.start()
+        self.score_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup
         self.game_task.cancel()
+        self.score_task.cancel()
 
     # ---- external data helpers -------------------------------------------------
     def fetch_schedule(self) -> list[dict[str, Any]]:
@@ -119,6 +125,65 @@ class SeahawksThreadCog(commands.Cog):
             "opp_win": opp_win,
         }
 
+    def fetch_linescores(self, game_id: str) -> List[Tuple[int, int]]:
+        """Return per-quarter scoring tuples for Seahawks and opponent.
+
+        Filters out the trailing total row included in ESPN's data so
+        each tuple represents an actual period (quarter or overtime).
+        """
+        url = (
+            "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?"
+            f"event={game_id}"
+        )
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        box = resp.json().get("boxscore", {})
+        teams = box.get("teams", [])
+        if len(teams) != 2:
+            return []
+        sea_team = next(
+            (t for t in teams if t.get("team", {}).get("abbreviation") == "SEA"),
+            None,
+        )
+        opp_team = next(
+            (t for t in teams if t.get("team", {}).get("abbreviation") != "SEA"),
+            None,
+        )
+        if not sea_team or not opp_team:
+            return []
+        sea_lines = [int(ls.get("value", 0)) for ls in sea_team.get("linescores", [])]
+        opp_lines = [int(ls.get("value", 0)) for ls in opp_team.get("linescores", [])]
+
+        def _strip_total(lines: List[int]) -> List[int]:
+            """Remove trailing total row if present."""
+            if len(lines) >= 2 and lines[-1] == sum(lines[:-1]):
+                return lines[:-1]
+            return lines
+
+        sea_lines = _strip_total(sea_lines)
+        opp_lines = _strip_total(opp_lines)
+        quarters: List[Tuple[int, int]] = []
+        for idx in range(min(len(sea_lines), len(opp_lines))):
+            quarters.append((sea_lines[idx], opp_lines[idx]))
+        return quarters
+
+    def fetch_game_status(self, game_id: str) -> Tuple[int, str]:
+        """Return the current period number and game state.
+
+        State values correspond to ESPN's status type state field such as
+        ``pre`` (not started), ``in`` (in progress), or ``post`` (final).
+        """
+        url = (
+            "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/"
+            f"events/{game_id}/competitions/{game_id}/status"
+        )
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        period = int(data.get("period", 0))
+        state = data.get("type", {}).get("state", "")
+        return period, state
+
     # ---- helpers ----------------------------------------------------------------
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -168,12 +233,48 @@ class SeahawksThreadCog(commands.Cog):
             except Exception:  # pragma: no cover - network
                 log.exception("Failed to send message for %s", title)
             self.opened.add(g["id"])
+            self.threads[g["id"]] = thread
+            self.opponents[g["id"]] = g["opponent"]
+            self.quarters_sent[g["id"]] = 0
 
     # ---- background loop -------------------------------------------------------
     @tasks.loop(minutes=30)
     async def game_task(self) -> None:
         await self.bot.wait_until_ready()
         await self._open_threads()
+
+    async def _update_scores(self) -> None:
+        """Send quarter score updates to active game threads."""
+        for gid, thread in list(self.threads.items()):
+            try:
+                lines = self.fetch_linescores(gid)
+                period, state = self.fetch_game_status(gid)
+            except Exception:  # pragma: no cover - network
+                log.exception("Failed to fetch scores for %s", gid)
+                continue
+            posted = self.quarters_sent.get(gid, 0)
+            sea_tot = opp_tot = 0
+            for qnum, (sea_q, opp_q) in enumerate(lines, start=1):
+                sea_tot += sea_q
+                opp_tot += opp_q
+                if qnum <= posted:
+                    continue
+                if sea_q == 0 and opp_q == 0 and period <= qnum and state != "post":
+                    break
+                msg = (
+                    f"End of Q{qnum}: Seahawks {sea_tot} - {self.opponents.get(gid, 'Opponent')} {opp_tot}"
+                )
+                try:
+                    await thread.send(msg)
+                except Exception:  # pragma: no cover - network
+                    log.exception("Failed to send score update for %s Q%s", gid, qnum)
+                posted += 1
+            self.quarters_sent[gid] = posted
+
+    @tasks.loop(minutes=5)
+    async def score_task(self) -> None:
+        await self.bot.wait_until_ready()
+        await self._update_scores()
 
 
 async def setup(bot: commands.Bot):
