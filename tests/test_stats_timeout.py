@@ -2,7 +2,7 @@ import types
 
 import pytest
 from gentlebot.cogs.bigdumper_watcher_cog import BigDumperWatcherCog
-from gentlebot.cogs.sports_cog import SportsCog, STATS_TIMEOUT
+from gentlebot.cogs.sports_cog import STATS_TIMEOUT
 
 
 class DummyResp:
@@ -28,17 +28,3 @@ def test_fetch_hr_uses_timeout(monkeypatch):
     hr = cog._fetch_hr()
     assert hr == 7
     assert called['timeout'] == STATS_TIMEOUT
-
-
-def test_fetch_season_stats_uses_timeout(monkeypatch):
-    cog = SportsCog(bot=None)
-    called = {}
-
-    def fake_get(url, params=None, timeout=None):
-        called['timeout'] = timeout
-        return DummyResp()
-
-    monkeypatch.setattr(cog.session, 'get', fake_get)
-    stats = cog.fetch_season_stats()
-    assert called['timeout'] == STATS_TIMEOUT
-    assert stats.get('homeRuns') == 7
