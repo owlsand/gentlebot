@@ -10,12 +10,14 @@ import asyncio
 import requests
 from requests.adapters import HTTPAdapter, Retry
 import pytz
+import asyncpg
 
 import discord
 from discord.ext import commands, tasks
 
 from .sports_cog import TEAM_ID, STATS_TIMEOUT, PST_TZ
 from .. import bot_config as cfg
+from ..db import get_pool
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -26,8 +28,15 @@ class MarinersGameCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.posted: set[int] = set()
+        self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:  # pragma: no cover - startup
+        try:
+            self.pool = await get_pool()
+            await self._ensure_table()
+            await self._load_posted()
+        except RuntimeError:
+            log.warning("PG_DSN is missing; MarinersGameCog state will not persist")
         self.game_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup
@@ -38,6 +47,35 @@ class MarinersGameCog(commands.Cog):
         today = datetime.now(PST_TZ).date()
         yesterday = today - timedelta(days=1)
         return [today.isoformat(), yesterday.isoformat()]
+
+    async def _ensure_table(self) -> None:
+        if not self.pool:
+            return
+        await self.pool.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mariners_posted (
+                game_pk BIGINT PRIMARY KEY,
+                posted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+
+    async def _load_posted(self) -> None:
+        if not self.pool:
+            return
+        rows = await self.pool.fetch("SELECT game_pk FROM mariners_posted")
+        self.posted.update(int(r[0]) for r in rows)
+
+    async def _save_posted(self, game_pk: int) -> None:
+        if not self.pool:
+            return
+        try:
+            await self.pool.execute(
+                "INSERT INTO mariners_posted (game_pk) VALUES ($1) ON CONFLICT DO NOTHING",
+                game_pk,
+            )
+        except Exception as exc:  # pragma: no cover - database
+            log.warning("Failed to record posted game %s: %s", game_pk, exc)
 
     def fetch_game_summary(self) -> Optional[Dict[str, Any]]:
         """Return a summary dict for the most recent final game.
@@ -144,15 +182,28 @@ class MarinersGameCog(commands.Cog):
         record_line = ""
         alwest_line = ""
         try:
+            def _ordinal(n: str) -> str:
+                try:
+                    num = int(n)
+                except ValueError:
+                    return n
+                if 10 <= num % 100 <= 20:
+                    suffix = "th"
+                else:
+                    suffix = {1: "st", 2: "nd", 3: "rd"}.get(num % 10, "th")
+                return f"{num}{suffix}"
+
             team_record = None
             leader_abbr = ""
+            second_abbr = ""
+            second_gb = ""
             for rec in standings.get("records", []):
                 teams_rec = rec.get("teamRecords", [])
-                leader_abbr = (
-                    teams_rec[0].get("team", {}).get("abbreviation", "")
-                    if teams_rec
-                    else ""
-                )
+                if teams_rec:
+                    leader_abbr = teams_rec[0].get("team", {}).get("abbreviation", "")
+                    if len(teams_rec) > 1:
+                        second_abbr = teams_rec[1].get("team", {}).get("abbreviation", "")
+                        second_gb = teams_rec[1].get("gamesBack", "")
                 for tr in teams_rec:
                     if tr.get("team", {}).get("id") == TEAM_ID:
                         team_record = tr
@@ -174,9 +225,15 @@ class MarinersGameCog(commands.Cog):
                     ),
                     "",
                 )
-                alwest_line = (
-                    f"{div_rank} • {gb} GB of {leader_abbr} • Last 10: {last_ten}"
-                )
+                rank_ord = _ordinal(div_rank)
+                if div_rank == "1":
+                    alwest_line = (
+                        f"{rank_ord} • {second_gb} GA of {second_abbr} • Last 10: {last_ten}"
+                    )
+                else:
+                    alwest_line = (
+                        f"{rank_ord} • {gb} GB of {leader_abbr} • Last 10: {last_ten}"
+                    )
         except Exception:  # pragma: no cover - defensive
             pass
         # Top performers: simple hitter and pitcher selection
@@ -242,21 +299,21 @@ class MarinersGameCog(commands.Cog):
         """Format the game summary into a Discord message."""
         start_fmt = summary["start_pst"].strftime("%a %b %d, %-I:%M %p PT")
         header = f"{summary['away_abbr']} @ {summary['home_abbr']}"
-        top_header = f"⚾️ *{header} — {start_fmt}*"
+        top_header = f"⚾️ **{header} — {start_fmt}**"
         final_line = (
-            f"**Final**: Mariners {summary['mariners_score']} — {summary['opp_name']} {summary['opp_score']}"
+            f"*Final*: Mariners {summary['mariners_score']} — {summary['opp_name']} {summary['opp_score']}"
         )
         highlights_line = (
-            "**Highlights**: " + "; ".join(summary.get("highlights", []))
+            "*Highlights*: " + "; ".join(summary.get("highlights", []))
             if summary.get("highlights")
             else ""
         )
-        record_line = f"**Record**: {summary.get('record', '')}"
-        al_line = f"**AL West**: {summary.get('al_west', '')}"
+        record_line = f"*Record*: {summary.get('record', '')}"
+        al_line = f"*AL West*: {summary.get('al_west', '')}"
         lines = [top_header, final_line]
         if highlights_line:
             lines.append(highlights_line)
-        lines.extend([record_line, al_line, "", "**Top Performers**"])
+        lines.extend([record_line, al_line, "", "*Top Performers*"])
         sea_perf = summary.get("top_performers", {}).get("SEA", "")
         opp_perf = summary.get("top_performers", {}).get(summary.get("opp_abbr", ""), "")
         lines.append(f"SEA — {sea_perf}")
@@ -277,11 +334,13 @@ class MarinersGameCog(commands.Cog):
         if not isinstance(channel, discord.TextChannel):
             log.error("Sports channel not found")
             self.posted.add(gid)
+            await self._save_posted(gid)
             return
         try:
             msg = self.build_message(summary)
             await channel.send(msg)
             self.posted.add(gid)
+            await self._save_posted(gid)
         except Exception as exc:  # pragma: no cover - network
             log.exception("Failed to post game summary: %s", exc)
 
