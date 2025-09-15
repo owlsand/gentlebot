@@ -104,6 +104,7 @@ def test_fetch_schedule_skips_bye_week(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=intents)
     monkeypatch.setattr(bot, "loop", SimpleNamespace(create_task=lambda c: None))
     monkeypatch.setattr(SeahawksThreadCog, "game_task", SimpleNamespace(start=lambda: None))
+    monkeypatch.setattr(SeahawksThreadCog, "score_task", SimpleNamespace(start=lambda: None))
     cog = SeahawksThreadCog(bot)
 
     games = cog.fetch_schedule()
@@ -159,6 +160,7 @@ def test_fetch_projection(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=intents)
     monkeypatch.setattr(bot, "loop", SimpleNamespace(create_task=lambda c: None))
     monkeypatch.setattr(SeahawksThreadCog, "game_task", SimpleNamespace(start=lambda: None))
+    monkeypatch.setattr(SeahawksThreadCog, "score_task", SimpleNamespace(start=lambda: None))
     cog = SeahawksThreadCog(bot)
 
     proj = cog.fetch_projection("gid")
@@ -168,3 +170,137 @@ def test_fetch_projection(monkeypatch):
         "sea_win": 0.6,
         "opp_win": 0.4,
     }
+
+
+def test_quarter_score_updates(monkeypatch):
+    async def run_test():
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        monkeypatch.setattr(bot, "loop", SimpleNamespace(create_task=lambda c: None))
+        cog = SeahawksThreadCog(bot)
+        monkeypatch.setattr(cog, "game_task", SimpleNamespace(start=lambda: None))
+        monkeypatch.setattr(cog, "score_task", SimpleNamespace(start=lambda: None))
+
+        start = PST.localize(datetime(2024, 1, 1, 17, 30)).astimezone(timezone.utc)
+        schedule = [{"id": "g1", "opponent": "Rams", "short": "LAR @ SEA", "start": start}]
+        monkeypatch.setattr(cog, "fetch_schedule", lambda: schedule)
+        monkeypatch.setattr(cog, "fetch_projection", lambda gid: {"sea_score": 0, "opp_score": 0, "sea_win": 0.5, "opp_win": 0.5})
+
+        sent: list[str] = []
+
+        async def fake_create_thread(name, auto_archive_duration=None, type=None):
+            async def _send(msg):
+                sent.append(msg)
+            return SimpleNamespace(send=_send)
+
+        channel = SimpleNamespace(create_thread=fake_create_thread)
+        monkeypatch.setattr(bot, "get_channel", lambda cid: channel)
+        monkeypatch.setattr(discord, "TextChannel", SimpleNamespace)
+
+        now = PST.localize(datetime(2024, 1, 1, 9, 5)).astimezone(timezone.utc)
+        monkeypatch.setattr(cog, "_now", lambda: now)
+
+        await cog._open_threads()
+        sent.clear()
+
+        responses = [
+            {
+                "boxscore": {
+                    "teams": [
+                        {
+                            "team": {"abbreviation": "SEA"},
+                            "linescores": [
+                                {"period": "1", "value": 7},
+                                {"period": "T", "value": 7},
+                            ],
+                        },
+                        {
+                            "team": {"abbreviation": "LAR"},
+                            "linescores": [
+                                {"period": "1", "value": 3},
+                                {"period": "T", "value": 3},
+                            ],
+                        },
+                    ]
+                }
+            },
+            {
+                "boxscore": {
+                    "teams": [
+                        {
+                            "team": {"abbreviation": "SEA"},
+                            "linescores": [
+                                {"period": "1", "value": 7},
+                                {"period": "2", "value": 0},
+                                {"period": "T", "value": 7},
+                            ],
+                        },
+                        {
+                            "team": {"abbreviation": "LAR"},
+                            "linescores": [
+                                {"period": "1", "value": 3},
+                                {"period": "2", "value": 10},
+                                {"period": "T", "value": 13},
+                            ],
+                        },
+                    ]
+                }
+            },
+            {
+                "boxscore": {
+                    "teams": [
+                        {
+                            "team": {"abbreviation": "SEA"},
+                            "linescores": [
+                                {"period": "1", "value": 7},
+                                {"period": "2", "value": 0},
+                                {"period": "3", "value": 7},
+                                {"period": "4", "value": 3},
+                                {"period": "T", "value": 17},
+                            ],
+                        },
+                        {
+                            "team": {"abbreviation": "LAR"},
+                            "linescores": [
+                                {"period": "1", "value": 3},
+                                {"period": "2", "value": 10},
+                                {"period": "3", "value": 0},
+                                {"period": "4", "value": 7},
+                                {"period": "T", "value": 20},
+                            ],
+                        },
+                    ]
+                }
+            },
+        ]
+
+        def fake_get(url, timeout=10):
+            data = responses.pop(0) if responses else responses[-1]
+            class FakeResp:
+                def json(self):
+                    return data
+
+                def raise_for_status(self):
+                    pass
+
+            return FakeResp()
+
+        monkeypatch.setattr(
+            "gentlebot.cogs.seahawks_thread_cog.requests.get", fake_get
+        )
+
+        await cog._update_scores()
+        assert sent[-1] == "End of Q1: Seahawks 7 - Rams 3"
+
+        await cog._update_scores()
+        assert sent[-1] == "End of Q2: Seahawks 7 - Rams 13"
+
+        await cog._update_scores()
+        assert sent[-1] == "End of Q4: Seahawks 17 - Rams 20"
+        assert len(sent) == 4
+        assert not any("Q5" in m for m in sent)
+
+        await cog._update_scores()
+        assert len(sent) == 4
+
+    asyncio.run(run_test())
