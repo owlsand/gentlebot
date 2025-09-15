@@ -1,44 +1,45 @@
-import types
+import asyncio
+import requests
 
-import pytest
 from gentlebot.cogs.bigdumper_watcher_cog import BigDumperWatcherCog
-from gentlebot.cogs.sports_cog import SportsCog, STATS_TIMEOUT
+from gentlebot.cogs.mariners_game_cog import MarinersGameCog
+from gentlebot.cogs.sports_cog import STATS_TIMEOUT
 
 
-class DummyResp:
-    def __init__(self, data=None):
-        self._data = data or {"stats": [{"splits": [{"stat": {"homeRuns": 7}}]}]}
+def test_session_timeout_default():
+    async def run_test():
+        cog = BigDumperWatcherCog(bot=None)
+        assert cog.session.timeout.total == STATS_TIMEOUT
+        await cog.session.close()
 
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._data
+    asyncio.run(run_test())
 
 
-def test_fetch_hr_uses_timeout(monkeypatch):
-    cog = BigDumperWatcherCog(bot=None)
-    called = {}
+def test_fetch_game_summary_uses_timeout(monkeypatch):
+    cog = MarinersGameCog(bot=None)
+    timeouts: list[float | None] = []
 
-    def fake_get(url, params=None, timeout=None):
-        called['timeout'] = timeout
-        return DummyResp()
+    class DummyResp:
+        def raise_for_status(self) -> None:
+            return None
 
-    monkeypatch.setattr(cog.session, 'get', fake_get)
-    hr = cog._fetch_hr()
-    assert hr == 7
-    assert called['timeout'] == STATS_TIMEOUT
+        def json(self) -> dict:
+            return {"dates": []}
 
+    class DummySession:
+        def __enter__(self) -> "DummySession":
+            return self
 
-def test_fetch_season_stats_uses_timeout(monkeypatch):
-    cog = SportsCog(bot=None)
-    called = {}
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
 
-    def fake_get(url, params=None, timeout=None):
-        called['timeout'] = timeout
-        return DummyResp()
+        def mount(self, *args, **kwargs) -> None:
+            return None
 
-    monkeypatch.setattr(cog.session, 'get', fake_get)
-    stats = cog.fetch_season_stats()
-    assert called['timeout'] == STATS_TIMEOUT
-    assert stats.get('homeRuns') == 7
+        def get(self, url, timeout=None):
+            timeouts.append(timeout)
+            return DummyResp()
+
+    monkeypatch.setattr(requests, "Session", lambda: DummySession())
+    assert cog.fetch_game_summary() is None
+    assert timeouts and all(t == STATS_TIMEOUT for t in timeouts)

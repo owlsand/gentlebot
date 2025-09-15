@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
+import aiohttp
 import discord
 from discord.ext import commands
 
@@ -15,7 +16,9 @@ def test_post_on_new_hr(monkeypatch):
         cog.last_hr = 1
 
         # Patch fetch to return higher HR
-        monkeypatch.setattr(cog, "_fetch_hr", lambda: 2)
+        async def fake_fetch_hr():
+            return 2
+        monkeypatch.setattr(cog, "_fetch_hr", fake_fetch_hr)
 
         dummy_embed = discord.Embed(title="Big")
         async def fake_embed():
@@ -37,17 +40,46 @@ def test_post_on_new_hr(monkeypatch):
 
         await bigdumper_watcher_cog.BigDumperWatcherCog.check_task.coro(cog)
         assert sent and sent[0] is dummy_embed
+        cog.cog_unload()
+        await asyncio.sleep(0)
+        assert cog.session.closed
 
     asyncio.run(run_test())
-
-
-def test_session_retries_configured():
+def test_fetch_hr_retries(monkeypatch):
     async def run_test():
         intents = discord.Intents.none()
         bot = commands.Bot(command_prefix="!", intents=intents)
         cog = bigdumper_watcher_cog.BigDumperWatcherCog(bot)
-        adapter = cog.session.get_adapter("https://")
-        assert adapter.max_retries.total >= 3
-        cog.check_task.cancel()
+        calls = {"n": 0}
+
+        class DummyResp:
+            def __init__(self):
+                self._data = {"stats": [{"splits": [{"stat": {"homeRuns": 7}}]}]}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+
+            def raise_for_status(self):
+                pass
+
+            async def json(self):
+                return self._data
+
+        def fake_get(url, params=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise aiohttp.ClientError("boom")
+            return DummyResp()
+
+        monkeypatch.setattr(cog.session, "get", fake_get)
+        hr = await cog._fetch_hr()
+        assert hr == 7
+        assert calls["n"] >= 2
+        cog.cog_unload()
+        await asyncio.sleep(0)
+        assert cog.session.closed
 
     asyncio.run(run_test())

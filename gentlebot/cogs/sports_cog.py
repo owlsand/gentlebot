@@ -4,7 +4,7 @@ SportsCog - Formula 1 schedule & standings plus Mariners stats
 Slash commands:
   • /nextf1      - Show the next F1 race weekend preview with track map
   • /f1standings - Show current driver & constructor standings (top 10)
-  • /bigdumper   - Show Cal Raleigh season stats and latest home run video
+  • /bigdumper   - Cal Raleigh tracker in compact or full style
 
 Requires:
   • discord.py v2+
@@ -210,129 +210,80 @@ class SportsCog(commands.Cog):
         embed.set_footer(text=f"Last updated: {updated_str}")
         return embed
 
-    # --- Cal Raleigh helpers -------------------------------------------------
-    def fetch_season_stats(self) -> dict:
-        year = datetime.now().year
-        url = f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}/stats"
-        params = {"stats": "season", "group": "hitting", "season": year}
-        resp = self.session.get(url, params=params, timeout=STATS_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["stats"][0]["splits"][0]["stat"]
-
-    def find_last_homer(self) -> tuple[str, str, str]:
-        today = datetime.now().date()
-        for i in range(0, 180):  # look back up to ~6 months
-            day = (today - timedelta(days=i)).strftime("%Y-%m-%d")
-            params = {
-                "hydrate": f"stats(group=hitting,type=byDateRange,startDate={day},endDate={day})"
-            }
-            try:
-                resp = self.session.get(
-                    f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}",
-                    params=params,
-                    timeout=STATS_TIMEOUT,
-                )
-                stats = resp.json().get("people", [{}])[0].get("stats", [])
-                if not stats or not stats[0]["splits"]:
-                    continue
-                hr = int(stats[0]["splits"][0]["stat"].get("homeRuns", 0))
-                if hr < 1:
-                    continue
-                sched = self.session.get(
-                    "https://statsapi.mlb.com/api/v1/schedule",
-                    params={
-                        "sportId": 1,
-                        "teamId": TEAM_ID,
-                        "startDate": day,
-                        "endDate": day,
-                    },
-                    timeout=STATS_TIMEOUT,
-                )
-                game_pk = sched.json()["dates"][0]["games"][0]["gamePk"]
-                content = self.session.get(
-                    f"https://statsapi.mlb.com/api/v1/game/{game_pk}/content",
-                    timeout=STATS_TIMEOUT,
-                ).json()
-                items = (
-                    content.get("highlights", {})
-                    .get("highlights", {})
-                    .get("items", [])
-                )
-                for it in items:
-                    headline = (it.get("headline") or "").lower()
-                    if "raleigh" in headline and "home run" in headline:
-                        video = it.get("playbacks", [{}])[0].get("url")
-                        cuts = it.get("image", {}).get("cuts", [])
-                        image = cuts[0].get("src") if cuts else ""
-                        if video:
-                            return day, video, image
-                if items:
-                    video = items[0].get("playbacks", [{}])[0].get("url", "")
-                    cuts = items[0].get("image", {}).get("cuts", [])
-                    image = cuts[0].get("src") if cuts else ""
-                    return day, video, image
-            except Exception as e:
-                log.warning("Failed to fetch homer info for %s: %s", day, e)
-        return "", "", ""
-
+    # --- Cal Raleigh command -------------------------------------------------
     async def build_bigdumper_embed(self) -> discord.Embed | None:
-        """Return an embed with Cal Raleigh stats and the most recent homer."""
+        """Fetch data from ESPN and return a rich embed."""
+        from .. import big_dumper_espn as bd
+
         try:
-            stats, hr_info = await asyncio.gather(
-                asyncio.to_thread(self.fetch_season_stats),
-                asyncio.to_thread(self.find_last_homer),
-            )
-        except Exception:
+            data = await bd.gather_big_dumper_data()
+        except Exception:  # pragma: no cover - network
             log.exception("Failed to fetch Cal Raleigh info")
             return None
 
-        if not stats:
-            return None
-        avg = stats.get("avg", "N/A")
-        obp = stats.get("obp", "N/A")
-        slg = stats.get("slg", "N/A")
-        ops = stats.get("ops", "N/A")
-        hr = stats.get("homeRuns", "0")
-        rbi = stats.get("rbi", "0")
-        gp = stats.get("gamesPlayed", "0")
-        ab = stats.get("atBats", "0")
-        runs = stats.get("runs", "0")
-        hits = stats.get("hits", "0")
-        bb = stats.get("baseOnBalls", "0")
-        so = stats.get("strikeOuts", "0")
-        sb = stats.get("stolenBases", "0")
-        totals = "\n".join(
-            [
-                f"**G:** {gp}  **AB:** {ab}  **R:** {runs}  **H:** {hits}",
-                f"**HR:** {hr}  **RBI:** {rbi}  **BB:** {bb}  **SO:** {so}  **SB:** {sb}",
-            ]
-        )
-        rates = f"**AVG:** {avg}  **OBP:** {obp}  **SLG:** {slg}  **OPS:** {ops}"
-        title_date = datetime.now().strftime("%b %d")
+        payload = bd.build_rich_embed_payload(data)
         embed = discord.Embed(
-            title=f"Big Dumper Stats ({title_date})",
-            color=discord.Color.blue(),
+            title=payload["title"],
+            description=payload["description"],
+            color=payload["color"],
         )
-        embed.add_field(name="Season Totals", value=totals, inline=False)
-        embed.add_field(name="Rate Stats", value=rates, inline=False)
-        date, video, image = hr_info
-        if video:
-            embed.add_field(name="Latest Home Run", value=f"{date} [Video]({video})", inline=False)
-        if image:
-            embed.set_image(url=image)
-
+        for field in payload["fields"]:
+            embed.add_field(
+                name=field["name"],
+                value=field["value"],
+                inline=field.get("inline", False),
+            )
+        thumb = payload.get("thumbnail", {}).get("url")
+        if thumb:
+            embed.set_thumbnail(url=thumb)
         return embed
 
-    # --- Cal Raleigh command -------------------------------------------------
     @app_commands.command(name="bigdumper", description="Cal Raleigh stats and latest homer")
-    async def bigdumper(self, interaction: discord.Interaction):
-        log.info("/bigdumper invoked by %s in %s", user_name(interaction.user), chan_name(interaction.channel))
+    @app_commands.describe(type="Output style")
+    @app_commands.choices(
+        type=[
+            app_commands.Choice(name="Compact", value="compact"),
+            app_commands.Choice(name="Full", value="full"),
+        ]
+    )
+    async def bigdumper(
+        self,
+        interaction: discord.Interaction,
+        type: app_commands.Choice[str] | None = None,
+    ) -> None:
+        from .. import big_dumper_espn as bd
+
+        style = (type.value if type else "full") if isinstance(type, app_commands.Choice) else "full"
+        log.info(
+            "/bigdumper invoked by %s in %s", user_name(interaction.user), chan_name(interaction.channel)
+        )
         await interaction.response.defer(thinking=True)
-        embed = await self.build_bigdumper_embed()
-        if embed is None:
+        try:
+            data = await bd.gather_big_dumper_data()
+        except Exception:  # pragma: no cover - network
+            log.exception("Failed to fetch Cal Raleigh info")
             await interaction.followup.send("Could not fetch data right now.")
+            return
+
+        if style == "compact":
+            text = bd.build_compact_message(data)
+            await interaction.followup.send(text)
         else:
+            payload = bd.build_rich_embed_payload(data)
+            embed = discord.Embed(
+                title=payload["title"],
+                description=payload["description"],
+                color=payload["color"],
+            )
+            for field in payload["fields"]:
+                embed.add_field(
+                    name=field["name"],
+                    value=field["value"],
+                    inline=field.get("inline", False),
+                )
+            thumb = payload.get("thumbnail", {}).get("url")
+            if thumb:
+                embed.set_thumbnail(url=thumb)
             await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="nextf1", description="Show the next F1 race weekend preview with track map")
