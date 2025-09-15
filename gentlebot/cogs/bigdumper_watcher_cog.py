@@ -5,8 +5,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-import requests
-from requests.adapters import HTTPAdapter, Retry
+import aiohttp
 import discord
 from discord.ext import commands, tasks
 
@@ -22,44 +21,43 @@ class BigDumperWatcherCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.session = requests.Session()
-        retries = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET"],
-        )
-        adapter = HTTPAdapter(max_retries=retries)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
+        timeout = aiohttp.ClientTimeout(total=STATS_TIMEOUT)
+        self.session = aiohttp.ClientSession(timeout=timeout)
         self.last_hr = 0
 
     async def cog_load(self) -> None:
         try:
-            self.last_hr = await asyncio.to_thread(self._fetch_hr)
+            self.last_hr = await self._fetch_hr()
         except Exception as exc:  # pragma: no cover - network
             log.warning("Failed to fetch initial HR count: %s", exc)
         self.check_task.start()
 
     async def cog_unload(self) -> None:
         self.check_task.cancel()
-        self.session.close()
+        await self.session.close()
 
-    def _fetch_hr(self) -> int:
+    async def _fetch_hr(self) -> int:
         year = datetime.now().year
         url = f"https://statsapi.mlb.com/api/v1/people/{PLAYER_ID}/stats"
         params = {"stats": "season", "group": "hitting", "season": year}
-        resp = self.session.get(url, params=params, timeout=STATS_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        return int(data["stats"][0]["splits"][0]["stat"].get("homeRuns", 0))
+        for attempt in range(3):
+            try:
+                async with self.session.get(url, params=params) as resp:
+                    resp.raise_for_status()
+                    data = await resp.json()
+                    return int(data["stats"][0]["splits"][0]["stat"].get("homeRuns", 0))
+            except aiohttp.ClientError as exc:
+                if attempt == 2:
+                    raise exc
+                await asyncio.sleep(1)
+        return 0
 
     @tasks.loop(minutes=10)
     async def check_task(self) -> None:
         await self.bot.wait_until_ready()
         try:
-            hr = await asyncio.to_thread(self._fetch_hr)
-        except requests.RequestException as exc:  # pragma: no cover - network
+            hr = await self._fetch_hr()
+        except aiohttp.ClientError as exc:  # pragma: no cover - network
             log.warning("Failed to fetch HR count: %s", exc)
             return
         except Exception as exc:  # pragma: no cover - network
