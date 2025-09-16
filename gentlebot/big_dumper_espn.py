@@ -135,7 +135,9 @@ async def gather_big_dumper_data(athlete_id: int = RALEIGH_ID, season: int | Non
         splits = await api.athlete_splits(athlete_id, season)
         l7 = _parse_split_line(splits, "last 7")
         l15 = _parse_split_line(splits, "last 15")
-        post = _parse_split_line(splits, "post all-star") or _parse_split_line(splits, "since all-star")
+        post = _parse_split_line(splits, "post all-star")
+        if not (post.get("slash") or post.get("hr")):
+            post = _parse_split_line(splits, "since all-star")
 
         gamelog = await api.athlete_gamelog(athlete_id, season)
         games = gamelog.get("events") or gamelog.get("items") or []

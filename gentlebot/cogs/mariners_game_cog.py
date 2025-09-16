@@ -28,8 +28,18 @@ class MarinersGameCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.posted: set[int] = set()
+        self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:  # pragma: no cover - startup
+        try:
+            self.pool = await get_pool()
+        except Exception as exc:  # pragma: no cover - defensive
+            self.pool = None
+            log.warning(
+                "MarinersGameCog disabled database persistence: %s", exc
+            )
+        await self._ensure_table()
+        await self._load_posted()
         self.game_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup
