@@ -223,6 +223,7 @@ class GeminiCog(commands.Cog):
 
         prompt = None
         parts = content.split()
+        mention_starts_message = bool(parts and parts[0] in self.mention_strs)
 
         # 5) Direct mention anywhere: strip mention(s) but keep entire text
         if any(m in content for m in self.mention_strs):
@@ -236,7 +237,7 @@ class GeminiCog(commands.Cog):
             if ref_msg.author.id == self.bot.user.id:
                 prompt = content
 
-        if not prompt:
+        if not prompt and not mention_starts_message:
             return
 
         # 7) Rate‑limit per user: wait instead of immediate reply
@@ -251,14 +252,21 @@ class GeminiCog(commands.Cog):
         # 8) Sanitize user prompt
         sanitized_prompt = self.sanitize_prompt(prompt)
         if sanitized_prompt is None:
-            log.info("Rejected prompt: too long, empty, or disallowed mentions.")
-            return
+            if mention_starts_message:
+                requester = user_name(message.author)
+                sanitized_prompt = (
+                    f"{requester} pinged you directly but didn't add any other text. "
+                    "Respond with a short friendly acknowledgment and invite them to share what they need."
+                )
+            else:
+                log.info("Rejected prompt: too long, empty, or disallowed mentions.")
+                return
 
         # 9) Build user_prompt with optional context
         is_ambient = (
             prompt == content
             and 'gentlebot' not in content.lower()
-            and not (parts and parts[0] in self.mention_strs)
+            and not mention_starts_message
             and not (message.reference and isinstance(message.reference.resolved, discord.Message) and message.reference.resolved.author.id == self.bot.user.id)
         )
         if is_ambient:
