@@ -2,6 +2,7 @@ from __future__ import annotations
 """Fetch Big Dumper data from ESPN's public APIs."""
 
 import re
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -53,18 +54,71 @@ class ESPN:
         return await self.get(f"{self.BASE_V2}/summary", event=event_id)
 
 
-def _find_stat(stats_obj: dict | None, key_names: list[str]) -> str | None:
+def _iter_dicts(obj: Any) -> Iterable[dict]:
+    """Yield nested dictionaries within arbitrarily nested structures."""
+
+    stack: list[Any] = [obj]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            obj_id = id(current)
+            if obj_id in seen:
+                continue
+            seen.add(obj_id)
+            yield current
+            for value in current.values():
+                if isinstance(value, (dict, list, tuple)):
+                    stack.append(value)
+        elif isinstance(current, (list, tuple)):
+            stack.extend(item for item in current if isinstance(item, (dict, list, tuple)))
+
+
+def _find_stat(stats_obj: dict | list | None, key_names: list[str]) -> str | None:
     if not stats_obj:
         return None
+    key_set = {k.lower() for k in key_names}
+    matches: list[tuple[int, Any]] = []
     try:
-        for split in stats_obj.get("splits", []):
-            for cat in split.get("categories", []):
-                for st in cat.get("stats", []):
-                    name = (st.get("name") or st.get("displayName") or "").lower()
-                    if any(k.lower() == name for k in key_names):
-                        return st.get("value") or st.get("displayValue")
+        for node in _iter_dicts(stats_obj):
+            name = (
+                node.get("name")
+                or node.get("displayName")
+                or node.get("shortDisplayName")
+                or node.get("label")
+            )
+            if not isinstance(name, str):
+                continue
+            if name.lower() not in key_set:
+                continue
+            value = None
+            for val_key in ("value", "displayValue", "summary"):
+                candidate = node.get(val_key)
+                if candidate not in (None, ""):
+                    value = candidate
+                    break
+            if value in (None, ""):
+                continue
+            label_parts = [
+                str(node.get(field) or "")
+                for field in ("displayName", "label", "shortDisplayName", "name")
+            ]
+            label = " ".join(label_parts).lower()
+            node_type = str(node.get("type") or "").lower()
+            priority = 1
+            if any(word in label for word in ("last", "since", "post", "split")) or node_type in {
+                "split",
+                "last",
+            }:
+                priority = 2
+            if "season" in label or node_type in {"season", "total", "totals", "summary"}:
+                priority = 0
+            matches.append((priority, value))
     except Exception:
         pass
+    if matches:
+        matches.sort(key=lambda item: item[0])
+        return matches[0][1]
     return None
 
 
@@ -87,18 +141,53 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-def _parse_split_line(split_group: dict, label: str) -> dict:
-    for grp in split_group.get("splits", []):
-        if str(grp.get("displayName", "")).lower().startswith(label.lower()):
-            cats: dict[str, str] = {}
-            for cat in grp.get("categories", []):
-                for st in cat.get("stats", []):
-                    cats[st.get("name", "")] = st.get("value") or st.get("displayValue")
+def _parse_split_line(split_group: dict | list | None, label: str) -> dict:
+    if not split_group:
+        return {"slash": None, "hr": None}
+
+    label_lc = label.lower()
+    try:
+        for grp in _iter_dicts(split_group):
+            display = (
+                grp.get("displayName")
+                or grp.get("label")
+                or grp.get("name")
+                or ""
+            )
+            if not isinstance(display, str):
+                continue
+            if not display.lower().startswith(label_lc):
+                continue
+            cats: dict[str, str | None] = {}
+            stats_candidates: list[list[dict[str, Any]]] = []
+            if isinstance(grp.get("stats"), list):
+                stats_candidates.append(
+                    [st for st in grp["stats"] if isinstance(st, dict)]
+                )
+            for cat in grp.get("categories", []) or []:
+                if isinstance(cat, dict) and isinstance(cat.get("stats"), list):
+                    stats_candidates.append(
+                        [st for st in cat["stats"] if isinstance(st, dict)]
+                    )
+            for stats_list in stats_candidates:
+                for st in stats_list:
+                    if not isinstance(st, dict):
+                        continue
+                    key = st.get("name") or st.get("displayName")
+                    if not key:
+                        continue
+                    cats[str(key)] = (
+                        st.get("value")
+                        or st.get("displayValue")
+                        or st.get("summary")
+                    )
             avg = _fmt_pct(cats.get("avg") or cats.get("battingAverage"))
             obp = _fmt_pct(cats.get("obp") or cats.get("onBasePct"))
             slg = _fmt_pct(cats.get("slg") or cats.get("sluggingPct"))
             hr = cats.get("homeRuns") or cats.get("HR")
             return {"slash": f"{avg}/{obp}/{slg}" if all([avg, obp, slg]) else None, "hr": hr}
+    except Exception:
+        pass
     return {"slash": None, "hr": None}
 
 
