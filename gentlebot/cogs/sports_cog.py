@@ -239,9 +239,10 @@ class SportsCog(commands.Cog):
         return embed
 
     @app_commands.command(name="bigdumper", description="Cal Raleigh stats and latest homer")
-    @app_commands.describe(type="Output style")
+    @app_commands.describe(style="Output style")
+    @app_commands.rename(style="type")
     @app_commands.choices(
-        type=[
+        style=[
             app_commands.Choice(name="Compact", value="compact"),
             app_commands.Choice(name="Full", value="full"),
         ]
@@ -249,11 +250,13 @@ class SportsCog(commands.Cog):
     async def bigdumper(
         self,
         interaction: discord.Interaction,
-        type: app_commands.Choice[str] | None = None,
+        style: app_commands.Choice[str] | None = None,
     ) -> None:
         from .. import big_dumper_espn as bd
 
-        style = (type.value if type else "full") if isinstance(type, app_commands.Choice) else "full"
+        selected_style = (
+            style.value if style else "full"
+        ) if isinstance(style, app_commands.Choice) else "full"
         log.info(
             "/bigdumper invoked by %s in %s", user_name(interaction.user), chan_name(interaction.channel)
         )
@@ -265,7 +268,7 @@ class SportsCog(commands.Cog):
             await interaction.followup.send("Could not fetch data right now.")
             return
 
-        if style == "compact":
+        if selected_style == "compact":
             text = bd.build_compact_message(data)
             await interaction.followup.send(text)
         else:

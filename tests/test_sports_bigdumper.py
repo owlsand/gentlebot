@@ -60,7 +60,7 @@ def test_bigdumper_compact(monkeypatch):
         cog = bot.get_cog("SportsCog")
         interaction = DummyInteraction()
         choice = app_commands.Choice(name="Compact", value="compact")
-        await sports_cog.SportsCog.bigdumper.callback(cog, interaction, type=choice)
+        await sports_cog.SportsCog.bigdumper.callback(cog, interaction, style=choice)
         assert interaction.followup.sent[0][0].startswith("```")
         await bot.close()
 
@@ -79,7 +79,7 @@ def test_bigdumper_full_default(monkeypatch):
         await bot.load_extension("gentlebot.cogs.sports_cog")
         cog = bot.get_cog("SportsCog")
         interaction = DummyInteraction()
-        await sports_cog.SportsCog.bigdumper.callback(cog, interaction, type=None)
+        await sports_cog.SportsCog.bigdumper.callback(cog, interaction, style=None)
         content, kwargs = interaction.followup.sent[0]
         assert content is None
         embed = kwargs.get("embed")

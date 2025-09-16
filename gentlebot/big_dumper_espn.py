@@ -78,6 +78,15 @@ def _fmt_pct(val: str | None) -> str | None:
         return val
 
 
+def _safe_int(value: Any) -> int:
+    """Best-effort conversion of ESPN numeric strings to ints."""
+
+    try:
+        return int(float(str(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _parse_split_line(split_group: dict, label: str) -> dict:
     for grp in split_group.get("splits", []):
         if str(grp.get("displayName", "")).lower().startswith(label.lower()):
@@ -117,7 +126,7 @@ async def gather_big_dumper_data(athlete_id: int = RALEIGH_ID, season: int | Non
         api = ESPN(s)
         athlete_json = await api.athlete(athlete_id)
         stats = athlete_json.get("statistics") or {}
-        hr = _find_stat(stats, ["homeRuns", "HR"])
+        hr_total = _find_stat(stats, ["homeRuns", "HR"])
         rbi = _find_stat(stats, ["runsBattedIn", "RBI"])
         ops = _fmt_pct(_find_stat(stats, ["ops"]))
         slg = _fmt_pct(_find_stat(stats, ["sluggingPct", "SLG"]))
@@ -151,7 +160,7 @@ async def gather_big_dumper_data(athlete_id: int = RALEIGH_ID, season: int | Non
                 }
             )
         team_games_played = len([g for g in normalized if g.get("date")])
-        hr_int = int(hr or 0)
+        hr_int = _safe_int(hr_total)
         pace = round((hr_int / max(team_games_played, 1)) * 162)
 
         latest_hr_events = [
@@ -189,20 +198,25 @@ async def gather_big_dumper_data(athlete_id: int = RALEIGH_ID, season: int | Non
                     video_url = f"https://www.espn.com/mlb/playbyplay/_/gameId/{g['eventId']}"
                 if idx == 0:
                     last_hr_detail = {
-                        "num": hr,
+                        "num": hr_total or str(hr_int),
                         "date": _local_day(g["date"]),
                         "opp": g["opponent"],
                         "ft": ft,
                         "ev": ev,
                         "url": video_url,
                     }
-                line = f"#{int(hr_int - (idx))}  {g['date'][:10]}  {'@' if g['homeAway']=='away' else 'vs'}{g['opponent']}"
+                seq_num = hr_int - idx
+                if seq_num <= 0:
+                    seq_num = hr_int or idx + 1
+                line = f"#{seq_num}  {g['date'][:10]}  {'@' if g['homeAway']=='away' else 'vs'}{g['opponent']}"
                 if ft or ev:
                     line += f"  {ft + ' ft' if ft else ''}{'  ' if ft and ev else ''}{ev + ' EV' if ev else ''}"
-                line += "  Video"
                 last3_lines.append((line, video_url))
             else:
-                line = f"#{int(hr_int - (idx))}  {g['date'][:10]}  {'@' if g['homeAway']=='away' else 'vs'}{g['opponent']}"
+                seq_num = hr_int - idx
+                if seq_num <= 0:
+                    seq_num = hr_int or idx + 1
+                line = f"#{seq_num}  {g['date'][:10]}  {'@' if g['homeAway']=='away' else 'vs'}{g['opponent']}"
                 last3_lines.append((line, f"https://www.espn.com/mlb/game/_/gameId/{g['eventId']}"))
 
         std = await api.standings(season)
@@ -270,7 +284,7 @@ async def gather_big_dumper_data(athlete_id: int = RALEIGH_ID, season: int | Non
 
         data = {
             "season_strip": {
-                "HR": hr,
+                "HR": hr_total,
                 "RBI": rbi,
                 "OPS": ops,
                 "SLG": slg,
