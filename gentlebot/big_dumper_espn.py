@@ -102,6 +102,19 @@ def _parse_split_line(split_group: dict, label: str) -> dict:
     return {"slash": None, "hr": None}
 
 
+def _has_split_data(split: dict | None) -> bool:
+    if not split:
+        return False
+    for key in ("slash", "hr"):
+        value = split.get(key)
+        if isinstance(value, str):
+            if value.strip():
+                return True
+        elif value is not None:
+            return True
+    return False
+
+
 def _feet_ev_from_text(text: str) -> tuple[str | None, str | None]:
     if not text:
         return None, None
@@ -136,7 +149,7 @@ async def gather_big_dumper_data(athlete_id: int = RALEIGH_ID, season: int | Non
         l7 = _parse_split_line(splits, "last 7")
         l15 = _parse_split_line(splits, "last 15")
         post = _parse_split_line(splits, "post all-star")
-        if not (post.get("slash") or post.get("hr")):
+        if not _has_split_data(post):
             post = _parse_split_line(splits, "since all-star")
 
         gamelog = await api.athlete_gamelog(athlete_id, season)
