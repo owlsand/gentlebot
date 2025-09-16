@@ -1,9 +1,4 @@
-import asyncio
-import requests
-
-from gentlebot.cogs.bigdumper_watcher_cog import BigDumperWatcherCog
-from gentlebot.cogs.mariners_game_cog import MarinersGameCog
-from gentlebot.cogs.sports_cog import STATS_TIMEOUT
+from gentlebot.cogs.sports_cog import SportsCog, STATS_TIMEOUT
 
 
 def test_session_timeout_default():
@@ -15,23 +10,9 @@ def test_session_timeout_default():
     asyncio.run(run_test())
 
 
-def test_fetch_game_summary_uses_timeout(monkeypatch):
-    cog = MarinersGameCog(bot=None)
-    timeouts: list[float | None] = []
-
-    class DummyResp:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {"dates": []}
-
-    class DummySession:
-        def __enter__(self) -> "DummySession":
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            return None
+def test_fetch_season_stats_uses_timeout(monkeypatch):
+    cog = SportsCog(bot=None)
+    called = {}
 
         def mount(self, *args, **kwargs) -> None:
             return None

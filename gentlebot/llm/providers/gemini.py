@@ -106,8 +106,15 @@ class GeminiClient:
         return response
 
     def generate_image(self, model: str, prompt: str, *images: bytes) -> Any:
+        """Request an image from Gemini, asking for both text and image outputs."""
+
         parts = [prompt]
         for img in images:
             parts.append(genai.types.Part.from_bytes(img, mime_type="image/png"))
-        response = self.client.models.generate_content(model=model, contents=parts)
+        config = genai.types.GenerateContentConfig(
+            response_modalities=["TEXT", "IMAGE"]
+        )
+        response = self.client.models.generate_content(
+            model=model, contents=parts, config=config
+        )
         return response

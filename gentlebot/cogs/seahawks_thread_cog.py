@@ -248,11 +248,8 @@ class SeahawksThreadCog(commands.Cog):
         """Send quarter score updates to active game threads."""
         for gid, thread in list(self.threads.items()):
             try:
-                lines, status = await asyncio.gather(
-                    asyncio.to_thread(self.fetch_linescores, gid),
-                    asyncio.to_thread(self.fetch_game_status, gid),
-                )
-                period, state = status
+                lines = self.fetch_linescores(gid)
+                period, state = self.fetch_game_status(gid)
             except Exception:  # pragma: no cover - network
                 log.exception("Failed to fetch scores for %s", gid)
                 continue
