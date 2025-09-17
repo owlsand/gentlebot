@@ -74,7 +74,7 @@ class MarinersGameCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            CREATE TABLE IF NOT EXISTS mariners_schedule (
+            CREATE TABLE IF NOT EXISTS discord.mariners_schedule (
                 event_id TEXT PRIMARY KEY,
                 season_year INTEGER NOT NULL,
                 game_date TIMESTAMPTZ NOT NULL,
@@ -96,12 +96,12 @@ class MarinersGameCog(commands.Cog):
         await self.pool.execute(
             """
             CREATE INDEX IF NOT EXISTS ix_mariners_schedule_season
-            ON mariners_schedule (season_year, game_date)
+            ON discord.mariners_schedule (season_year, game_date)
             """
         )
         await self.pool.execute(
             """
-            CREATE TABLE IF NOT EXISTS mariners_schedule_state (
+            CREATE TABLE IF NOT EXISTS discord.mariners_schedule_state (
                 id INTEGER PRIMARY KEY,
                 tracking_since TIMESTAMPTZ NOT NULL DEFAULT now()
             )
@@ -113,7 +113,7 @@ class MarinersGameCog(commands.Cog):
             return
         try:
             row = await self.pool.fetchrow(
-                "SELECT tracking_since FROM mariners_schedule_state WHERE id = 1"
+                "SELECT tracking_since FROM discord.mariners_schedule_state WHERE id = 1"
             )
         except Exception as exc:  # pragma: no cover - database
             log.warning("Failed to load Mariners tracking state: %s", exc)
@@ -129,7 +129,7 @@ class MarinersGameCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                INSERT INTO mariners_schedule_state (id, tracking_since)
+                INSERT INTO discord.mariners_schedule_state (id, tracking_since)
                 VALUES (1, $1)
                 ON CONFLICT (id) DO NOTHING
                 """,
@@ -144,7 +144,7 @@ class MarinersGameCog(commands.Cog):
         if not self.pool:
             return
         rows = await self.pool.fetch(
-            "SELECT event_id FROM mariners_schedule WHERE message_id IS NOT NULL"
+            "SELECT event_id FROM discord.mariners_schedule WHERE message_id IS NOT NULL"
         )
         self.posted.update(str(r[0]) for r in rows)
 
@@ -179,7 +179,7 @@ class MarinersGameCog(commands.Cog):
             try:
                 await self.pool.execute(
                     """
-                    INSERT INTO mariners_schedule (
+                    INSERT INTO discord.mariners_schedule (
                         event_id,
                         season_year,
                         game_date,
@@ -297,7 +297,7 @@ class MarinersGameCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                UPDATE mariners_schedule
+                UPDATE discord.mariners_schedule
                 SET message_id = $1,
                     message_posted_at = now(),
                     updated_at = now()
@@ -328,7 +328,7 @@ class MarinersGameCog(commands.Cog):
                    game_date,
                    season_year,
                    short_name
-            FROM mariners_schedule
+            FROM discord.mariners_schedule
             WHERE state = 'post'
               AND message_id IS NULL
               AND game_date >= $1
@@ -351,7 +351,7 @@ class MarinersGameCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                UPDATE mariners_schedule
+                UPDATE discord.mariners_schedule
                 SET summary = $1,
                     mariners_score = $2,
                     opponent_score = $3,
