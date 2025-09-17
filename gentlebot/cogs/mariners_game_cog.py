@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Awaitable, Dict, Iterable, Optional
 
 import asyncio
 import asyncpg
@@ -16,7 +16,7 @@ from requests.adapters import HTTPAdapter, Retry
 import discord
 from discord.ext import commands, tasks
 
-from .sports_cog import PST_TZ, STATS_TIMEOUT
+from .sports_cog import PST_TZ, STATS_TIMEOUT, TEAM_ID
 from .. import bot_config as cfg
 from ..db import get_pool
 
@@ -31,6 +31,25 @@ ESPN_SUMMARY_URL = (
 DIVISION_GROUP_ID = 3
 TEAM_ABBR = "SEA"
 
+STATS_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=136"
+STATS_FEED_URL = "https://statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live"
+STATS_STANDINGS_URL = (
+    "https://statsapi.mlb.com/api/v1/standings?leagueId=103&season={season}&standingsType=byDivision"
+)
+
+
+class _ImmediateResult:
+    """Awaitable wrapper returning a precomputed summary result."""
+
+    def __init__(self, result: Optional[Dict[str, Any]]):
+        self._result = result
+
+    def __await__(self):
+        async def _runner() -> Optional[Dict[str, Any]]:
+            return self._result
+
+        return _runner().__await__()
+
 
 class MarinersGameCog(commands.Cog):
     """Background task posting a summary after each Mariners game."""
@@ -42,7 +61,6 @@ class MarinersGameCog(commands.Cog):
         self.tracking_since: datetime = datetime.now(tz=pytz.utc)
 
     async def cog_load(self) -> None:  # pragma: no cover - startup
-        pool: asyncpg.Pool | None = None
         try:
             pool = await get_pool()
             self.pool = pool
@@ -55,14 +73,6 @@ class MarinersGameCog(commands.Cog):
             log.warning(
                 "MarinersGameCog disabled database persistence: %s", exc
             )
-            if pool is not None:
-                try:
-                    await pool.close()
-                except Exception:  # pragma: no cover - defensive
-                    log.debug(
-                        "Failed closing Mariners DB pool after setup error",
-                        exc_info=True,
-                    )
         self.game_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup
@@ -74,7 +84,7 @@ class MarinersGameCog(commands.Cog):
             return
         await self.pool.execute(
             """
-            CREATE TABLE IF NOT EXISTS discord.mariners_schedule (
+            CREATE TABLE IF NOT EXISTS mariners_schedule (
                 event_id TEXT PRIMARY KEY,
                 season_year INTEGER NOT NULL,
                 game_date TIMESTAMPTZ NOT NULL,
@@ -96,12 +106,12 @@ class MarinersGameCog(commands.Cog):
         await self.pool.execute(
             """
             CREATE INDEX IF NOT EXISTS ix_mariners_schedule_season
-            ON discord.mariners_schedule (season_year, game_date)
+            ON mariners_schedule (season_year, game_date)
             """
         )
         await self.pool.execute(
             """
-            CREATE TABLE IF NOT EXISTS discord.mariners_schedule_state (
+            CREATE TABLE IF NOT EXISTS mariners_schedule_state (
                 id INTEGER PRIMARY KEY,
                 tracking_since TIMESTAMPTZ NOT NULL DEFAULT now()
             )
@@ -113,7 +123,7 @@ class MarinersGameCog(commands.Cog):
             return
         try:
             row = await self.pool.fetchrow(
-                "SELECT tracking_since FROM discord.mariners_schedule_state WHERE id = 1"
+                "SELECT tracking_since FROM mariners_schedule_state WHERE id = 1"
             )
         except Exception as exc:  # pragma: no cover - database
             log.warning("Failed to load Mariners tracking state: %s", exc)
@@ -129,7 +139,7 @@ class MarinersGameCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                INSERT INTO discord.mariners_schedule_state (id, tracking_since)
+                INSERT INTO mariners_schedule_state (id, tracking_since)
                 VALUES (1, $1)
                 ON CONFLICT (id) DO NOTHING
                 """,
@@ -144,7 +154,7 @@ class MarinersGameCog(commands.Cog):
         if not self.pool:
             return
         rows = await self.pool.fetch(
-            "SELECT event_id FROM discord.mariners_schedule WHERE message_id IS NOT NULL"
+            "SELECT event_id FROM mariners_schedule WHERE message_id IS NOT NULL"
         )
         self.posted.update(str(r[0]) for r in rows)
 
@@ -179,7 +189,7 @@ class MarinersGameCog(commands.Cog):
             try:
                 await self.pool.execute(
                     """
-                    INSERT INTO discord.mariners_schedule (
+                    INSERT INTO mariners_schedule (
                         event_id,
                         season_year,
                         game_date,
@@ -297,7 +307,7 @@ class MarinersGameCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                UPDATE discord.mariners_schedule
+                UPDATE mariners_schedule
                 SET message_id = $1,
                     message_posted_at = now(),
                     updated_at = now()
@@ -309,7 +319,7 @@ class MarinersGameCog(commands.Cog):
         except Exception as exc:  # pragma: no cover - database
             log.warning("Failed to record Mariners post %s: %s", event_id, exc)
 
-    async def fetch_game_summary(self) -> Optional[Dict[str, Any]]:
+    async def _fetch_game_summary_db(self) -> Optional[Dict[str, Any]]:
         if not self.pool:
             return None
         try:
@@ -328,7 +338,7 @@ class MarinersGameCog(commands.Cog):
                    game_date,
                    season_year,
                    short_name
-            FROM discord.mariners_schedule
+            FROM mariners_schedule
             WHERE state = 'post'
               AND message_id IS NULL
               AND game_date >= $1
@@ -351,7 +361,7 @@ class MarinersGameCog(commands.Cog):
         try:
             await self.pool.execute(
                 """
-                UPDATE discord.mariners_schedule
+                UPDATE mariners_schedule
                 SET summary = $1,
                     mariners_score = $2,
                     opponent_score = $3,
@@ -366,6 +376,200 @@ class MarinersGameCog(commands.Cog):
         except Exception as exc:  # pragma: no cover - database
             log.warning("Failed to store Mariners summary %s: %s", event_id, exc)
         return data
+
+    def _latest_stats_game(self, schedule: dict[str, Any]) -> Optional[dict[str, Any]]:
+        latest: tuple[datetime, dict[str, Any]] | None = None
+        for day in schedule.get("dates", []):
+            games = day.get("games", []) or []
+            for game in games:
+                status = (game.get("status") or {}).get("detailedState", "")
+                if status not in {"Final", "Game Over", "Completed"}:
+                    continue
+                teams = game.get("teams", {})
+                home_team = (teams.get("home") or {}).get("team") or {}
+                away_team = (teams.get("away") or {}).get("team") or {}
+                if home_team.get("id") == TEAM_ID:
+                    mariners_home = True
+                elif away_team.get("id") == TEAM_ID:
+                    mariners_home = False
+                else:
+                    continue
+                pk = str(game.get("gamePk") or "")
+                if not pk:
+                    continue
+                season = game.get("season")
+                try:
+                    start_raw = game.get("gameDate")
+                    start = parser.isoparse(start_raw) if start_raw else datetime.now(tz=pytz.utc)
+                except Exception:
+                    start = datetime.now(tz=pytz.utc)
+                info = {
+                    "game_pk": pk,
+                    "mariners_home": mariners_home,
+                    "season": int(season) if season else start.year,
+                }
+                if latest is None or start >= latest[0]:
+                    latest = (start, info)
+        return latest[1] if latest else None
+
+    def _collect_stats_highlights(self, plays: Iterable[dict[str, Any]]) -> list[str]:
+        lines: list[str] = []
+        for play in plays:
+            result = play.get("result", {})
+            description = result.get("description")
+            if not description:
+                continue
+            about = play.get("about", {})
+            inning = about.get("inning")
+            half = about.get("halfInning", "")
+            if inning is not None:
+                inning_text = self._ordinal(inning)
+                half_text = half.title() if isinstance(half, str) else ""
+                if half_text:
+                    description = f"{description} ({half_text} {inning_text})"
+                else:
+                    description = f"{description} ({inning_text})"
+            lines.append(description)
+            if len(lines) == 3:
+                break
+        return lines
+
+    def _build_stats_summary(
+        self,
+        feed: Dict[str, Any],
+        standings: Dict[str, Any],
+        mariners_home: bool,
+        game_pk: str,
+    ) -> Optional[Dict[str, Any]]:
+        teams = feed.get("gameData", {}).get("teams", {})
+        home_team = teams.get("home", {})
+        away_team = teams.get("away", {})
+        if not home_team or not away_team:
+            return None
+        mariners_team = home_team if mariners_home else away_team
+        opponent_team = away_team if mariners_home else home_team
+        away_abbr = away_team.get("abbreviation", "")
+        home_abbr = home_team.get("abbreviation", "")
+        opponent_abbr = opponent_team.get("abbreviation") or opponent_team.get("teamName", "")
+        opponent_name = (
+            opponent_team.get("teamName")
+            or opponent_team.get("name")
+            or opponent_abbr
+            or "Opponent"
+        )
+        dt_iso = feed.get("gameData", {}).get("datetime", {}).get("dateTime")
+        try:
+            start_dt = parser.isoparse(dt_iso) if dt_iso else datetime.now(tz=pytz.utc)
+        except Exception:
+            start_dt = datetime.now(tz=pytz.utc)
+        start_pst = start_dt.astimezone(PST_TZ)
+        linescore = feed.get("liveData", {}).get("linescore", {}).get("teams", {})
+        mariners_runs = self._to_int(linescore.get("home" if mariners_home else "away", {}).get("runs"))
+        opponent_runs = self._to_int(linescore.get("away" if mariners_home else "home", {}).get("runs"))
+        highlights = self._collect_stats_highlights(
+            feed.get("liveData", {}).get("plays", {}).get("scoringPlays", [])
+        )
+        record_line = ""
+        al_west_line = ""
+        try:
+            record_entry = next(
+                (
+                    rec
+                    for group in standings.get("records", [])
+                    for rec in group.get("teamRecords", [])
+                    if rec.get("team", {}).get("id") == TEAM_ID
+                    or rec.get("team", {}).get("abbreviation") == TEAM_ABBR
+                ),
+                None,
+            )
+        except Exception:
+            record_entry = None
+        if record_entry:
+            wins = record_entry.get("wins")
+            losses = record_entry.get("losses")
+            if wins is not None and losses is not None:
+                record_line = f"{wins}-{losses}"
+            streak_code = (record_entry.get("streak") or {}).get("streakCode")
+            if streak_code:
+                record_line = f"{record_line} ({streak_code})" if record_line else streak_code
+            games_back = record_entry.get("gamesBack")
+            if games_back in (0, 0.0, "0", "0.0"):
+                gb_piece = "0.0 GB"
+            elif games_back:
+                gb_piece = f"{games_back} GB"
+            else:
+                gb_piece = ""
+            rank_val = record_entry.get("divisionRank")
+            rank_piece = self._ordinal(rank_val) if rank_val else ""
+            last_ten_piece = ""
+            splits = (record_entry.get("records") or {}).get("splitRecords", [])
+            for split in splits:
+                if split.get("type") == "lastTen":
+                    wins_lt = split.get("wins")
+                    losses_lt = split.get("losses")
+                    if wins_lt is not None and losses_lt is not None:
+                        last_ten_piece = f"Last 10: {wins_lt}-{losses_lt}"
+                    break
+            pieces = [piece for piece in (rank_piece, gb_piece, last_ten_piece) if piece]
+            al_west_line = " • ".join(pieces)
+        performers = {
+            TEAM_ABBR: "",
+            opponent_abbr or opponent_name: "",
+        }
+        return {
+            "event_id": game_pk,
+            "mariners_home": mariners_home,
+            "away_abbr": away_abbr,
+            "home_abbr": home_abbr,
+            "mariners_score": mariners_runs,
+            "opp_score": opponent_runs,
+            "opp_name": opponent_name,
+            "opp_abbr": opponent_abbr or opponent_name,
+            "start_pst": start_pst,
+            "highlights": highlights,
+            "record": record_line,
+            "al_west": al_west_line,
+            "top_performers": performers,
+        }
+
+    def _fetch_summary_without_db(self) -> Optional[Dict[str, Any]]:
+        try:
+            with self._build_session() as session:
+                schedule_data = session.get(STATS_SCHEDULE_URL, timeout=STATS_TIMEOUT).json()
+                latest = self._latest_stats_game(schedule_data)
+                if not latest:
+                    return None
+                game_pk = latest["game_pk"]
+                mariners_home = latest["mariners_home"]
+                season_year = latest.get("season")
+                feed_data = session.get(
+                    STATS_FEED_URL.format(game_pk=game_pk), timeout=STATS_TIMEOUT
+                ).json()
+                if not season_year:
+                    dt_iso = feed_data.get("gameData", {}).get("datetime", {}).get("dateTime")
+                    if dt_iso:
+                        try:
+                            season_year = parser.isoparse(dt_iso).year
+                        except Exception:
+                            season_year = datetime.now(tz=pytz.utc).year
+                    else:
+                        season_year = datetime.now(tz=pytz.utc).year
+                standings_data = session.get(
+                    STATS_STANDINGS_URL.format(season=season_year), timeout=STATS_TIMEOUT
+                ).json()
+        except Exception as exc:
+            log.warning("Failed to build Mariners summary without database: %s", exc)
+            return None
+        return self._build_stats_summary(feed_data, standings_data, mariners_home, game_pk)
+
+    def fetch_game_summary(self) -> Awaitable[Optional[Dict[str, Any]]]:
+        if not self.pool:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return _ImmediateResult(self._fetch_summary_without_db())
+            return asyncio.to_thread(self._fetch_summary_without_db)
+        return self._fetch_game_summary_db()
 
     def _build_summary_from_event(
         self, event_id: str, row: Dict[str, Any]
