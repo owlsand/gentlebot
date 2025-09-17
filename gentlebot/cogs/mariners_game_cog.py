@@ -44,29 +44,25 @@ class MarinersGameCog(commands.Cog):
     async def cog_load(self) -> None:  # pragma: no cover - startup
         pool: asyncpg.Pool | None = None
         try:
-            self.pool = await get_pool()
+            pool = await get_pool()
+            self.pool = pool
             await self._ensure_table()
             await self._ensure_tracking_state()
             await self._sync_schedule()
             await self._load_posted()
         except Exception as exc:  # pragma: no cover - database init
+            self.pool = None
             log.warning(
                 "MarinersGameCog disabled database persistence: %s", exc
             )
-        else:
-            try:
-                self.pool = pool
-                await self._ensure_table()
-                await self._load_posted()
-            except Exception as exc:  # pragma: no cover - defensive
-                self.pool = None
-                log.warning(
-                    "MarinersGameCog disabled database persistence: %s", exc
-                )
+            if pool is not None:
                 try:
                     await pool.close()
                 except Exception:  # pragma: no cover - defensive
-                    log.debug("Failed closing Mariners DB pool after setup error", exc_info=True)
+                    log.debug(
+                        "Failed closing Mariners DB pool after setup error",
+                        exc_info=True,
+                    )
         self.game_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup
