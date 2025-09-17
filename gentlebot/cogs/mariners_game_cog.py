@@ -38,7 +38,6 @@ STATS_STANDINGS_URL = (
 )
 
 
-
 class _ImmediateResult:
     """Awaitable wrapper returning a precomputed summary result."""
 
@@ -50,7 +49,6 @@ class _ImmediateResult:
             return self._result
 
         return _runner().__await__()
-
 
 
 class MarinersGameCog(commands.Cog):
@@ -566,7 +564,11 @@ class MarinersGameCog(commands.Cog):
 
     def fetch_game_summary(self) -> Awaitable[Optional[Dict[str, Any]]]:
         if not self.pool:
-            return _ImmediateResult(self._fetch_summary_without_db())
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return _ImmediateResult(self._fetch_summary_without_db())
+            return asyncio.to_thread(self._fetch_summary_without_db)
         return self._fetch_game_summary_db()
 
     def _build_summary_from_event(
