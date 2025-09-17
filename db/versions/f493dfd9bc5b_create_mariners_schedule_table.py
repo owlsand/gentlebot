@@ -1,7 +1,7 @@
 """create mariners schedule table
 
 Revision ID: f493dfd9bc5b
-Revises: 5da39b923f95
+Revises: 4b58c5e66f5d
 Create Date: 2025-03-02 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'f493dfd9bc5b'
-down_revision: Union[str, None] = '5da39b923f95'
+down_revision: Union[str, None] = '4b58c5e66f5d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
