@@ -6,7 +6,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Callable, List, Optional
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import SessionLocal, session_scope
@@ -19,10 +19,43 @@ from app.models.task_occurrence import ClaimedOccurrence, OccurrenceState, TaskO
 log = logging.getLogger("gentlebot.worker")
 
 WORKER_CLAIM_BATCH = 10
+CLAIM_LEASE_TIMEOUT = timedelta(minutes=10)
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _release_stale_claims(session: Session, worker_id: str, now: datetime) -> int:
+    """Re-enqueue ``running`` occurrences whose leases have expired."""
+
+    lease_deadline = now - CLAIM_LEASE_TIMEOUT
+    stmt = (
+        update(TaskOccurrence)
+        .where(TaskOccurrence.state == OccurrenceState.RUNNING)
+        .where(TaskOccurrence.locked_at.is_not(None))
+        .where(TaskOccurrence.locked_at <= lease_deadline)
+        .values(
+            state=OccurrenceState.ENQUEUED,
+            enqueued_at=now,
+            locked_by=None,
+            locked_at=None,
+            updated_at=now,
+        )
+    )
+    result = session.execute(stmt)
+    rowcount = result.rowcount if result.rowcount is not None else 0
+    reclaimed = max(rowcount, 0)
+    if reclaimed:
+        log.warning(
+            "re-enqueued stale running occurrences",
+            extra={
+                "count": reclaimed,
+                "worker_id": worker_id,
+                "lease_seconds": int(CLAIM_LEASE_TIMEOUT.total_seconds()),
+            },
+        )
+    return reclaimed
 
 
 def _claim_occurrences(session: Session, worker_id: str, limit: int, now: datetime) -> List[ClaimedOccurrence]:
@@ -241,6 +274,7 @@ def run_worker_cycle(
 
     now = now or _now()
     with session_scope(session_factory) as session:
+        _release_stale_claims(session, worker_id, now)
         claimed = _claim_occurrences(session, worker_id, WORKER_CLAIM_BATCH, now)
     processed = 0
     for claim in claimed:
@@ -248,4 +282,4 @@ def run_worker_cycle(
     return processed
 
 
-__all__ = ["run_worker_cycle", "WORKER_CLAIM_BATCH"]
+__all__ = ["run_worker_cycle", "WORKER_CLAIM_BATCH", "CLAIM_LEASE_TIMEOUT"]
