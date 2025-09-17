@@ -180,7 +180,6 @@ def _process_occurrence(
         session.add(execution)
         session.flush()
 
-        handler = resolver(task.handler)
         ctx = {
             "occurrence_id": occurrence.id,
             "task_id": task.id,
@@ -191,6 +190,7 @@ def _process_occurrence(
         payload = dict(task.payload or {})
 
         try:
+            handler = resolver(task.handler)
             result = handler(ctx, payload)
         except RetryableError as exc:  # pragma: no cover - tested via retry flow
             finished_at = _now()
