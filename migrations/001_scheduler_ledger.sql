@@ -63,6 +63,7 @@ CREATE TABLE task_execution (
   result JSONB,
   error JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (occurrence_id, attempt_no)
 );
 
