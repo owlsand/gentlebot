@@ -5,13 +5,14 @@ from datetime import datetime
 import discord
 from discord.ext import commands
 import asyncpg
+import pytz
 
 from gentlebot.cogs import mariners_game_cog
 from gentlebot import db
 
 
 SUMMARY = {
-    "game_pk": 123,
+    "event_id": "401999999",
     "mariners_home": False,
     "away_abbr": "SEA",
     "home_abbr": "HOU",
@@ -59,7 +60,15 @@ def test_posts_summary(monkeypatch):
             assert url.startswith("postgresql://")
             return pool
 
+        async def noop(*args, **kwargs):
+            return None
+
         monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(mariners_game_cog.MarinersGameCog, "_ensure_table", noop)
+        monkeypatch.setattr(
+            mariners_game_cog.MarinersGameCog, "_ensure_tracking_state", noop
+        )
+        monkeypatch.setattr(mariners_game_cog.MarinersGameCog, "_sync_schedule", noop)
         db._pool = None
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 
@@ -68,13 +77,15 @@ def test_posts_summary(monkeypatch):
         cog = mariners_game_cog.MarinersGameCog(bot)
         monkeypatch.setattr(cog.game_task, "start", lambda: None)
         await cog.cog_load()
-        monkeypatch.setattr(cog, "fetch_game_summary", lambda: SUMMARY)
+        cog.tracking_since = pytz.utc.localize(datetime(2024, 1, 1))
+        pool.add_summary_row(SUMMARY)
 
         sent = []
 
         class DummyChannel(SimpleNamespace):
             async def send(self, content):
                 sent.append(content)
+                return SimpleNamespace(id=987654321)
 
         monkeypatch.setattr(bot, "get_channel", lambda cid: DummyChannel())
         monkeypatch.setattr(discord, "TextChannel", DummyChannel)
@@ -87,6 +98,7 @@ def test_posts_summary(monkeypatch):
         await mariners_game_cog.MarinersGameCog.game_task.coro(cog)
         assert sent
         assert "Mariners 5 — Astros 3" in sent[0]
+        assert pool.rows[SUMMARY["event_id"]]["message_id"] == 987654321
 
     asyncio.run(run_test())
 
@@ -98,7 +110,15 @@ def test_no_repeat_across_sessions(monkeypatch):
         async def fake_create_pool(url, *args, **kwargs):
             return pool
 
+        async def noop(*args, **kwargs):
+            return None
+
         monkeypatch.setattr(db.asyncpg, "create_pool", fake_create_pool)
+        monkeypatch.setattr(mariners_game_cog.MarinersGameCog, "_ensure_table", noop)
+        monkeypatch.setattr(
+            mariners_game_cog.MarinersGameCog, "_ensure_tracking_state", noop
+        )
+        monkeypatch.setattr(mariners_game_cog.MarinersGameCog, "_sync_schedule", noop)
         db._pool = None
         monkeypatch.setenv("PG_DSN", "postgresql+asyncpg://u:p@localhost/db")
 
@@ -109,12 +129,14 @@ def test_no_repeat_across_sessions(monkeypatch):
         cog1 = mariners_game_cog.MarinersGameCog(bot1)
         monkeypatch.setattr(cog1.game_task, "start", lambda: None)
         await cog1.cog_load()
-        monkeypatch.setattr(cog1, "fetch_game_summary", lambda: SUMMARY)
+        cog1.tracking_since = pytz.utc.localize(datetime(2024, 1, 1))
+        pool.add_summary_row(SUMMARY)
         sent1 = []
 
         class DummyChannel(SimpleNamespace):
             async def send(self, content):
                 sent1.append(content)
+                return SimpleNamespace(id=111)
 
         monkeypatch.setattr(bot1, "get_channel", lambda cid: DummyChannel())
         monkeypatch.setattr(discord, "TextChannel", DummyChannel)
@@ -131,13 +153,35 @@ def test_no_repeat_across_sessions(monkeypatch):
         cog2 = mariners_game_cog.MarinersGameCog(bot2)
         monkeypatch.setattr(cog2.game_task, "start", lambda: None)
         await cog2.cog_load()
-        monkeypatch.setattr(cog2, "fetch_game_summary", lambda: SUMMARY)
+        cog2.tracking_since = pytz.utc.localize(datetime(2024, 1, 1))
         sent2 = []
         monkeypatch.setattr(bot2, "get_channel", lambda cid: DummyChannel())
         monkeypatch.setattr(discord, "TextChannel", DummyChannel)
         monkeypatch.setattr(bot2, "wait_until_ready", dummy_wait)
         await mariners_game_cog.MarinersGameCog.game_task.coro(cog2)
         assert not sent2
+
+    asyncio.run(run_test())
+
+
+def test_fetch_game_summary_respects_tracking_since(monkeypatch):
+    async def run_test():
+        pool = DummyPool()
+        pool.add_summary_row(SUMMARY)
+
+        async def noop(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(mariners_game_cog.MarinersGameCog, "_sync_schedule", noop)
+
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = mariners_game_cog.MarinersGameCog(bot)
+        cog.pool = pool
+        cog.tracking_since = pytz.utc.localize(datetime(2025, 1, 1))
+
+        result = await cog.fetch_game_summary()
+        assert result is None
 
     asyncio.run(run_test())
 
@@ -170,15 +214,94 @@ def test_cog_load_starts_without_db(monkeypatch):
 
 class DummyPool:
     def __init__(self):
-        self.data = set()
+        self.rows: dict[str, dict] = {}
 
     async def close(self):
         pass
 
     async def fetch(self, query, *args):
-        return [(pk,) for pk in self.data]
+        if "mariners_schedule" in query and "message_id IS NOT NULL" in query:
+            return [
+                (event_id,)
+                for event_id, row in self.rows.items()
+                if row.get("message_id") is not None
+            ]
+        return []
+
+    async def fetchrow(self, query, *args):
+        if "FROM mariners_schedule" in query and "state = 'post'" in query:
+            anchor = args[0] if args else None
+            candidates = [
+                row
+                for row in self.rows.values()
+                if row.get("state") == "post" and row.get("message_id") is None
+                and (anchor is None or row.get("game_date") >= anchor)
+            ]
+            if not candidates:
+                return None
+            candidates.sort(key=lambda r: r["game_date"])
+            row = candidates[-1]
+            return {
+                "event_id": row["event_id"],
+                "summary": row.get("summary"),
+                "mariners_score": row.get("mariners_score"),
+                "opponent_score": row.get("opponent_score"),
+                "home_away": row.get("home_away"),
+                "opponent_abbr": row.get("opponent_abbr"),
+                "opponent_name": row.get("opponent_name"),
+                "game_date": row.get("game_date"),
+                "season_year": row.get("season_year"),
+                "short_name": row.get("short_name"),
+            }
+        return None
 
     async def execute(self, query, *args):
-        if "INSERT" in query:
-            self.data.add(args[0])
+        if "INSERT INTO mariners_schedule" in query:
+            event_id = args[0]
+            row = self.rows.get(event_id, {}).copy()
+            row.update(
+                event_id=event_id,
+                season_year=args[1],
+                game_date=args[2],
+                home_away=args[3],
+                opponent_abbr=args[4],
+                opponent_name=args[5],
+                venue=args[6],
+                short_name=args[7],
+                state=args[8],
+                mariners_score=args[9],
+                opponent_score=args[10],
+            )
+            row.setdefault("summary", None)
+            row.setdefault("message_id", None)
+            self.rows[event_id] = row
+        elif "SET summary" in query:
+            summary, mariners_score, opp_score, event_id = args
+            row = self.rows[event_id]
+            row["summary"] = summary
+            row["mariners_score"] = mariners_score
+            row["opponent_score"] = opp_score
+        elif "SET message_id" in query:
+            message_id, event_id = args
+            row = self.rows[event_id]
+            row["message_id"] = message_id
         return ""
+
+    def add_summary_row(self, summary: dict) -> None:
+        stored = dict(summary)
+        stored["start_pst"] = stored["start_pst"].isoformat()
+        self.rows[summary["event_id"]] = {
+            "event_id": summary["event_id"],
+            "season_year": summary["start_pst"].year,
+            "game_date": summary["start_pst"],
+            "home_away": "home" if summary.get("mariners_home") else "away",
+            "opponent_abbr": summary["opp_abbr"],
+            "opponent_name": summary["opp_name"],
+            "venue": "",
+            "short_name": f"{summary['away_abbr']} @ {summary['home_abbr']}",
+            "state": "post",
+            "mariners_score": summary["mariners_score"],
+            "opponent_score": summary["opp_score"],
+            "summary": stored,
+            "message_id": None,
+        }
