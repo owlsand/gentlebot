@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.db import get_engine, session_scope, create_session_factory
 from app.models.scheduled_task import ScheduledTask
-from app.scheduler.enqueue import enqueue_due_occurrences
+from app.scheduler.enqueue import enqueue_due_occurrences_for_tasks
 
 
 def backfill(now: datetime | None = None) -> int:
@@ -17,12 +17,14 @@ def backfill(now: datetime | None = None) -> int:
     session_factory = create_session_factory(engine)
     with session_scope(session_factory) as session:
         shadow_tasks = session.scalars(
-            select(ScheduledTask).where(ScheduledTask.status == "shadow")
+            select(ScheduledTask).where(
+                ScheduledTask.status == "shadow", ScheduledTask.is_active.is_(True)
+            )
         ).all()
         if not shadow_tasks:
             print("No shadow tasks configured")
             return 0
-        return enqueue_due_occurrences(session, now=now)
+        return enqueue_due_occurrences_for_tasks(session, shadow_tasks, now=now)
 
 
 def main() -> None:

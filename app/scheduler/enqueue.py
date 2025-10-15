@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Iterable, List, Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -81,18 +81,13 @@ def _upsert_occurrence(
     return int(occurrence_id)
 
 
-def enqueue_due_occurrences(session: Session, now: Optional[datetime] = None) -> int:
-    """Upsert occurrences for all active tasks within the lookahead window."""
-
-    now = now or _now()
-    window_end = now + timedelta(seconds=LOOKAHEAD_SECONDS)
-
-    tasks = session.scalars(
-        select(ScheduledTask).where(
-            ScheduledTask.is_active.is_(True), ScheduledTask.status.in_(["active", "shadow"])
-        )
-    ).all()
-
+def _enqueue_tasks(
+    session: Session,
+    tasks: Sequence[ScheduledTask],
+    *,
+    now: datetime,
+    window_end: datetime,
+) -> int:
     enqueued = 0
     for task in tasks:
         due_times: List[datetime]
@@ -168,6 +163,36 @@ def enqueue_due_occurrences(session: Session, now: Optional[datetime] = None) ->
     return enqueued
 
 
+def enqueue_due_occurrences(session: Session, now: Optional[datetime] = None) -> int:
+    """Upsert occurrences for all active tasks within the lookahead window."""
+
+    now = now or _now()
+    window_end = now + timedelta(seconds=LOOKAHEAD_SECONDS)
+
+    tasks = session.scalars(
+        select(ScheduledTask).where(
+            ScheduledTask.is_active.is_(True), ScheduledTask.status.in_(["active", "shadow"])
+        )
+    ).all()
+
+    return _enqueue_tasks(session, tasks, now=now, window_end=window_end)
+
+
+def enqueue_due_occurrences_for_tasks(
+    session: Session, tasks: Iterable[ScheduledTask], now: Optional[datetime] = None
+) -> int:
+    """Upsert occurrences for the provided tasks within the lookahead window."""
+
+    task_list = list(tasks)
+    if not task_list:
+        return 0
+
+    now = now or _now()
+    window_end = now + timedelta(seconds=LOOKAHEAD_SECONDS)
+
+    return _enqueue_tasks(session, task_list, now=now, window_end=window_end)
+
+
 def enqueue_cycle(now: Optional[datetime] = None) -> int:
     """High-level helper used by scripts to perform a single enqueue cycle."""
 
@@ -175,4 +200,9 @@ def enqueue_cycle(now: Optional[datetime] = None) -> int:
         return enqueue_due_occurrences(session, now=now)
 
 
-__all__ = ["enqueue_cycle", "enqueue_due_occurrences", "LOOKAHEAD_SECONDS"]
+__all__ = [
+    "enqueue_cycle",
+    "enqueue_due_occurrences",
+    "enqueue_due_occurrences_for_tasks",
+    "LOOKAHEAD_SECONDS",
+]
