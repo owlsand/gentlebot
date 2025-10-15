@@ -17,20 +17,59 @@ from .db import close_pool
 from .version import get_version
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
-logger = logging.getLogger("gentlebot")
-level_name = os.getenv("LOG_LEVEL", "INFO").upper()
-level = getattr(logging, level_name, logging.INFO)
-logger.setLevel(level)
-log_format = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+def _remove_managed_handlers(target: logging.Logger) -> None:
+    """Remove handlers attached by ``configure_logging``."""
 
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_format)
-# Limit console output to INFO and above even when file logging is DEBUG
-console_handler.setLevel(logging.INFO)
+    for handler in list(target.handlers):
+        if getattr(handler, "_gentlebot_managed", False):
+            target.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:  # pragma: no cover - defensive cleanup
+                pass
 
-root_logger = logging.getLogger()
-root_logger.setLevel(level)
-root_logger.addHandler(console_handler)
+
+class _ExcludeGentlebot(logging.Filter):
+    """Prevent duplicate console output for gentlebot loggers."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # pragma: no cover - trivial
+        return not record.name.startswith("gentlebot")
+
+
+def configure_logging() -> tuple[logging.Logger, logging.Logger, logging.Formatter, str, int]:
+    """Configure application logging and return key components."""
+
+    logger = logging.getLogger("gentlebot")
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    log_format = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    # Always allow gentlebot loggers to emit INFO-level messages so the console
+    # stays active even when LOG_LEVEL is raised to WARNING or ERROR.
+    logger.setLevel(logging.DEBUG)
+    _remove_managed_handlers(logger)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_format)
+    console_handler.setLevel(logging.INFO)
+    console_handler._gentlebot_managed = True  # type: ignore[attr-defined]
+    logger.addHandler(console_handler)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    _remove_managed_handlers(root_logger)
+
+    other_console = logging.StreamHandler()
+    other_console.setFormatter(log_format)
+    other_console.setLevel(level)
+    other_console.addFilter(_ExcludeGentlebot())
+    other_console._gentlebot_managed = True  # type: ignore[attr-defined]
+    root_logger.addHandler(other_console)
+
+    return logger, root_logger, log_format, level_name, level
+
+
+logger, root_logger, log_format, level_name, level = configure_logging()
 
 # Suppress noisy CommandNotFound errors from the app command tree
 class _IgnoreMissingCommand(logging.Filter):
@@ -140,6 +179,7 @@ async def main() -> None:
     if db_url:
         db_handler = PostgresHandler(db_url)
         await db_handler.connect()
+        db_handler.setLevel(level)
         root_logger.addHandler(db_handler)
         logger.info("Postgres logging enabled; file logging disabled")
     else:
@@ -149,6 +189,7 @@ async def main() -> None:
             log_dir / "bot.log", when="midnight", backupCount=90
         )
         file_handler.setFormatter(log_format)
+        file_handler.setLevel(level)
         root_logger.addHandler(file_handler)
 
     try:
