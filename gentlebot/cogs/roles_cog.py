@@ -10,11 +10,9 @@ The Summoner, Lore Creator, Reaction Engineer, Galaxy Brain, Wordsmith,
 Sniper, Night Owl, Comeback Kid, Ghostbuster.
 
 Inactivity flags:
-  - **Ghost** – 0 messages and 0 reactions given or received in the last 14d
-  - **Shadow** – 0 messages in last 14d but at least one mention or reaction
-    from others within 30d
-  - **Lurker** – 1–5 messages sent or 1–15 reactions given in the last 14d
-  - **NPC** – default flag for members with no other engagement or inactivity role
+  - **Ghost** – no presence events recorded in the last 7 days
+  - **Lurker** – no messages in the last 7 days but at least one recent presence event
+  - **NPC** – 1–5 messages sent in the last 7 days
 
 All IDs & thresholds come from **bot_config.py**.
 """
@@ -30,6 +28,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from ..tasks.daily_digest import assign_tiers
+from ..db import get_pool
 
 from ..util import chan_name, user_name, guild_name
 from .. import bot_config as cfg
@@ -73,8 +72,10 @@ class RoleCog(commands.Cog):
         self.reactions: list[dict] = []
         self.last_online: defaultdict[int, datetime] = defaultdict(discord.utils.utcnow)
         self.last_message_ts: datetime = discord.utils.utcnow()
+        self.last_presence: dict[int, datetime] = {}
         self.assign_counts: Counter[int] = Counter()
         self._startup_refreshed: bool = False
+        self._presence_fetch_enabled: bool = True
         self.badge_task.start()
 
     @commands.Cog.listener()
@@ -141,10 +142,13 @@ class RoleCog(commands.Cog):
         if not guild:
             return
 
-        cutoff = discord.utils.utcnow() - timedelta(days=days)
+        now = discord.utils.utcnow()
+        cutoff = now - timedelta(days=days)
         self.messages.clear()
         self.reactions.clear()
         self.last_online.clear()
+        self.last_presence.clear()
+        await self._refresh_presence_from_archive(now)
 
         for channel in guild.text_channels:
             try:
@@ -153,6 +157,9 @@ class RoleCog(commands.Cog):
                         continue
                     self.last_online[msg.author.id] = max(
                         self.last_online.get(msg.author.id, cutoff), msg.created_at
+                    )
+                    self.last_presence[msg.author.id] = max(
+                        self.last_presence.get(msg.author.id, cutoff), msg.created_at
                     )
                     info = {
                         "id": msg.id,
@@ -189,6 +196,9 @@ class RoleCog(commands.Cog):
                             self.last_online[user.id] = max(
                                 self.last_online.get(user.id, cutoff), msg.created_at
                             )
+                            self.last_presence[user.id] = max(
+                                self.last_presence.get(user.id, cutoff), msg.created_at
+                            )
                             creator = None
                             if isinstance(reaction.emoji, discord.Emoji):
                                 em = guild.get_emoji(reaction.emoji.id)
@@ -220,20 +230,72 @@ class RoleCog(commands.Cog):
         if self.messages:
             self.last_message_ts = max(m["ts"] for m in self.messages)
 
+    async def _refresh_presence_from_archive(self, now: datetime) -> None:
+        """Backfill recent presence data from the archival Postgres store."""
+        if not self._presence_fetch_enabled:
+            return
+        try:
+            pool = await get_pool()
+        except RuntimeError:
+            self._presence_fetch_enabled = False
+            log.info("Presence archive unavailable; skipping presence backfill")
+            return
+        except Exception as exc:  # pragma: no cover - defensive logging
+            log.exception("Failed to obtain Postgres pool for presence refresh: %s", exc)
+            return
+
+        cutoff = now - timedelta(days=7)
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT user_id, MAX(event_at) AS last_event
+                FROM discord.presence_update
+                WHERE guild_id=$1 AND event_at >= $2 AND status <> 'offline'
+                GROUP BY user_id
+                """,
+                GUILD_ID,
+                cutoff,
+            )
+        except Exception as exc:
+            log.exception("Failed to query archived presence events: %s", exc)
+            return
+
+        for uid, ts in list(self.last_presence.items()):
+            if ts < cutoff:
+                self.last_presence.pop(uid)
+
+        for row in rows:
+            user_id = row["user_id"]
+            event_at = row["last_event"]
+            if event_at is None:
+                continue
+            if event_at.tzinfo is None:
+                event_at = event_at.replace(tzinfo=timezone.utc)
+            existing_presence = self.last_presence.get(user_id)
+            if existing_presence is None or event_at > existing_presence:
+                self.last_presence[user_id] = event_at
+            existing_online = self.last_online.get(user_id)
+            if existing_online is None or event_at > existing_online:
+                self.last_online[user_id] = event_at
+
     # -- Activity listeners --
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member):
         if after.guild.id != GUILD_ID:
             return
         if after.status != discord.Status.offline:
-            self.last_online[after.id] = discord.utils.utcnow()
+            now = discord.utils.utcnow()
+            self.last_online[after.id] = now
+            self.last_presence[after.id] = now
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
         if msg.author.bot or msg.guild is None or msg.guild.id != GUILD_ID:
             return
         member_id = msg.author.id
-        self.last_online[member_id] = discord.utils.utcnow()
+        now = discord.utils.utcnow()
+        self.last_online[member_id] = now
+        self.last_presence[member_id] = now
         info = {
             "id": msg.id,
             "author": member_id,
@@ -264,7 +326,9 @@ class RoleCog(commands.Cog):
             return
         if user.bot:
             return
-        self.last_online[user.id] = discord.utils.utcnow()
+        now = discord.utils.utcnow()
+        self.last_online[user.id] = now
+        self.last_presence[user.id] = now
         creator = None
         if isinstance(reaction.emoji, discord.Emoji):
             em = reaction.message.guild.get_emoji(reaction.emoji.id)
@@ -354,6 +418,7 @@ class RoleCog(commands.Cog):
             return
         self.assign_counts.clear()
         now = discord.utils.utcnow()
+        await self._refresh_presence_from_archive(now)
         cutoff14 = now - timedelta(days=14)
         cutoff30 = now - timedelta(days=30)
         bot_ids = {m.id for m in guild.members if m.bot}
@@ -582,60 +647,33 @@ class RoleCog(commands.Cog):
         )
         await self._rotate_single(guild, ROLE_COMEBACK_KID, comeback_kid)
 
-        msg_count14 = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
-        react_given14 = Counter(r["user"] for r in self.reactions if r["ts"] >= cutoff14)
-        react_recv14 = Counter(r["msg_author"] for r in self.reactions if r["ts"] >= cutoff14)
-        react_recv30 = Counter(r["msg_author"] for r in self.reactions if r["ts"] >= cutoff30)
-        mention_recv30 = Counter(
-            uid
-            for m in self.messages
-            if m["ts"] >= cutoff30
-            for uid in m.get("mention_ids", [])
-        )
-        long_msgs30 = defaultdict(int)
-        rich_msgs30 = defaultdict(int)
-        for m in self.messages:
-            if m["ts"] >= cutoff30:
-                if m["len"] > 150:
-                    long_msgs30[m["author"]] += 1
-                if m["rich"]:
-                    rich_msgs30[m["author"]] += 1
+        seven_days = timedelta(days=7)
+        cutoff7 = now - seven_days
+        msg_count7 = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff7)
 
-        flag_assigned: dict[int, int] = {}
         for member in guild.members:
             if member.bot:
                 continue
-            # Default last online to now so new members aren't immediately flagged
-            msgs14 = msg_count14[member.id]
-            reacts14 = react_given14[member.id]
-            recv14 = react_recv14[member.id]
-            recv30 = react_recv30[member.id]
-            mentions30 = mention_recv30[member.id]
-            if msgs14 == 0 and reacts14 == 0 and recv14 == 0:
+
+            presence_ts = self.last_presence.get(member.id)
+            if presence_ts is None:
+                presence_ts = self.last_online.get(member.id)
+            has_recent_presence = (
+                presence_ts is not None and (now - presence_ts) <= seven_days
+            )
+            if not has_recent_presence:
                 await self._assign_flag(guild, member, ROLE_GHOST)
-                flag_assigned[member.id] = ROLE_GHOST
                 continue
-            if msgs14 == 0 and (mentions30 > 0 or recv30 > 0):
-                await self._assign_flag(guild, member, ROLE_SHADOW_FLAG)
-                flag_assigned[member.id] = ROLE_SHADOW_FLAG
-                continue
-            if 1 <= msgs14 <= 5:
-                await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
-                flag_assigned[member.id] = ROLE_LURKER_FLAG
-                continue
-            if msgs14 == 0 and 1 <= reacts14 <= 15:
-                await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
-                flag_assigned[member.id] = ROLE_LURKER_FLAG
-                continue
-            await self._assign_flag(guild, member, 0)
-            flag_assigned[member.id] = 0
 
-        for member in guild.members:
-            if member.bot:
+            msgs7 = msg_count7[member.id]
+            if msgs7 == 0:
+                await self._assign_flag(guild, member, ROLE_LURKER_FLAG)
                 continue
-            if flag_assigned.get(member.id, 0) == 0:
-                if now - self.last_online.get(member.id, now) <= timedelta(days=30) and long_msgs30[member.id] == 0 and rich_msgs30[member.id] == 0:
-                    await self._assign_flag(guild, member, ROLE_NPC_FLAG)
+            if 1 <= msgs7 <= 5:
+                await self._assign_flag(guild, member, ROLE_NPC_FLAG)
+                continue
+
+            await self._assign_flag(guild, member, 0)
     # ── Internal Role Helpers ──────────────────────────────────────────────────
     async def _assign(self, member: discord.Member, role_id: int):
         if member.bot:

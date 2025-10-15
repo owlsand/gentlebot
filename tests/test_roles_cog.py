@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 from types import SimpleNamespace
 
 import discord
@@ -49,17 +50,14 @@ def test_lurker_skip_if_many_messages(monkeypatch):
             {"author": 1, "ts": now, "id": i, "len": 10, "words": 2, "rich": False, "mentions": 0, "mention_ids": [], "reply_to": None}
             for i in range(6)
         ]
-        cog.messages += [
-            {"author": 2, "ts": now, "id": 100 + i, "len": 10, "words": 2, "rich": False, "mentions": 0, "mention_ids": [], "reply_to": None}
-            for i in range(2)
-        ]
         cog.reactions = [
             {"ts": now, "msg": 200 + i, "msg_author": 99, "emoji": "👍", "creator": None, "user": 1}
             for i in range(10)
         ]
         cog.last_online = {1: now, 2: now}
+        cog.last_presence = {1: now, 2: now}
         await cog.badge_task()
-        assert assigned[1] != roles_cog.ROLE_LURKER_FLAG
+        assert assigned[1] == 0
         assert assigned[2] == roles_cog.ROLE_LURKER_FLAG
 
     asyncio.run(run_test())
@@ -135,10 +133,11 @@ def test_npc_assigned_if_no_other_flag(monkeypatch):
         now = discord.utils.utcnow()
         cog.messages = [
             {"author": 2, "ts": now, "id": i, "len": 10, "words": 2, "rich": False, "mentions": 0, "mention_ids": [], "reply_to": None}
-            for i in range(6)
+            for i in range(3)
         ]
         cog.reactions = []
         cog.last_online = {1: now, 2: now}
+        cog.last_presence = {1: now - timedelta(days=8), 2: now}
         await cog.badge_task()
         assert assigned[1] == roles_cog.ROLE_GHOST
         assert assigned[2] == roles_cog.ROLE_NPC_FLAG
@@ -182,6 +181,76 @@ def test_npc_removed_when_assigning_other_role(monkeypatch):
 
         assert npc_id in removed
         assert other_id in added
+
+    asyncio.run(run_test())
+
+
+def test_presence_archive_prevents_false_ghost(monkeypatch):
+    async def run_test():
+        monkeypatch.setattr(roles_cog.RoleCog.badge_task, "start", lambda self: None)
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = roles_cog.RoleCog(bot)
+
+        now = discord.utils.utcnow()
+        fetch_calls: list[tuple[str, int]] = []
+
+        class FakePool:
+            async def fetch(self, query, guild_id, cutoff):
+                fetch_calls.append((query.strip().split()[0], guild_id))
+                return [{"user_id": 1, "last_event": now}]
+
+        async def fake_get_pool():
+            return FakePool()
+
+        monkeypatch.setattr(roles_cog, "get_pool", fake_get_pool)
+
+        guild = SimpleNamespace(id=1)
+        guild.members = [
+            SimpleNamespace(id=1, bot=False, roles=[], guild=guild),
+            SimpleNamespace(id=2, bot=False, roles=[], guild=guild),
+        ]
+        guild.get_role = lambda rid: SimpleNamespace(id=rid, name=str(rid), members=[])
+        guild.get_member = lambda uid: next((m for m in guild.members if m.id == uid), None)
+        monkeypatch.setattr(bot, "get_guild", lambda gid: guild)
+        monkeypatch.setattr(bot, "wait_until_ready", lambda: asyncio.sleep(0))
+
+        async def fake_rotate_single(*args, **kwargs):
+            return None
+
+        async def fake_sync_role(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(cog, "_rotate_single", fake_rotate_single)
+        monkeypatch.setattr(cog, "_sync_role", fake_sync_role)
+
+        assigned: dict[int, int] = {}
+
+        async def fake_assign_flag(g, member, role_id):
+            assigned[member.id] = role_id
+
+        monkeypatch.setattr(cog, "_assign_flag", fake_assign_flag)
+        monkeypatch.setattr(roles_cog, "ROLE_GHOST", 10)
+        monkeypatch.setattr(cfg, "ROLE_GHOST", 10)
+        monkeypatch.setattr(roles_cog, "ROLE_LURKER_FLAG", 20)
+        monkeypatch.setattr(cfg, "ROLE_LURKER_FLAG", 20)
+        monkeypatch.setattr(roles_cog, "ROLE_NPC_FLAG", 30)
+        monkeypatch.setattr(cfg, "ROLE_NPC_FLAG", 30)
+        monkeypatch.setattr(cfg, "TIERED_BADGES", {
+            'top_poster': {'threshold': 1, 'roles': {'gold': 0, 'silver': 0, 'bronze': 0}},
+            'reaction_magnet': {'threshold': 1, 'roles': {'gold': 0, 'silver': 0, 'bronze': 0}},
+        }, raising=False)
+
+        cog.messages = []
+        cog.reactions = []
+        cog.last_online = {}
+        cog.last_presence = {}
+
+        await cog.badge_task()
+
+        assert fetch_calls, "expected archived presence query"
+        assert assigned[1] == roles_cog.ROLE_LURKER_FLAG
+        assert assigned[2] == roles_cog.ROLE_GHOST
 
     asyncio.run(run_test())
 
