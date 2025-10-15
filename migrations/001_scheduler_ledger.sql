@@ -62,6 +62,7 @@ CREATE TABLE task_execution (
   finished_at TIMESTAMPTZ,
   result JSONB,
   error JSONB,
+  -- timestamps managed by the ORM base model
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (occurrence_id, attempt_no)
