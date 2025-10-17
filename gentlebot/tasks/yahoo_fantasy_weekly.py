@@ -9,9 +9,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from .. import bot_config as cfg
+from ..util import chan_name, user_name
 from .yahoo_fantasy import (
     determine_target_week,
     extract_league_context,
@@ -80,6 +82,45 @@ class YahooFantasyWeeklyCog(commands.Cog):
             log.info("Yahoo Fantasy recap skipped; no message generated")
             return
         await channel.send(message)
+
+    @app_commands.command(
+        name="fantasyrecap", description="Run the Yahoo Fantasy Football weekly recap"
+    )
+    async def slash_fantasy_recap(self, interaction: discord.Interaction) -> None:
+        """Execute the Yahoo Fantasy weekly recap immediately."""
+        log.info(
+            "/fantasyrecap invoked by %s in %s",
+            user_name(interaction.user),
+            chan_name(interaction.channel),
+        )
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        if not self._enabled:
+            await interaction.followup.send(
+                "Yahoo Fantasy credentials are not configured.", ephemeral=True
+            )
+            return
+
+        try:
+            message = await self._build_message()
+        except Exception:  # pragma: no cover - defensive logging
+            log.exception("Failed to build Yahoo Fantasy recap message from slash command")
+            await interaction.followup.send(
+                "Could not build the Yahoo Fantasy recap right now.", ephemeral=True
+            )
+            return
+
+        if not message:
+            await interaction.followup.send(
+                "No Yahoo Fantasy recap is available yet.", ephemeral=True
+            )
+            return
+
+        if len(message) <= 2000:
+            await interaction.followup.send(message, ephemeral=True)
+            return
+
+        for chunk_start in range(0, len(message), 1900):
+            await interaction.followup.send(message[chunk_start : chunk_start + 1900], ephemeral=True)
 
     async def _build_message(self) -> str | None:
         timeout = aiohttp.ClientTimeout(total=30)
