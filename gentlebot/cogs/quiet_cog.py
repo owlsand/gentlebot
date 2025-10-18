@@ -21,7 +21,7 @@ class QuietServerCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.threshold = 10
+        self.threshold = 5
         self._quiet_active = False
 
     async def cog_load(self) -> None:
