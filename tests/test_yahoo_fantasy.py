@@ -125,17 +125,17 @@ def test_format_weekly_recap_matches_expected() -> None:
     recap = parse_weekly_scoreboard(payload)
     message = format_weekly_recap(recap)
     expected = (
-        "🏈 *Gentlefolk2.0 Week 2 Recap* :unicorn:\n"
-        "Matchups\n"
-        "• Don Stop Believing 91.42 def. Dooga’s Nukas 66.44  (Δ 24.98)\n"
-        "• Habitual Hail Marys 115.28 def. Mighty Muffins 98.90  (Δ 16.38)\n"
-        "• Amber’s Agreeable Team 107.54 def. Kyle’s Average Team 91.40  (Δ 16.14)\n"
-        "• Spencer’s Singularity AI Ed. 135.50 def. ChristopherZ’s Cool Team 105.60  (Δ 29.90)\n"
-        "• Andrew’s 12th Man Blitz 129.74 def. Chicago Slice 100.84  (Δ 28.90)\n"
-        "• Macaroni Penguins 94.42 def. The Wingin’ Itter’s 75.88  (Δ 18.54)\n\n"
-        "High Score: Spencer’s Singularity AI Ed. — 135.50\n"
-        "Closest Game: Amber’s Agreeable Team vs Kyle’s Average Team — Δ 16.14 pts\n"
-        "Low Score: Dooga’s Nukas — 66.44"
+        "🦄 🏈 **Gentlefolk Week 2 Recap**\n"
+        "\n"
+        "💪 Spencer’s Singularity AI Ed. 135.5 – 105.6 ChristopherZ’s Cool Team (dominant win)\n"
+        "💪 Andrew’s 12th Man Blitz 129.7 – 100.8 Chicago Slice (dominant win)\n"
+        "✅ Habitual Hail Marys 115.3 – 98.9 Mighty Muffins\n"
+        "✅ Amber’s Agreeable Team 107.5 – 91.4 Kyle’s Average Team\n"
+        "✅ Macaroni Penguins 94.4 – 75.9 The Wingin’ Itter’s\n"
+        "💪 Don Stop Believing 91.4 – 66.4 Dooga’s Nukas (dominant win)\n"
+        "\n"
+        "👑 **Best**: Spencer’s Singularity AI Ed. (135.5)\n"
+        "💀 **Worst**: Dooga’s Nukas (66.4)"
     )
     assert message == expected
 

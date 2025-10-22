@@ -371,50 +371,70 @@ def parse_weekly_scoreboard(
 
 
 def _format_decimal(value: Decimal) -> str:
-    return format(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+    quantized = value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return format(quantized, ".1f")
 
 
 def format_weekly_recap(recap: WeeklyRecap) -> str:
     """Render the weekly recap Discord message."""
 
-    lines: list[str] = [f"🏈 *{recap.league_name} Week {recap.week} Recap* :unicorn:", "Matchups"]
+    def _classify_margin(margin: Decimal, tied: bool) -> tuple[str, str]:
+        if tied or margin == Decimal("0"):
+            return "🤝", "(tie)"
+        if margin >= Decimal("40"):
+            return "🔥", "(blowout win)"
+        if margin >= Decimal("25"):
+            return "💪", "(dominant win)"
+        if margin >= Decimal("10"):
+            return "✅", ""
+        if margin >= Decimal("5"):
+            return "😤", "(close one)"
+        return "😬", "(nail-biter)"
 
     high_team: TeamResult | None = None
     low_team: TeamResult | None = None
-    closest: MatchupResult | None = None
+    matchup_lines: list[tuple[Decimal, str]] = []
 
     for matchup in recap.matchups:
-        home, away = matchup.teams
-        margin = matchup.margin
-        if matchup.is_tied or margin == Decimal("0"):
-            summary = f"{home.name} {_format_decimal(home.points)} tied {away.name} {_format_decimal(away.points)}"
+        team_a, team_b = matchup.teams
+        tied = matchup.is_tied or team_a.points == team_b.points
+        if tied:
+            primary, secondary = team_a, team_b
+            raw_margin = Decimal("0")
         else:
-            winner, loser = (home, away) if home.points >= away.points else (away, home)
-            summary = f"{winner.name} {_format_decimal(winner.points)} def. {loser.name} {_format_decimal(loser.points)}"
-        lines.append(f"• {summary}  (Δ {_format_decimal(margin)})")
+            primary, secondary = (
+                (team_a, team_b) if team_a.points >= team_b.points else (team_b, team_a)
+            )
+            raw_margin = (primary.points - secondary.points).copy_abs()
 
-        for team in matchup.teams:
+        margin = raw_margin.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        emoji, suffix = _classify_margin(margin, tied)
+        suffix_text = f" {suffix}" if suffix else ""
+        line = (
+            f"{emoji} {primary.name} {_format_decimal(primary.points)} – "
+            f"{_format_decimal(secondary.points)} {secondary.name}{suffix_text}"
+        )
+        matchup_lines.append((max(team_a.points, team_b.points), line))
+
+        for team in (team_a, team_b):
             if high_team is None or team.points > high_team.points:
                 high_team = team
             if low_team is None or team.points < low_team.points:
                 low_team = team
 
-        if closest is None or margin < closest.margin:
-            closest = matchup
+    if not matchup_lines or high_team is None or low_team is None:
+        raise ValueError("Weekly recap requires finalized matchups to format output")
 
-    lines.append("")
+    matchup_lines.sort(key=lambda item: item[0], reverse=True)
+    matchup_text = "\n".join(line for _, line in matchup_lines)
 
-    if high_team:
-        lines.append(f"High Score: {high_team.name} — {_format_decimal(high_team.points)}")
-    if closest:
-        team_a, team_b = closest.teams
-        lines.append(
-            f"Closest Game: {team_a.name} vs {team_b.name} — Δ {_format_decimal(closest.margin)} pts"
-        )
-    if low_team:
-        lines.append(f"Low Score: {low_team.name} — {_format_decimal(low_team.points)}")
+    summary_lines = [
+        f"👑 **Best**: {high_team.name} ({_format_decimal(high_team.points)})",
+        f"💀 **Worst**: {low_team.name} ({_format_decimal(low_team.points)})",
+    ]
 
-    return "\n".join(lines)
+    sections = [f"🦄 🏈 **Gentlefolk Week {recap.week} Recap**", matchup_text, "\n".join(summary_lines)]
+    return "\n\n".join(sections)
 
 
 async def fetch_access_token(
