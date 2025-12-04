@@ -1,8 +1,13 @@
 """Tests for Yahoo Fantasy weekly recap formatting."""
 from __future__ import annotations
 
+from decimal import Decimal
+
 from gentlebot.tasks.yahoo_fantasy import (
     LeagueContext,
+    MatchupResult,
+    TeamResult,
+    WeeklyRecap,
     determine_target_week,
     format_weekly_recap,
     parse_weekly_scoreboard,
@@ -143,3 +148,31 @@ def test_format_weekly_recap_matches_expected() -> None:
 def test_determine_target_week_uses_previous_week() -> None:
     context = LeagueContext(name="Gentlefolk2.0", current_week=3, start_week=1)
     assert determine_target_week(context) == 2
+
+
+def _matchup(status: str) -> MatchupResult:
+    team_a = TeamResult(name="Alpha", points=Decimal("120.1"))
+    team_b = TeamResult(name="Beta", points=Decimal("101.4"))
+    return MatchupResult(teams=(team_a, team_b), status=status)
+
+
+def test_weekly_recap_is_final_accepts_common_synonyms() -> None:
+    recap = WeeklyRecap(
+        league_name="Gentlefolk",
+        week=4,
+        matchups=[
+            _matchup("Final"),
+            _matchup("post_event"),
+            _matchup("COMPLETED"),
+        ],
+    )
+    assert recap.is_final()
+
+
+def test_weekly_recap_is_final_detects_in_progress() -> None:
+    recap = WeeklyRecap(
+        league_name="Gentlefolk",
+        week=4,
+        matchups=[_matchup("in_progress")],
+    )
+    assert not recap.is_final()

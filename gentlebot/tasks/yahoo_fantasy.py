@@ -50,10 +50,29 @@ class WeeklyRecap:
     def is_final(self) -> bool:
         """Return True if every matchup reports a "postevent" status."""
 
-        statuses = [m.status.lower() for m in self.matchups if m.status]
-        if statuses:
-            return all(s == "postevent" for s in statuses)
-        return True
+        statuses = []
+        for matchup in self.matchups:
+            if not matchup.status:
+                continue
+            normalized = (
+                matchup.status.lower()
+                .replace(" ", "")
+                .replace("-", "")
+                .replace("_", "")
+            )
+            if normalized:
+                statuses.append(normalized)
+        if not statuses:
+            return True
+        final_statuses = {
+            "postevent",
+            "postgame",
+            "final",
+            "finalized",
+            "complete",
+            "completed",
+        }
+        return all(status in final_statuses for status in statuses)
 
 
 @dataclass
