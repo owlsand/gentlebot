@@ -387,6 +387,7 @@ class LLMRouter:
         temperature: float = 0.6,
         think_budget: int = 0,
         json_mode: bool = False,
+        system_instruction: str | None = None,
     ) -> str:
         """Send a chat prompt to Gemini and optionally handle tool calls.
 
@@ -417,7 +418,8 @@ class LLMRouter:
             )
 
         for attempt in range(3):
-            tokens_in = self._tokens_estimate(current_messages, SYSTEM_INSTRUCTION)
+            system_prompt = system_instruction or SYSTEM_INSTRUCTION
+            tokens_in = self._tokens_estimate(current_messages, system_prompt)
             allow_fallback = route == "scheduled" and attempt == 0
             try:
                 temp_delta = self.quota.check(route, tokens_in)
@@ -430,7 +432,12 @@ class LLMRouter:
                         tokens_in,
                     )
                     return self.generate(
-                        "general", current_messages, temperature, think_budget, json_mode
+                        "general",
+                        current_messages,
+                        temperature,
+                        think_budget,
+                        json_mode,
+                        system_instruction=system_prompt,
                     )
                 raise
             temp = max(0.0, temperature + temp_delta)
@@ -444,7 +451,7 @@ class LLMRouter:
                         temperature=temp,
                         json_mode=json_mode,
                         thinking_budget=think_budget,
-                        system_instruction=SYSTEM_INSTRUCTION,
+                        system_instruction=system_prompt,
                         tools=tool_schemas,
                     )
                 except TypeError as exc:
@@ -455,7 +462,7 @@ class LLMRouter:
                             temperature=temp,
                             json_mode=json_mode,
                             thinking_budget=think_budget,
-                            system_instruction=SYSTEM_INSTRUCTION,
+                            system_instruction=system_prompt,
                         )
                     raise
 
@@ -470,7 +477,12 @@ class LLMRouter:
                         tokens_in,
                     )
                     return self.generate(
-                        "general", current_messages, temperature, think_budget, json_mode
+                        "general",
+                        current_messages,
+                        temperature,
+                        think_budget,
+                        json_mode,
+                        system_instruction=system_prompt,
                     )
                 log.info(
                     "route=%s model=%s tokens_in=%s status=rate_limited", route, model, tokens_in
@@ -487,7 +499,12 @@ class LLMRouter:
                         status,
                     )
                     return self.generate(
-                        "general", current_messages, temperature, think_budget, json_mode
+                        "general",
+                        current_messages,
+                        temperature,
+                        think_budget,
+                        json_mode,
+                        system_instruction=system_prompt,
                     )
                 log.exception(
                     "route=%s model=%s tokens_in=%s status=error", route, model, tokens_in
