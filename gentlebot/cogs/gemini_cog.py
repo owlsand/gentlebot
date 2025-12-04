@@ -199,6 +199,7 @@ class GeminiCog(commands.Cog):
             return
 
         content = message.content.strip()
+        is_dm = message.guild is None
 
         # 2) Determine reaction probability
         if "gentlebot" in content.lower():
@@ -236,11 +237,15 @@ class GeminiCog(commands.Cog):
             ref_msg = message.reference.resolved
             if ref_msg.author.id == self.bot.user.id:
                 prompt = content
+        # 7) DM conversation: treat entire content as prompt
+        elif is_dm:
+            prompt = content
+            mention_starts_message = True
 
         if not prompt and not mention_starts_message:
             return
 
-        # 7) Rate‑limit per user: wait instead of immediate reply
+        # 8) Rate‑limit per user: wait instead of immediate reply
         now = time.time()
         last = self.cooldowns[message.author.id]
         elapsed = now - last
@@ -249,7 +254,7 @@ class GeminiCog(commands.Cog):
             await asyncio.sleep(wait_time)
         self.cooldowns[message.author.id] = time.time()
 
-        # 8) Sanitize user prompt
+        # 9) Sanitize user prompt
         sanitized_prompt = self.sanitize_prompt(prompt)
         if sanitized_prompt is None:
             if mention_starts_message:
