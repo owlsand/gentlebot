@@ -3,53 +3,54 @@ import asyncio
 from gentlebot.cogs import prompt_cog
 
 
-def test_engagement_bait_category_and_fallback(monkeypatch):
-    assert "Engagement Bait" in prompt_cog.PROMPT_CATEGORIES
+def test_learning_explainer_category_and_fallback(monkeypatch):
+    assert "Learning Explainer" in prompt_cog.PROMPT_CATEGORIES
 
     monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["React with an emoji!"])
+    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["Share a quick explainer!"])
     monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
     def fake_choice(seq):
         if seq == prompt_cog.PROMPT_CATEGORIES:
-            return "Engagement Bait"
+            return "Learning Explainer"
         return seq[0]
 
     monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
 
     cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
     prompt = asyncio.run(cog.fetch_prompt())
-    assert prompt == "React with an emoji!"
-    assert cog.last_category == "Engagement Bait"
+    assert prompt == "Share a quick explainer!"
+    assert cog.last_category == "Learning Explainer"
 
 
-def test_sports_news_category_and_fallback(monkeypatch):
-    assert "Sports News" in prompt_cog.PROMPT_CATEGORIES
+def test_current_events_category_and_fallback(monkeypatch):
+    assert "Current Events" in prompt_cog.PROMPT_CATEGORIES
 
     monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["Goal or no goal?"])
+    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["What's a headline we should unpack?"])
     monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
     async def fake_topic(self):
-        return "Team X wins"
+        return "Inclusive policy is proposed"
 
-    monkeypatch.setattr(prompt_cog.PromptCog, "_sports_news_topic", fake_topic)
+    monkeypatch.setattr(prompt_cog.PromptCog, "_current_events_topic", fake_topic)
 
     def fake_choice(seq):
         if seq == prompt_cog.PROMPT_CATEGORIES:
-            return "Sports News"
+            return "Current Events"
         return seq[0]
 
     monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
 
     cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
     prompt = asyncio.run(cog.fetch_prompt())
-    assert prompt == "Goal or no goal?"
-    assert cog.last_category == "Sports News"
+    assert prompt == "What's a headline we should unpack?"
+    assert cog.last_category == "Current Events"
 
 
-def test_current_event_category_removed():
-    assert "Current event" not in prompt_cog.PROMPT_CATEGORIES
+def test_old_categories_removed():
+    assert "Engagement Bait" not in prompt_cog.PROMPT_CATEGORIES
+    assert "Sports News" not in prompt_cog.PROMPT_CATEGORIES
 
 
 def test_archive_prompt_missing_table():
