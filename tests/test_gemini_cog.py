@@ -46,7 +46,7 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     message.reply.assert_not_called()
 
 
-def test_on_message_no_ambient_reply(monkeypatch):
+def test_on_message_dm_receives_reply(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)
@@ -67,10 +67,12 @@ def test_on_message_no_ambient_reply(monkeypatch):
     message.add_reaction = AsyncMock()
 
     monkeypatch.setattr(gemini_cog.random, "random", lambda: 0)
+    cog.call_llm = AsyncMock(return_value="hi")
+    cog._get_context_from_archive = AsyncMock(return_value="")
 
     asyncio.run(cog.on_message(message))
 
-    message.reply.assert_not_called()
+    message.reply.assert_called_once_with("hi", mention_author=True)
     message.add_reaction.assert_called_once()
 
 
@@ -259,6 +261,43 @@ def test_on_message_replaces_user_placeholder(monkeypatch):
     args, kwargs = message.reply.call_args
     assert args[0] == f"{message.author.mention} hello"
     assert kwargs["mention_author"] is True
+
+
+def test_on_message_dm_without_text(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = GeminiCog(bot)
+    cog.mention_strs = ["<@123>"]
+
+    message = MagicMock(spec=discord.Message)
+    message.author.bot = False
+    message.author.id = 456
+    message.author.display_name = "Tester"
+    message.flags = MagicMock(ephemeral=False)
+    message.content = "   "
+    message.guild = None
+    message.reference = None
+    message.channel = MagicMock()
+    message.channel.id = 789
+    message.channel.typing.return_value = dummy_typing()
+    message.reply = AsyncMock()
+
+    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
+
+    captured: dict[str, str] = {}
+
+    async def fake_call(cid: int, prompt: str) -> str:
+        captured["prompt"] = prompt
+        return "Howdy!"
+
+    cog.call_llm = fake_call
+    cog._get_context_from_archive = AsyncMock(return_value="")
+
+    asyncio.run(cog.on_message(message))
+
+    assert "pinged you directly" in captured["prompt"]
+    message.reply.assert_called_once_with("Howdy!", mention_author=True)
 
 
 def test_on_message_replies_to_direct_mention_without_text(monkeypatch):
