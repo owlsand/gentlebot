@@ -157,15 +157,127 @@ def _strip_outer_quotes(text: str) -> str:
 
 # Prompt categories
 PROMPT_CATEGORIES = [
-    "Recent Server Discussion",
-    "Engagement Bait",
-    "Sports News",
+    "Community Retrospective",
+    "Learning Explainer",
+    "Current Events",
+    "Creative Challenge",
 ]
 
-SPORTS_NEWS_PATHS = [
-    "racing/f1",
-    "football/nfl"
+LEARNING_TOPICS = [
+    "practical Python tips",
+    "how to scope a side project",
+    "habits for consistent learning",
+    "explainers on AI alignment basics",
+    "approachable game design concepts",
+    "debugging strategies you rely on",
+    "how to evaluate online sources",
+    "favorite note-taking systems",
+    "design patterns that actually help",
+    "how to mentor newcomers effectively",
+    "time management for remote teams",
+    "setting boundaries at work",
+    "kitchen safety basics",
+    "meal prep for busy weeks",
+    "budgeting and zero-based envelopes",
+    "tracking personal expenses",
+    "intro to retirement accounts",
+    "home maintenance checklists",
+    "how to choose contractors",
+    "apartment organization hacks",
+    "decluttering without overwhelm",
+    "basic lawn care and watering",
+    "how to read an electric bill",
+    "renters insurance explained",
+    "moving house with less stress",
+    "safety tips for power tools",
+    "starter woodworking joints",
+    "sewing repairs for beginners",
+    "mending clothes by hand",
+    "introduction to crochet stitches",
+    "knitting gauge and yarn weights",
+    "setting up a craft workspace",
+    "photography basics for DIY listings",
+    "writing polite but firm emails",
+    "facilitating productive meetings",
+    "how to delegate effectively",
+    "feedback models that reduce friction",
+    "stress management during crunch times",
+    "public speaking without slides",
+    "parenting calm-down strategies",
+    "age-appropriate chores",
+    "creating family routines",
+    "supporting homework without micromanaging",
+    "talking about online safety with kids",
+    "caring for houseplants",
+    "composting at home",
+    "energy-saving habits in winter",
+    "basic first aid everyone should know",
+    "what to pack in a go-bag",
+    "car maintenance milestones",
+    "reading nutrition labels",
+    "planning inclusive community events",
+    "volunteering without burnout",
 ]
+
+CREATIVE_CHALLENGES = [
+    "write a two-sentence sci-fi hook",
+    "invent a cozy creature and describe its habitat",
+    "pitch a wholesome community ritual",
+    "design a daily micro-habit for kindness",
+    "describe an imaginary festival menu",
+    "draft a six-word memoir",
+    "invent a holiday that celebrates curiosity",
+    "outline a 10-minute build using household items",
+    "compose a haiku about today's mood",
+    "dream up a cooperative board game twist",
+    "sketch a floor plan for your dream reading nook",
+    "rewrite a classic proverb for modern times",
+    "invent a candle scent and write the label",
+    "design a whimsical mailbox for a fairy",
+    "pitch a short podcast episode title and blurb",
+    "describe a superhero whose only power is kindness",
+    "outline a three-panel comic about lost keys",
+    "draft an ad for a ridiculous household gadget",
+    "write a recipe for a dessert with no sugar",
+    "invent a festival game using only cardboard",
+    "compose a two-line lullaby",
+    "create a morning affirmation for students",
+    "name and describe a constellation you just discovered",
+    "write a postcard from a future city",
+    "design a bookmark series theme",
+    "invent a quirky coworking space perk",
+    "describe a garden planted on a balcony",
+    "pitch a mini escape room in a shoebox",
+    "outline a community scavenger hunt clue",
+    "write dialogue between a toaster and a cat",
+    "describe a room that changes with seasons",
+    "invent a new color and how it feels",
+    "draft a toast for someone trying something new",
+    "write a thank-you note to your future self",
+    "create a chore chart that feels like a game",
+    "design a bookmark for kids learning to read",
+    "write a limerick about doing taxes",
+    "invent a cozy winter tradition",
+    "describe a snow sculpture challenge",
+    "outline a five-minute desk stretch routine",
+    "write the first line of a mystery set in a library",
+    "pitch a weekend DIY project with scrap wood",
+    "write a motivational sticky note for coworkers",
+    "invent a reusable gift wrap idea",
+    "design a low-tech way to track goals",
+    "write a pep talk from your favorite plant",
+    "describe a playlist for cleaning day",
+    "create a one-minute puppet show plot",
+    "invent a mascot for a neighborhood block party",
+    "describe a quilt pattern inspired by weather",
+    "write an invitation to a kindness challenge",
+    "design a badge system for household chores",
+]
+
+CURRENT_EVENTS_ENDPOINT = (
+    "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30"
+)
+CURRENT_EVENTS_BLOCKLIST = {"sport", "sports", "game", "games"}
 
 class PromptCog(commands.Cog):
     """Scheduled and on‑demand AI-powered prompt generator with random category selection."""
@@ -210,36 +322,45 @@ class PromptCog(commands.Cog):
             {
                 'role': 'system',
                 'content': (
-                    'You generate creative discussion prompts for a friendly Discord group.'
+                    'You generate constructive, inclusive discussion prompts for a friendly Discord group.'
                 ),
             }
         ]
         messages += [{'role': 'assistant', 'content': p} for p in self.history]
         topic = None
-        if category == "Recent Server Discussion":
+        if category == "Community Retrospective":
             topic = await self._recent_server_topic()
             user_content = (
-                f"Generate one concise prompt about the topic '{topic}'. "
-                "It should be a question, assertion, or novel insight. "
-                "Respond only with the prompt itself and nothing else."
+                "Invite members to reflect on recent community conversations about "
+                f"'{topic}'. Ask for highlights, lessons, or next steps in a warm, inclusive tone. "
+                "Respond only with the prompt itself and keep it under 180 characters."
             )
-        elif category == "Sports News":
-            topic = await self._sports_news_topic()
+        elif category == "Learning Explainer":
+            topic = random.choice(LEARNING_TOPICS)
+            user_content = (
+                "Create one prompt asking members to share a concise explainer or teaching moment about "
+                f"{topic}. Encourage practical examples and beginner-friendly framing. "
+                "Respond only with the prompt itself and keep it under 180 characters."
+            )
+        elif category == "Current Events":
+            topic = await self._current_events_topic()
             if topic:
                 user_content = (
-                    f"Generate one concise prompt about the sports news headline '{topic}'. "
-                    "It should be a question, assertion, or novel insight. "
-                    "Respond only with the prompt itself and nothing else."
+                    "Generate one prompt inviting thoughtful discussion about this non-sports headline: "
+                    f"'{topic}'. Encourage context, media literacy, and real-world implications. "
+                    "Avoid sensationalism. Respond only with the prompt itself and keep it under 180 characters."
                 )
             else:
                 user_content = (
-                    "Generate one short prompt related to recent sports news. "
-                    "Respond only with the prompt itself and nothing else."
+                    "Generate one prompt about a timely non-sports current event, encouraging reflection on its "
+                    "impact and sources. Respond only with the prompt itself and keep it under 180 characters."
                 )
-        else:  # Engagement Bait
+        else:  # Creative Challenge
+            topic = random.choice(CREATIVE_CHALLENGES)
             user_content = (
-                "Generate one short engagement bait prompt designed to solicit reactions or responses. "
-                "Respond only with the prompt itself and nothing else."
+                "Create one playful creative challenge for the community: "
+                f"{topic}. Make it doable in under 10 minutes and invite sharing results. "
+                "Respond only with the prompt itself and keep it under 180 characters."
             )
         messages.append({'role': 'user', 'content': user_content})
         try:
@@ -325,23 +446,29 @@ class PromptCog(commands.Cog):
             log.exception("topic summary failed: %s", exc)
             return "the community"
 
-    async def _sports_news_topic(self) -> str | None:
-        """Fetch a random headline from ESPN's general sports news feed."""
-        path = random.choice(SPORTS_NEWS_PATHS)
+    async def _current_events_topic(self) -> str | None:
+        """Fetch a non-sports headline from Hacker News front page as a lightweight current events source."""
         try:
             resp = await asyncio.to_thread(
                 requests.get,
-                f"https://site.api.espn.com/apis/site/v2/sports/{path}/news",
+                CURRENT_EVENTS_ENDPOINT,
                 timeout=10,
             )
             resp.raise_for_status()
             data = resp.json()
-            headlines = [
-                a.get("headline") for a in data.get("articles", []) if a.get("headline")
-            ]
+            hits = data.get("hits", [])
+            headlines: list[str] = []
+            for hit in hits:
+                title = hit.get("title") or hit.get("story_title")
+                if not title:
+                    continue
+                lowered = title.lower()
+                if any(word in lowered for word in CURRENT_EVENTS_BLOCKLIST):
+                    continue
+                headlines.append(title)
             return random.choice(headlines) if headlines else None
         except Exception as exc:  # pragma: no cover - network
-            log.exception("sports news fetch failed: %s", exc)
+            log.exception("current events fetch failed: %s", exc)
             return None
 
     def _next_run_time(self, now: datetime) -> datetime:
