@@ -144,6 +144,9 @@ roles at 08:30 PT.
  - Gemini features require a `GEMINI_API_KEY`. Optional overrides like `MODEL_GENERAL`
    can customize which Gemini model is used.
  - Set `PG_DSN` (or PG_* creds) to enable writing bot logs to a Postgres database.
+ - The LLM router now exposes Gemini function-calling tools for web search, math, and
+   reading small file snippets. Each tool is rate limited separately and tool calls
+   are logged alongside model quota events to keep troubleshooting consistent.
 
 ## Contributing
 Each cog is self-contained. Add a new `*_cog.py` file under `cogs/` and it will be loaded automatically.

@@ -87,6 +87,7 @@ class GeminiClient:
         json_mode: bool = False,
         thinking_budget: int = 0,
         system_instruction: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> Any:
         config = genai.types.GenerateContentConfig(
             temperature=temperature, system_instruction=system_instruction
@@ -95,6 +96,8 @@ class GeminiClient:
             config.response_mime_type = "application/json"
         if thinking_budget:
             config.thinking = genai.types.ThinkingConfig(budget_tokens=thinking_budget)
+        if tools:
+            config.tools = tools
         content = self._convert_messages(messages)
         try:
             response = self.client.models.generate_content(

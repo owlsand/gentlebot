@@ -1,10 +1,16 @@
 """LLM routing and observability."""
 from __future__ import annotations
 
+import ast
+import json
 import logging
+import math
 import os
 import time
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import List, Dict, Any, Callable
+
+import requests
 
 from .providers.gemini import GeminiClient
 from ..infra.retries import call_with_backoff
@@ -28,7 +34,10 @@ SYSTEM_INSTRUCTION = (
     "Style constraints:\n"
     "- Present trade-offs and probabilities where relevant.\n\n"
     "Tools:\n"
-    "- No access to tools in this environment."
+    "- `web_search(query, max_results?)` — fetch fresh facts from the web when local context is insufficient.\n"
+    "- `calculate(expression)` — evaluate math and unit conversions instead of estimating.\n"
+    "- `read_file(path, limit?, offset?)` — inspect project files for citations or context; stay within the repo and keep snippets short.\n"
+    "Call tools only when needed, summarize their results for the user, and do not invent tool outputs."
 )
 
 class SafetyBlocked(Exception):
@@ -64,6 +73,14 @@ class LLMRouter:
                 "image": _limit("image", Limit(rpm=10, tpm=1_000_000, rpd=1_500)),
             }
         )
+        self.tool_limits = QuotaGuard(
+            {
+                "web_search": Limit(rpm=5, rpd=250),
+                "calculate": Limit(rpm=10, rpd=500),
+                "read_file": Limit(rpm=8, rpd=400),
+            }
+        )
+        self.base_dir = Path(os.getenv("GENTLEBOT_ROOT", Path.cwd())).resolve()
 
     def _tokens_estimate(
         self, messages: List[Dict[str, Any]], system_instruction: str | None = None
@@ -73,6 +90,209 @@ class LLMRouter:
             count += len(system_instruction.split())
         return count
 
+    def _tool_schemas(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "function_declarations": [
+                    {
+                        "name": "web_search",
+                        "description": "Search the public web for up-to-date answers when local knowledge is insufficient.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "keywords or question to search for"},
+                                "max_results": {
+                                    "type": "integer",
+                                    "description": "maximum snippets to return",
+                                    "minimum": 1,
+                                    "maximum": 5,
+                                },
+                            },
+                            "required": ["query"],
+                        },
+                    },
+                    {
+                        "name": "calculate",
+                        "description": "Safely evaluate a math expression including unit conversions like percentages.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "expression": {
+                                    "type": "string",
+                                    "description": "math expression such as '((42 * 1.08) - 5) / 3'",
+                                }
+                            },
+                            "required": ["expression"],
+                        },
+                    },
+                    {
+                        "name": "read_file",
+                        "description": "Read a short snippet from a project file for citations or extra context.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "string",
+                                    "description": "relative path inside the repository to read",
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "description": "maximum number of characters to return",
+                                    "minimum": 100,
+                                    "maximum": 4000,
+                                },
+                                "offset": {
+                                    "type": "integer",
+                                    "description": "character offset to start reading from",
+                                    "minimum": 0,
+                                    "maximum": 20_000,
+                                },
+                            },
+                            "required": ["path"],
+                        },
+                    },
+                ]
+            }
+        ]
+
+    def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
+        calls: list[dict[str, Any]] = []
+        for candidate in getattr(response, "candidates", []) or []:
+            parts = getattr(getattr(candidate, "content", None), "parts", []) or []
+            for part in parts:
+                func = getattr(part, "function_call", None)
+                if not func and isinstance(part, dict):
+                    func = part.get("function_call")
+                if not func:
+                    continue
+                name = getattr(func, "name", None) or (func.get("name") if isinstance(func, dict) else None)
+                if not name:
+                    continue
+                args = getattr(func, "args", None) or (func.get("args") if isinstance(func, dict) else None)
+                calls.append({"name": name, "args": args or {}})
+        return calls
+
+    def _safe_eval(self, expression: str) -> float:
+        node = ast.parse(expression, mode="eval")
+
+        allowed_ops = {
+            ast.Add: lambda a, b: a + b,
+            ast.Sub: lambda a, b: a - b,
+            ast.Mult: lambda a, b: a * b,
+            ast.Div: lambda a, b: a / b,
+            ast.Pow: lambda a, b: a**b,
+            ast.Mod: lambda a, b: a % b,
+        }
+        allowed_unary = {ast.USub: lambda a: -a, ast.UAdd: lambda a: a}
+        allowed_funcs: dict[str, Callable[..., float]] = {
+            "sqrt": math.sqrt,
+            "log": math.log,
+            "sin": math.sin,
+            "cos": math.cos,
+            "tan": math.tan,
+            "abs": lambda x: float(abs(x)),
+            "round": lambda x: float(round(x, 4)),
+        }
+
+        def _eval(n: ast.AST) -> float:
+            if isinstance(n, ast.Expression):
+                return _eval(n.body)
+            if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+                return float(n.value)
+            if isinstance(n, ast.BinOp) and type(n.op) in allowed_ops:
+                return allowed_ops[type(n.op)](_eval(n.left), _eval(n.right))
+            if isinstance(n, ast.UnaryOp) and type(n.op) in allowed_unary:
+                return allowed_unary[type(n.op)](_eval(n.operand))
+            if isinstance(n, ast.Call):
+                func_name = getattr(n.func, "id", None)
+                if func_name and func_name in allowed_funcs:
+                    fn = allowed_funcs[func_name]
+                    return float(fn(*[_eval(arg) for arg in n.args]))
+            raise ValueError("Unsupported expression")
+
+        return _eval(node)
+
+    def _tool_handlers(self) -> dict[str, Callable[[dict[str, Any]], str]]:
+        return {
+            "web_search": self._run_search,
+            "calculate": self._run_calculate,
+            "read_file": self._run_read_file,
+        }
+
+    def _run_search(self, params: dict[str, Any]) -> str:
+        query = str(params.get("query", "")).strip()
+        max_results = int(params.get("max_results", 3) or 3)
+        if not query:
+            raise ValueError("query is required")
+        max_results = max(1, min(max_results, 5))
+        url = "https://api.duckduckgo.com/"
+        resp = requests.get(
+            url,
+            params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        results: list[str] = []
+        abstract = payload.get("AbstractText")
+        if abstract:
+            results.append(abstract)
+        for topic in payload.get("RelatedTopics", [])[: max_results - len(results)]:
+            text = topic.get("Text") or topic.get("Result")
+            if text:
+                results.append(str(text))
+        if not results:
+            return "No search results found."
+        return "\n".join(results[:max_results])
+
+    def _run_calculate(self, params: dict[str, Any]) -> str:
+        expression = str(params.get("expression", "")).strip()
+        if not expression:
+            raise ValueError("expression is required")
+        value = self._safe_eval(expression)
+        return f"{value}"
+
+    def _run_read_file(self, params: dict[str, Any]) -> str:
+        rel_path = Path(str(params.get("path", "")).strip())
+        limit = int(params.get("limit", 1200) or 1200)
+        offset = int(params.get("offset", 0) or 0)
+        limit = max(100, min(limit, 4000))
+        offset = max(0, min(offset, 20_000))
+        if not rel_path:
+            raise ValueError("path is required")
+        target = (self.base_dir / rel_path).resolve()
+        if not str(target).startswith(str(self.base_dir)):
+            raise ValueError("path must stay within the repository")
+        if not target.exists() or not target.is_file():
+            raise FileNotFoundError(str(rel_path))
+        data = target.read_text(encoding="utf-8", errors="ignore")
+        if offset >= len(data):
+            return ""
+        return data[offset : offset + limit]
+
+    def _invoke_tool(
+        self, name: str | None, args: dict[str, Any], handlers: dict[str, Callable[[dict[str, Any]], str]]
+    ) -> str:
+        if not name or name not in handlers:
+            log.warning("tool=%s status=unknown args=%s", name, args)
+            return "Tool not recognized"
+
+        tokens = len(json.dumps(args, default=str).split())
+        try:
+            self.tool_limits.check(name, tokens)
+        except RateLimited:
+            log.info("tool=%s status=rate_limited args=%s", name, args)
+            return "Tool temporarily rate limited"
+
+        handler = handlers[name]
+        try:
+            result = handler(args)
+            log.info("tool=%s status=ok args=%s", name, args)
+            return result
+        except Exception as exc:  # pragma: no cover - observability
+            log.exception("tool=%s status=error args=%s", name, args)
+            return f"Tool failed: {exc}" 
+
     def generate(
         self,
         route: str,
@@ -81,89 +301,148 @@ class LLMRouter:
         think_budget: int = 0,
         json_mode: bool = False,
     ) -> str:
+        """Send a chat prompt to Gemini and optionally handle tool calls.
+
+        Tool invocations are rate limited separately from model quotas and any
+        tool outputs are echoed back into the chat history before asking the
+        model for a final response. A small retry loop allows the model to chain
+        multiple tools while still honoring the scheduled-route fallbacks.
+        """
         model = self.models.get(route)
         if not model:
             raise ValueError(f"unknown route {route}")
-        tokens_in = self._tokens_estimate(messages, SYSTEM_INSTRUCTION)
-        try:
-            temp_delta = self.quota.check(route, tokens_in)
-        except RateLimited:
-            if route == "scheduled":
-                log.info(
-                    "route=%s model=%s tokens_in=%s status=rate_limited fallback=general",
-                    route,
-                    model,
-                    tokens_in,
-                )
-                return self.generate(
-                    "general", messages, temperature, think_budget, json_mode
-                )
-            raise
-        temp = max(0.0, temperature + temp_delta)
-        start = time.time()
 
-        def _call():
-            return self.client.generate(
-                model=model,
-                messages=messages,
-                temperature=temp,
-                json_mode=json_mode,
-                thinking_budget=think_budget,
-                system_instruction=SYSTEM_INSTRUCTION,
-            )
+        tool_handlers = self._tool_handlers()
+        tool_schemas = self._tool_schemas() if not json_mode else None
+        current_messages = list(messages)
 
-        try:
-            resp = call_with_backoff(_call)
-        except RateLimited:
-            if route == "scheduled":
-                log.info(
-                    "route=%s model=%s tokens_in=%s status=rate_limited fallback=general",
-                    route,
-                    model,
-                    tokens_in,
-                )
-                return self.generate("general", messages, temperature, think_budget, json_mode)
+        def _log_response(tokens_in: int, tokens_out: int, start: float, status: str, block: Any = None):
+            total_ms = (time.time() - start) * 1000
             log.info(
-                "route=%s model=%s tokens_in=%s status=rate_limited", route, model, tokens_in
+                "route=%s model=%s tokens_in=%s tokens_out=%s ttfb_ms=0 total_ms=%s status=%s block_reason=%s",
+                route,
+                model,
+                tokens_in,
+                tokens_out,
+                int(total_ms),
+                status,
+                block,
             )
-            raise
-        except Exception as exc:
-            status = getattr(getattr(exc, "response", None), "status_code", None)
-            if route == "scheduled" and (status == 429 or (status and 500 <= status < 600)):
-                log.warning(
-                    "route=%s model=%s tokens_in=%s status=%s fallback=general",
-                    route,
-                    model,
-                    tokens_in,
-                    status,
+
+        for attempt in range(3):
+            tokens_in = self._tokens_estimate(current_messages, SYSTEM_INSTRUCTION)
+            allow_fallback = route == "scheduled" and attempt == 0
+            try:
+                temp_delta = self.quota.check(route, tokens_in)
+            except RateLimited:
+                if allow_fallback:
+                    log.info(
+                        "route=%s model=%s tokens_in=%s status=rate_limited fallback=general",
+                        route,
+                        model,
+                        tokens_in,
+                    )
+                    return self.generate(
+                        "general", current_messages, temperature, think_budget, json_mode
+                    )
+                raise
+            temp = max(0.0, temperature + temp_delta)
+            start = time.time()
+
+            def _call():
+                try:
+                    return self.client.generate(
+                        model=model,
+                        messages=current_messages,
+                        temperature=temp,
+                        json_mode=json_mode,
+                        thinking_budget=think_budget,
+                        system_instruction=SYSTEM_INSTRUCTION,
+                        tools=tool_schemas,
+                    )
+                except TypeError as exc:
+                    if "tools" in str(exc):  # backward compatibility with test shims
+                        return self.client.generate(
+                            model=model,
+                            messages=current_messages,
+                            temperature=temp,
+                            json_mode=json_mode,
+                            thinking_budget=think_budget,
+                            system_instruction=SYSTEM_INSTRUCTION,
+                        )
+                    raise
+
+            try:
+                resp = call_with_backoff(_call)
+            except RateLimited:
+                if allow_fallback:
+                    log.info(
+                        "route=%s model=%s tokens_in=%s status=rate_limited fallback=general",
+                        route,
+                        model,
+                        tokens_in,
+                    )
+                    return self.generate(
+                        "general", current_messages, temperature, think_budget, json_mode
+                    )
+                log.info(
+                    "route=%s model=%s tokens_in=%s status=rate_limited", route, model, tokens_in
                 )
-                return self.generate("general", messages, temperature, think_budget, json_mode)
-            log.exception(
-                "route=%s model=%s tokens_in=%s status=error", route, model, tokens_in
+                raise
+            except Exception as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if allow_fallback and (status == 429 or (status and 500 <= status < 600)):
+                    log.warning(
+                        "route=%s model=%s tokens_in=%s status=%s fallback=general",
+                        route,
+                        model,
+                        tokens_in,
+                        status,
+                    )
+                    return self.generate(
+                        "general", current_messages, temperature, think_budget, json_mode
+                    )
+                log.exception(
+                    "route=%s model=%s tokens_in=%s status=error", route, model, tokens_in
+                )
+                raise
+
+            tokens_out = getattr(
+                getattr(resp, "usage_metadata", None), "candidates_token_count", 0
             )
-            raise
-
-        tokens_out = getattr(getattr(resp, "usage_metadata", None), "candidates_token_count", 0)
-        text = getattr(resp, "text", "")
-        status = "ok"
-        block_reason = None
-        if not text:
-            status = "blocked"
+            tool_calls = self._extract_tool_calls(resp) if tool_schemas else []
+            text = getattr(resp, "text", "")
             block_reason = getattr(resp, "prompt_feedback", None)
-            raise SafetyBlocked
 
-        total_ms = (time.time() - start) * 1000
-        log.info(
-            "route=%s model=%s tokens_in=%s tokens_out=%s ttfb_ms=0 total_ms=%s status=%s block_reason=%s",
-            route,
-            model,
-            tokens_in,
-            tokens_out,
-            int(total_ms),
-            status,
-            block_reason,
-        )
-        return text
+            if tool_calls:
+                _log_response(tokens_in, tokens_out, start, "tool_call", block_reason)
+                tool_feedback: list[dict[str, str]] = []
+                for call in tool_calls:
+                    name = call.get("name")
+                    args = call.get("args") or {}
+                    result = self._invoke_tool(name, args, tool_handlers)
+                    tool_feedback.append(
+                        {
+                            "role": "assistant",
+                            "content": f"Calling {name} with {json.dumps(args)}",
+                        }
+                    )
+                    tool_feedback.append(
+                        {
+                            "role": "user",
+                            "content": f"Tool {name} result: {result}",
+                        }
+                    )
+                current_messages = current_messages + tool_feedback
+                continue
+
+            status = "ok" if text else "blocked"
+            _log_response(tokens_in, tokens_out, start, status, block_reason)
+            if not text:
+                raise SafetyBlocked
+            return text
+
+        raise RuntimeError("LLM tool loop exceeded attempts")
 
     def generate_image(self, prompt: str) -> bytes | None:
         model = self.models.get("image")
