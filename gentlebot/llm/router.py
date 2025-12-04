@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Callable
@@ -225,22 +226,108 @@ class LLMRouter:
         if not query:
             raise ValueError("query is required")
         max_results = max(1, min(max_results, 5))
-        url = "https://api.duckduckgo.com/"
-        resp = requests.get(
-            url,
-            params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
-            timeout=8,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-        results: list[str] = []
-        abstract = payload.get("AbstractText")
-        if abstract:
-            results.append(abstract)
-        for topic in payload.get("RelatedTopics", [])[: max_results - len(results)]:
-            text = topic.get("Text") or topic.get("Result")
-            if text:
-                results.append(str(text))
+
+        def _from_google() -> list[str]:
+            api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
+            search_engine = os.getenv("GOOGLE_SEARCH_CX")
+            if not api_key or not search_engine:
+                return []
+
+            resp = requests.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params={
+                    "q": query,
+                    "key": api_key,
+                    "cx": search_engine,
+                    "num": max_results,
+                    "safe": "active",
+                },
+                timeout=8,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+
+            results: list[str] = []
+            for item in payload.get("items", []) or []:
+                title = re.sub(r"\s+", " ", (item.get("title") or "").strip())
+                snippet = re.sub(r"\s+", " ", (item.get("snippet") or "").strip())
+                link = item.get("link")
+                parts = [part for part in (title, snippet, link) if part]
+                if parts:
+                    results.append(" — ".join(parts))
+            return results
+
+        def _from_duckduckgo() -> list[str]:
+            resp = requests.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
+                timeout=8,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            results: list[str] = []
+            abstract = payload.get("AbstractText")
+            if abstract:
+                results.append(str(abstract))
+            for topic in payload.get("RelatedTopics", []):
+                text = topic.get("Text") or topic.get("Result")
+                if text:
+                    results.append(str(text))
+                if len(results) >= max_results:
+                    break
+            return results
+
+        def _from_bing_markdown() -> list[str]:
+            resp = requests.get(
+                "https://r.jina.ai/http://www.bing.com/search",
+                params={"q": query},
+                timeout=8,
+            )
+            resp.raise_for_status()
+            text = resp.text
+            marker = "Markdown Content:"
+            if marker in text:
+                text = text.split(marker, 1)[1]
+            lines = [line.strip() for line in text.splitlines()]
+            entries: list[list[str]] = []
+            current: list[str] | None = None
+            for line in lines:
+                if not line or line.startswith("About "):
+                    continue
+                if line.startswith("-"):
+                    continue
+                match = re.match(r"^(\d+)\.\s+(.*)$", line)
+                if match:
+                    if current:
+                        entries.append(current)
+                    current = [re.sub(r"\s+", " ", match.group(2)).strip()]
+                    continue
+                if current is not None and line and not line.startswith("--"):
+                    snippet = re.sub(r"\s+", " ", line).strip()
+                    if snippet:
+                        current.append(snippet)
+            if current:
+                entries.append(current)
+            return [" ".join(entry).strip() for entry in entries]
+
+        results = []
+        try:
+            results = _from_google()
+        except Exception:
+            log.exception("tool=web_search status=google_error query=%s", query)
+
+        if not results:
+            try:
+                results = _from_duckduckgo()
+            except Exception:
+                log.exception("tool=web_search status=duckduckgo_error query=%s", query)
+
+        if not results:
+            try:
+                results = _from_bing_markdown()
+            except Exception:
+                log.exception("tool=web_search status=bing_error query=%s", query)
+
         if not results:
             return "No search results found."
         return "\n".join(results[:max_results])
