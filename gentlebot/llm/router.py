@@ -277,13 +277,22 @@ class LLMRouter:
                     break
             return results
 
-        def _from_bing_markdown() -> list[str]:
-            resp = requests.get(
-                "https://r.jina.ai/http://www.bing.com/search",
-                params={"q": query},
-                timeout=8,
-            )
-            resp.raise_for_status()
+        def _from_jina_markdown(url: str) -> list[str]:
+            try:
+                resp = requests.get(
+                    f"https://r.jina.ai/{url}", params={"q": query}, timeout=8
+                )
+                resp.raise_for_status()
+            except requests.HTTPError as exc:
+                status = getattr(exc.response, "status_code", None)
+                log.warning(
+                    "tool=web_search status=jina_error url=%s code=%s query=%s",
+                    url,
+                    status,
+                    query,
+                )
+                return []
+
             text = resp.text
             marker = "Markdown Content:"
             if marker in text:
@@ -294,21 +303,35 @@ class LLMRouter:
             for line in lines:
                 if not line or line.startswith("About "):
                     continue
-                if line.startswith("-"):
+                if line.startswith("-") or line.startswith("="):
                     continue
                 match = re.match(r"^(\d+)\.\s+(.*)$", line)
+                link_match = re.match(r"^\[(.+?)\]\((https?://[^\)]+)\)$", line)
                 if match:
                     if current:
                         entries.append(current)
                     current = [re.sub(r"\s+", " ", match.group(2)).strip()]
                     continue
-                if current is not None and line and not line.startswith("--"):
+                if link_match:
+                    if current:
+                        entries.append(current)
+                    title = re.sub(r"\s+", " ", link_match.group(1)).strip()
+                    url_text = link_match.group(2).strip()
+                    current = [title, url_text]
+                    continue
+                if current is not None and not line.startswith("--"):
                     snippet = re.sub(r"\s+", " ", line).strip()
                     if snippet:
                         current.append(snippet)
             if current:
                 entries.append(current)
             return [" ".join(entry).strip() for entry in entries]
+
+        def _from_duckduckgo_markdown() -> list[str]:
+            return _from_jina_markdown("http://duckduckgo.com/html/")
+
+        def _from_google_markdown() -> list[str]:
+            return _from_jina_markdown("http://www.google.com/search")
 
         results = []
         try:
@@ -318,15 +341,21 @@ class LLMRouter:
 
         if not results:
             try:
+                results = _from_google_markdown()
+            except Exception:
+                log.exception("tool=web_search status=google_markdown_error query=%s", query)
+
+        if not results:
+            try:
                 results = _from_duckduckgo()
             except Exception:
                 log.exception("tool=web_search status=duckduckgo_error query=%s", query)
 
         if not results:
             try:
-                results = _from_bing_markdown()
+                results = _from_duckduckgo_markdown()
             except Exception:
-                log.exception("tool=web_search status=bing_error query=%s", query)
+                log.exception("tool=web_search status=duckduckgo_markdown_error query=%s", query)
 
         if not results:
             return "No search results found."
