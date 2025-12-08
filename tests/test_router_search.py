@@ -22,7 +22,7 @@ class DummyResponse:
             raise requests.HTTPError(f"status {self.status_code}")
 
 
-def test_web_search_falls_back_to_bing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_web_search_falls_back_to_google_html(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure the web search tool falls back when Google returns nothing."""
 
     router = LLMRouter()
@@ -35,12 +35,14 @@ def test_web_search_falls_back_to_bing(monkeypatch: pytest.MonkeyPatch) -> None:
         calls.append(url)
         if "googleapis" in url:
             return DummyResponse(json_data={"items": []})
+        if "google.com" in url:
+            return DummyResponse(
+                text="Markdown Content:\n1. Example result\nSummary of the finding",
+                status_code=200,
+            )
         if "duckduckgo" in url:
             return DummyResponse(json_data={})
-        return DummyResponse(
-            text="Markdown Content:\n1. Example result\nSummary of the finding",
-            status_code=200,
-        )
+        raise AssertionError("unexpected fallback request")
 
     monkeypatch.setattr("gentlebot.llm.router.requests.get", fake_get)
 
@@ -48,7 +50,7 @@ def test_web_search_falls_back_to_bing(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert "Example result Summary of the finding" in result
     assert any("googleapis" in call for call in calls)
-    assert any("bing.com" in call for call in calls)
+    assert any("google.com" in call for call in calls)
 
 
 def test_web_search_prefers_google_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:

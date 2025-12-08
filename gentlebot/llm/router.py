@@ -330,14 +330,20 @@ class LLMRouter:
         def _from_duckduckgo_markdown() -> list[str]:
             return _from_jina_markdown("http://duckduckgo.com/html/")
 
-        def _from_bing_markdown() -> list[str]:
-            return _from_jina_markdown("http://www.bing.com/search")
+        def _from_google_markdown() -> list[str]:
+            return _from_jina_markdown("http://www.google.com/search")
 
         results = []
         try:
             results = _from_google()
         except Exception:
             log.exception("tool=web_search status=google_error query=%s", query)
+
+        if not results:
+            try:
+                results = _from_google_markdown()
+            except Exception:
+                log.exception("tool=web_search status=google_markdown_error query=%s", query)
 
         if not results:
             try:
@@ -350,12 +356,6 @@ class LLMRouter:
                 results = _from_duckduckgo_markdown()
             except Exception:
                 log.exception("tool=web_search status=duckduckgo_markdown_error query=%s", query)
-
-        if not results:
-            try:
-                results = _from_bing_markdown()
-            except Exception:
-                log.exception("tool=web_search status=bing_error query=%s", query)
 
         if not results:
             return "No search results found."
