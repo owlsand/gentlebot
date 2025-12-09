@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Callable
 
 import requests
+from bs4 import BeautifulSoup
 
 from .providers.gemini import GeminiClient
 from ..infra.retries import call_with_backoff
@@ -38,7 +39,8 @@ SYSTEM_INSTRUCTION = (
     "- `web_search(query, max_results?)` — fetch fresh facts from the web when local context is insufficient.\n"
     "- `calculate(expression)` — evaluate math and unit conversions instead of estimating.\n"
     "- `read_file(path, limit?, offset?)` — inspect project files for citations or context; stay within the repo and keep snippets short.\n"
-    "Call tools only when needed, summarize their results for the user, and do not invent tool outputs."
+    "Call tools only when needed, summarize their results for the user, and do not invent tool outputs.\n"
+    "When using the search tool, do not merely tell the user what the search results are. You must read the content, extract the specific answer to the user's question, and state that answer directly. If the snippet is insufficient, fetch the full page text."
 )
 
 class SafetyBlocked(Exception):
@@ -227,7 +229,29 @@ class LLMRouter:
             raise ValueError("query is required")
         max_results = max(1, min(max_results, 5))
 
-        def _from_google() -> list[str]:
+        def _fetch_page_text(url: str, limit: int = 2500) -> str:
+            try:
+                resp = requests.get(
+                    url,
+                    timeout=8,
+                    headers={"User-Agent": "gentlebot-web-search/1.0"},
+                )
+                resp.raise_for_status()
+            except Exception:
+                log.exception("tool=web_search status=fetch_error url=%s", url)
+                return ""
+
+            content_type = resp.headers.get("Content-Type", "")
+            if "text" not in content_type and "html" not in content_type:
+                return ""
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style", "noscript"]):
+                tag.decompose()
+            text = " ".join(soup.stripped_strings)
+            return text[:limit]
+
+        def _from_google() -> list[dict[str, str]]:
             api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
             search_engine = os.getenv("GOOGLE_SEARCH_CX")
             if not api_key or not search_engine:
@@ -247,17 +271,22 @@ class LLMRouter:
             resp.raise_for_status()
             payload = resp.json()
 
-            results: list[str] = []
+            results: list[dict[str, str]] = []
             for item in payload.get("items", []) or []:
                 title = re.sub(r"\s+", " ", (item.get("title") or "").strip())
                 snippet = re.sub(r"\s+", " ", (item.get("snippet") or "").strip())
                 link = item.get("link")
-                parts = [part for part in (title, snippet, link) if part]
-                if parts:
-                    results.append(" — ".join(parts))
+                if title or snippet or link:
+                    results.append(
+                        {
+                            "title": title,
+                            "snippet": snippet,
+                            "link": link or "",
+                        }
+                    )
             return results
 
-        def _from_duckduckgo() -> list[str]:
+        def _from_duckduckgo() -> list[dict[str, str]]:
             resp = requests.get(
                 "https://api.duckduckgo.com/",
                 params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
@@ -265,19 +294,33 @@ class LLMRouter:
             )
             resp.raise_for_status()
             payload = resp.json()
-            results: list[str] = []
+            results: list[dict[str, str]] = []
             abstract = payload.get("AbstractText")
+            abstract_url = payload.get("AbstractURL")
             if abstract:
-                results.append(str(abstract))
+                results.append(
+                    {
+                        "title": (payload.get("Heading") or "DuckDuckGo result").strip(),
+                        "snippet": str(abstract),
+                        "link": str(abstract_url or ""),
+                    }
+                )
             for topic in payload.get("RelatedTopics", []):
                 text = topic.get("Text") or topic.get("Result")
+                link = topic.get("FirstURL") or topic.get("FirstUrl") or ""
                 if text:
-                    results.append(str(text))
+                    results.append(
+                        {
+                            "title": topic.get("Name") or "DuckDuckGo topic",
+                            "snippet": str(text),
+                            "link": str(link),
+                        }
+                    )
                 if len(results) >= max_results:
                     break
             return results
 
-        def _from_jina_markdown(url: str) -> list[str]:
+        def _from_jina_markdown(url: str) -> list[dict[str, str]]:
             try:
                 resp = requests.get(
                     f"https://r.jina.ai/{url}", params={"q": query}, timeout=8
@@ -298,8 +341,10 @@ class LLMRouter:
             if marker in text:
                 text = text.split(marker, 1)[1]
             lines = [line.strip() for line in text.splitlines()]
-            entries: list[list[str]] = []
-            current: list[str] | None = None
+            entries: list[dict[str, str]] = []
+            current_title = ""
+            current_link = ""
+            current_snippets: list[str] = []
             for line in lines:
                 if not line or line.startswith("About "):
                     continue
@@ -308,29 +353,51 @@ class LLMRouter:
                 match = re.match(r"^(\d+)\.\s+(.*)$", line)
                 link_match = re.match(r"^\[(.+?)\]\((https?://[^\)]+)\)$", line)
                 if match:
-                    if current:
-                        entries.append(current)
-                    current = [re.sub(r"\s+", " ", match.group(2)).strip()]
+                    if current_title or current_link or current_snippets:
+                        entries.append(
+                            {
+                                "title": current_title,
+                                "link": current_link,
+                                "snippet": " ".join(current_snippets).strip(),
+                            }
+                        )
+                    current_title = re.sub(r"\s+", " ", match.group(2)).strip()
+                    current_link = ""
+                    current_snippets = []
                     continue
                 if link_match:
-                    if current:
-                        entries.append(current)
+                    if current_title or current_link or current_snippets:
+                        entries.append(
+                            {
+                                "title": current_title,
+                                "link": current_link,
+                                "snippet": " ".join(current_snippets).strip(),
+                            }
+                        )
                     title = re.sub(r"\s+", " ", link_match.group(1)).strip()
                     url_text = link_match.group(2).strip()
-                    current = [title, url_text]
+                    current_title = title
+                    current_link = url_text
+                    current_snippets = []
                     continue
-                if current is not None and not line.startswith("--"):
+                if (current_title or current_link) and not line.startswith("--"):
                     snippet = re.sub(r"\s+", " ", line).strip()
                     if snippet:
-                        current.append(snippet)
-            if current:
-                entries.append(current)
-            return [" ".join(entry).strip() for entry in entries]
+                        current_snippets.append(snippet)
+            if current_title or current_link or current_snippets:
+                entries.append(
+                    {
+                        "title": current_title,
+                        "link": current_link,
+                        "snippet": " ".join(current_snippets).strip(),
+                    }
+                )
+            return entries
 
-        def _from_duckduckgo_markdown() -> list[str]:
+        def _from_duckduckgo_markdown() -> list[dict[str, str]]:
             return _from_jina_markdown("http://duckduckgo.com/html/")
 
-        def _from_google_markdown() -> list[str]:
+        def _from_google_markdown() -> list[dict[str, str]]:
             return _from_jina_markdown("http://www.google.com/search")
 
         results = []
@@ -359,7 +426,25 @@ class LLMRouter:
 
         if not results:
             return "No search results found."
-        return "\n".join(results[:max_results])
+
+        extracted: list[str] = []
+        for entry in results[:max_results]:
+            link = entry.get("link", "")
+            snippet = entry.get("snippet", "")
+            title = entry.get("title") or "Result"
+            page_text = _fetch_page_text(link) if link else ""
+            body = page_text or snippet
+            if not body:
+                continue
+            header = title
+            if link:
+                header = f"{title} — {link}"
+            extracted.append(f"{header}\n{body}")
+
+        if not extracted:
+            return "No search results found."
+
+        return "\n\n".join(extracted)
 
     def _run_calculate(self, params: dict[str, Any]) -> str:
         expression = str(params.get("expression", "")).strip()
@@ -566,6 +651,15 @@ class LLMRouter:
                             "content": f"Tool {name} result: {result}",
                         }
                     )
+                tool_feedback.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Use the tool output above to extract the specific answer. If the results are only links or metadata, "
+                            "call web_search again with the most promising link to fetch the page content before responding."
+                        ),
+                    }
+                )
                 current_messages = current_messages + tool_feedback
                 continue
 

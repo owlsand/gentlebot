@@ -9,10 +9,18 @@ from gentlebot.llm.router import LLMRouter
 
 
 class DummyResponse:
-    def __init__(self, *, json_data: dict | None = None, text: str = "", status_code: int = 200):
+    def __init__(
+        self,
+        *,
+        json_data: dict | None = None,
+        text: str = "",
+        status_code: int = 200,
+        headers: dict | None = None,
+    ):
         self._json = json_data or {}
         self.text = text
         self.status_code = status_code
+        self.headers = headers or {"Content-Type": "text/html"}
 
     def json(self) -> dict:
         return self._json
@@ -48,7 +56,8 @@ def test_web_search_falls_back_to_google_html(monkeypatch: pytest.MonkeyPatch) -
 
     result = router._run_search({"query": "current year", "max_results": 2})
 
-    assert "Example result Summary of the finding" in result
+    assert "Example result" in result
+    assert "Summary of the finding" in result
     assert any("googleapis" in call for call in calls)
     assert any("google.com" in call for call in calls)
 
@@ -76,11 +85,15 @@ def test_web_search_prefers_google_when_configured(monkeypatch: pytest.MonkeyPat
                     ]
                 }
             )
+        if "example.com" in url:
+            return DummyResponse(text="Full page content about the topic.")
         raise AssertionError("unexpected fallback request")
 
     monkeypatch.setattr("gentlebot.llm.router.requests.get", fake_get)
 
     result = router._run_search({"query": "current year", "max_results": 1})
 
-    assert "Google result — Details about the topic — https://example.com" in result
-    assert calls == ["https://www.googleapis.com/customsearch/v1"]
+    assert "Google result — https://example.com" in result
+    assert "Full page content about the topic." in result
+    assert "https://www.googleapis.com/customsearch/v1" in calls[0]
+    assert any("example.com" in call for call in calls)
