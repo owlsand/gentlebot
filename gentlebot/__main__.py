@@ -3,6 +3,8 @@ import asyncio
 import logging
 import os
 import argparse
+import dataclasses
+import json
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -163,6 +165,24 @@ async def main() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Gentlebot")
+    subparsers = parser.add_subparsers(dest="command")
     parser.add_argument("--version", action="version", version=get_version())
-    parser.parse_args()
-    asyncio.run(main())
+
+    prompt_parser = subparsers.add_parser(
+        "generate-prompt", help="Generate and persist a daily prompt"
+    )
+    prompt_parser.add_argument("--date", help="Target date (YYYY-MM-DD)")
+    prompt_parser.add_argument("--config", help="Path to prompt config YAML")
+    prompt_parser.add_argument("--state", help="Path to SQLite state file")
+
+    args = parser.parse_args()
+    if args.command == "generate-prompt":
+        from .cli import _parse_date
+        from .tasks.daily_prompt_composer import DailyPromptComposer
+
+        date = _parse_date(args.date)
+        with DailyPromptComposer(config_path=args.config, state_path=args.state) as composer:
+            prompt = composer.generate_prompt(date=date)
+            print(json.dumps(dataclasses.asdict(prompt), indent=2, default=str))
+    else:
+        asyncio.run(main())

@@ -1,0 +1,217 @@
+generation:
+  candidate_count: 20
+  deterministic_by_date: true
+
+length:
+  min: 200
+  max: 350
+
+cooldowns:
+  template_days: 21
+  topic_days: 5
+  tone_days: 3
+  constraint_days: 10
+  twist_days: 10
+
+similarity:
+  mode: ngram
+  threshold: 0.82
+  history_size: 30
+
+flags:
+  allow_sensitive: false
+
+banned_phrases:
+  - "daily check-in"
+  - "how's everyone doing"
+  - "sound off"
+
+topics:
+  social: 1.0
+  reflection: 0.9
+  play: 0.8
+  taste: 0.7
+  progress: 0.7
+  curiosity: 0.6
+  community: 0.6
+  creative: 0.6
+  local: 0.5
+  async_friendly: 0.5
+
+formats:
+  poll: 1.0
+  finish_the_sentence: 0.9
+  mini_challenge: 0.9
+  rec_request: 0.8
+  lightning_round: 0.8
+  caption_contest: 0.7
+  hot_take: 0.7
+  mailbag: 0.6
+  story_prompt: 0.6
+
+tones:
+  warm: 1.0
+  curious: 1.0
+  cozy: 0.8
+  hype: 0.7
+  snark_light: 0.5
+  minimal: 0.4
+
+constraints:
+  one_sentence:
+    text: "Keep it to one sentence."
+    weight: 1.0
+  seven_words:
+    text: "Answer in exactly seven words."
+    weight: 0.8
+  no_adjectives:
+    text: "No adjectives allowed."
+    weight: 0.6
+  short_and_sweet:
+    text: "Be brief—think tweet-length."
+    weight: 1.0
+  emoji_only:
+    text: "Replies must include at least one emoji."
+    weight: 0.5
+
+twists:
+  wrong_answers:
+    text: "Wrong answers only."
+    weight: 0.8
+  eli5:
+    text: "Explain it like I'm five."
+    weight: 0.7
+  predict_future:
+    text: "Make a bold prediction for the next year."
+    weight: 0.6
+  haiku:
+    text: "Respond as a haiku."
+    weight: 0.5
+  argue_opposite:
+    text: "Argue the opposite of your real opinion."
+    weight: 0.6
+  none:
+    text: ""
+    weight: 0.4
+
+templates:
+  - id: social_poll
+    format: poll
+    allowed_topics: [social]
+    compatible_tones: [warm, cozy]
+    base_text: "Poll time: {option1} or {option2}? Why?"
+    variable_pools:
+      option1: ["calling a friend", "game night", "solo chill"]
+      option2: ["group walk", "movie watch", "coffee catch-up"]
+    length_bounds:
+      min: 120
+      max: 240
+    flags: [low-friction]
+
+  - id: reflection_finish
+    format: finish_the_sentence
+    allowed_topics: [reflection]
+    compatible_tones: [curious, warm]
+    base_text: "Finish the sentence: Today I'm grateful for {item}."
+    variable_pools:
+      item: ["a tiny win", "someone's kindness", "a small luxury", "learning something"]
+    length_bounds:
+      min: 140
+      max: 260
+
+  - id: play_caption
+    format: caption_contest
+    allowed_topics: [play, creative]
+    compatible_tones: [snark_light, hype]
+    base_text: "Caption this imaginary scenario: {scenario}."
+    variable_pools:
+      scenario: ["a cat running a board meeting", "a sandwich giving a TED talk", "a raccoon with a day planner"]
+    length_bounds:
+      min: 150
+      max: 260
+    flags: [avoid_sensitive]
+
+  - id: taste_rec_request
+    format: rec_request
+    allowed_topics: [taste]
+    compatible_tones: [curious, cozy]
+    base_text: "Recommend one {category} that never lets you down and why."
+    variable_pools:
+      category: ["comfort food", "album", "YouTube channel", "weekday lunch"]
+
+  - id: progress_mini_challenge
+    format: mini_challenge
+    allowed_topics: [progress, async_friendly]
+    compatible_tones: [warm, minimal]
+    base_text: "Mini challenge: before tomorrow, {challenge}. Check back in to brag."
+    variable_pools:
+      challenge: ["clear one nagging tab", "do a 5-minute tidy", "send a thank-you note", "finish a tiny task you've delayed"]
+    cooldown_days: 25
+
+  - id: curiosity_hot_take
+    format: hot_take
+    allowed_topics: [curiosity, social]
+    compatible_tones: [snark_light, hype]
+    base_text: "Hot take: {topic} is underrated—convince us or fight back."
+    variable_pools:
+      topic: ["library cards", "naps", "analog hobbies", "walking meetings"]
+
+  - id: community_mailbag
+    format: mailbag
+    allowed_topics: [community]
+    compatible_tones: [warm, cozy]
+    base_text: "Mailbag time: ask the community one question you genuinely want answered."
+    variable_pools: {}
+    flags: [low-friction]
+
+  - id: creative_story_prompt
+    format: story_prompt
+    allowed_topics: [creative]
+    compatible_tones: [curious, cozy]
+    base_text: "Story spark: {spark}. Keep it under 3 sentences."
+    variable_pools:
+      spark: ["a vending machine that only gives life advice", "a letter arrives from 10 years in the future", "a ghost who schedules meetings"]
+
+  - id: local_lightning
+    format: lightning_round
+    allowed_topics: [local]
+    compatible_tones: [warm, hype]
+    base_text: "Lightning round: best {local_item} near you? Rapid-fire replies encouraged."
+    variable_pools:
+      local_item: ["cheap eat", "walkable view", "coffee shop", "free activity"]
+
+  - id: async_finish
+    format: finish_the_sentence
+    allowed_topics: [async_friendly]
+    compatible_tones: [minimal, warm]
+    base_text: "Finish the sentence later today: By bedtime I want to feel {feeling}."
+    variable_pools:
+      feeling: ["lighter", "caught up", "cozy", "proud"]
+    length_bounds:
+      min: 120
+      max: 240
+
+  - id: play_mini_challenge
+    format: mini_challenge
+    allowed_topics: [play, social]
+    compatible_tones: [hype, warm]
+    base_text: "Playful prompt: {challenge}. Share proof if you dare."
+    variable_pools:
+      challenge: ["send a compliment to a friend", "try a 2-minute doodle", "teach someone a meme", "share one unposted photo"]
+    length_bounds:
+      min: 150
+      max: 260
+
+  - id: progress_checkin
+    format: poll
+    allowed_topics: [progress]
+    compatible_tones: [minimal, curious]
+    base_text: "Quick check-in: {option1}, {option2}, or {option3}? Pick your vibe for today."
+    variable_pools:
+      option1: ["focus mode", "maintenance", "deep clean"]
+      option2: ["learning day", "errand sprint", "creative play"]
+      option3: ["social energy", "rest & reset", "mix of both"]
+    length_bounds:
+      min: 170
+      max: 270
+
