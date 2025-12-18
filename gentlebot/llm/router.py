@@ -55,8 +55,8 @@ class LLMRouter:
         self.client = GeminiClient(api_key)
         self.models = {
             "general": os.getenv("MODEL_GENERAL", "gemini-flash-latest"),
-            "scheduled": os.getenv("MODEL_SCHEDULED", "gemini-flash-latest"),
-            "image": os.getenv("MODEL_IMAGE", "gemini-2.0-flash-exp"),
+            "scheduled": os.getenv("MODEL_SCHEDULED", "gemini-2.5-pro"),
+            "image": os.getenv("MODEL_IMAGE", "gemini-2.0-flash-preview-image"),
         }
         def _limit(route: str, default: Limit) -> Limit:
             prefix = f"GEMINI_{route.upper()}_"
