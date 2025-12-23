@@ -26,6 +26,7 @@ def test_scheduler_restarts_when_done(monkeypatch):
     """Scheduler should restart if previous task finished or crashed."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    monkeypatch.setattr(prompt_cog.cfg, "DAILY_PROMPT_ENABLED", True)
 
     async def dummy_wait():
         pass
@@ -51,6 +52,32 @@ def test_scheduler_restarts_when_done(monkeypatch):
         await cog.on_ready()
         second = cog._scheduler_task
         assert second is not first
+
+    try:
+        loop.run_until_complete(run())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
+def test_scheduler_pauses_when_disabled(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    monkeypatch.setattr(prompt_cog.cfg, "DAILY_PROMPT_ENABLED", False)
+
+    async def dummy_wait():
+        pass
+
+    bot = types.SimpleNamespace(
+        loop=loop,
+        wait_until_ready=dummy_wait,
+        is_closed=lambda: False,
+    )
+    cog = prompt_cog.PromptCog(bot)
+
+    async def run():
+        await cog.on_ready()
+        assert cog._scheduler_task is None
 
     try:
         loop.run_until_complete(run())

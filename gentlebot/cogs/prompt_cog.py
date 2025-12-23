@@ -291,6 +291,7 @@ class PromptCog(commands.Cog):
         self.past_prompts: set[str] = set()
         self.last_category: str = ""
         self.last_topic: str | None = None
+        self.prompts_enabled = getattr(cfg, "DAILY_PROMPT_ENABLED", False)
 
     async def cog_load(self) -> None:
         try:
@@ -530,6 +531,16 @@ class PromptCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        if not self.prompts_enabled:
+            if self._scheduler_task and not self._scheduler_task.done():
+                self._scheduler_task.cancel()
+                try:
+                    await self._scheduler_task
+                except asyncio.CancelledError:
+                    pass
+            self._scheduler_task = None
+            log.info("Daily prompt scheduler paused by configuration.")
+            return
         # Start scheduler once
         if self._scheduler_task is None or self._scheduler_task.done():
             log.info("Starting scheduler task.")
