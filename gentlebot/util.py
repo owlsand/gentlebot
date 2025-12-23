@@ -78,6 +78,22 @@ def int_env(var: str, default: int = 0) -> int:
         return default
 
 
+def bool_env(var: str, default: bool = False) -> bool:
+    """Return boolean value from ENV or default if unset or invalid."""
+    value = os.getenv(var)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    logging.getLogger(__name__).warning(
+        "Invalid boolean for %s: %s; using %s", var, value, default
+    )
+    return default
+
+
 def rows_from_tag(tag: str) -> int:
     """Return the affected row count from an asyncpg status tag."""
     try:

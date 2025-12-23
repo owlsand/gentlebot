@@ -18,7 +18,7 @@ You can also inject IDs via env‑vars if you’d rather not commit them.
 from __future__ import annotations
 import os
 import logging
-from .util import int_env
+from .util import bool_env, int_env
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -128,6 +128,7 @@ else:
 
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
 INACTIVE_DAYS = int_env("INACTIVE_DAYS", 14)
+DAILY_PROMPT_ENABLED = bool_env("DAILY_PROMPT_ENABLED", False)
 
 # IDs of roles automatically assigned by RolesCog
 AUTO_ROLE_IDS = {
