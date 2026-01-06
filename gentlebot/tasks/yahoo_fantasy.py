@@ -82,6 +82,7 @@ class LeagueContext:
     name: str | None = None
     current_week: int | None = None
     start_week: int | None = None
+    end_week: int | None = None
 
 
 def _ensure_list(value: Any) -> list[Any]:
@@ -319,6 +320,8 @@ def extract_league_context(payload: dict[str, Any]) -> LeagueContext:
                 context.current_week = _safe_int(node["current_week"])
             if "start_week" in node and context.start_week is None:
                 context.start_week = _safe_int(node["start_week"])
+            if "end_week" in node and context.end_week is None:
+                context.end_week = _safe_int(node["end_week"])
             for value in node.values():
                 _walk(value)
         elif isinstance(node, Sequence) and not isinstance(node, (str, bytes, bytearray)):
@@ -335,11 +338,20 @@ def determine_target_week(context: LeagueContext) -> int | None:
 
     if context.current_week is None and context.start_week is None:
         return None
+    if (
+        context.end_week is not None
+        and context.current_week is not None
+        and context.current_week > context.end_week
+    ):
+        return None
     start = context.start_week or 1
     current = context.current_week or start
     if current <= start:
         return start
-    return max(start, current - 1)
+    target = max(start, current - 1)
+    if context.end_week is not None:
+        return min(target, context.end_week)
+    return target
 
 
 def parse_weekly_scoreboard(

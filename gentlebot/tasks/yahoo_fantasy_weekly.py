@@ -139,6 +139,9 @@ class YahooFantasyWeeklyCog(commands.Cog):
             )
             context = extract_league_context(payload)
             target_week = determine_target_week(context)
+            if target_week is None:
+                log.info("Yahoo Fantasy season appears complete; skipping recap")
+                return None
 
             recap: WeeklyRecap | None = None
             try:
