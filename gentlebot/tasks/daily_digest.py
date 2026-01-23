@@ -12,7 +12,8 @@ import discord
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..util import build_db_url, ReactionAction, user_name
+from ..util import ReactionAction, user_name
+from ..db import get_pool
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -45,14 +46,7 @@ class DailyDigestCog(commands.Cog):
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
-        url = build_db_url()
-        if url:
-            url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-            async def _init(conn: asyncpg.Connection) -> None:
-                await conn.execute("SET search_path=discord,public")
-
-            self.pool = await asyncpg.create_pool(url, init=_init)
+        self.pool = await get_pool()
         self.scheduler = AsyncIOScheduler(timezone=LA)
         trigger = CronTrigger(hour=8, minute=30, timezone=LA)
         self.scheduler.add_job(self.run_digest, trigger)
@@ -63,9 +57,8 @@ class DailyDigestCog(commands.Cog):
         if self.scheduler:
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        # Pool is shared, don't close it
+        self.pool = None
 
     # ── Core Logic ────────────────────────────────────────────────────────
     async def _top_posters(self, days: int = 14) -> list[tuple[int, int, datetime]]:

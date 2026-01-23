@@ -14,7 +14,7 @@ import discord
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..util import build_db_url
+from ..db import get_pool
 from ..llm.router import router, SafetyBlocked
 from ..infra.quotas import RateLimited
 
@@ -50,14 +50,7 @@ class DailyHaikuCog(commands.Cog):
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
-        url = build_db_url()
-        if url:
-            url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-            async def _init(conn: asyncpg.Connection) -> None:
-                await conn.execute("SET search_path=discord,public")
-
-            self.pool = await asyncpg.create_pool(url, init=_init)
+        self.pool = await get_pool()
         self.scheduler = AsyncIOScheduler(timezone=LA)
         trigger = CronTrigger(hour=22, minute=0, timezone=LA)
         self.scheduler.add_job(self._post_haiku, trigger)
@@ -68,9 +61,8 @@ class DailyHaikuCog(commands.Cog):
         if self.scheduler:
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        # Pool is shared, don't close it
+        self.pool = None
 
     async def _fetch_corpus(self, start: datetime, end: datetime) -> tuple[str, int]:
         if not self.pool:
