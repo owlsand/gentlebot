@@ -13,7 +13,6 @@ from ..infra import (
     RateLimited,
     get_config,
     get_logger,
-    require_pool,
 )
 from ..llm.router import SafetyBlocked, router
 

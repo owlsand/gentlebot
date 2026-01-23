@@ -7,11 +7,9 @@ import discord
 from discord.ext import commands
 
 from ..infra import (
-    ArchiveConfig,
     PoolAwareCog,
     get_config,
     get_logger,
-    require_pool,
 )
 from ..util import ReactionAction, rows_from_tag
 

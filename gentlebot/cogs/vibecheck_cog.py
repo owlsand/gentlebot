@@ -21,7 +21,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..infra import PoolAwareCog, RateLimited, get_logger, require_pool
+from ..infra import PoolAwareCog, RateLimited, get_logger
 from ..llm.router import SafetyBlocked, router
 from ..util import chan_name, user_name
 

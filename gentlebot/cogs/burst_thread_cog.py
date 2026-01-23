@@ -9,12 +9,10 @@ import discord
 from discord.ext import commands
 
 from ..infra import (
-    BurstThreadConfig,
     PoolAwareCog,
     RateLimited,
     get_config,
     get_logger,
-    log_errors,
     require_pool,
 )
 from ..llm.router import SafetyBlocked, router
