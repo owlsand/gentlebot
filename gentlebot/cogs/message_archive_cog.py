@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import json
-import logging
-import os
-import asyncpg
+
 import discord
 from discord.ext import commands
-from ..db import get_pool
-from ..util import rows_from_tag, ReactionAction
 
-log = logging.getLogger(f"gentlebot.{__name__}")
+from ..infra import (
+    PoolAwareCog,
+    get_config,
+    get_logger,
+)
+from ..util import ReactionAction, rows_from_tag
+
+log = get_logger(__name__)
 
 
 def _privacy_kind(channel: discord.abc.GuildChannel | discord.abc.PrivateChannel) -> str:
@@ -38,27 +41,22 @@ def _privacy_kind(channel: discord.abc.GuildChannel | discord.abc.PrivateChannel
     return "public"
 
 
-class MessageArchiveCog(commands.Cog):
+class MessageArchiveCog(PoolAwareCog):
     """Persist messages and reaction events to Postgres."""
 
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.pool: asyncpg.Pool | None = None
-        self.enabled = os.getenv("ARCHIVE_MESSAGES") == "1"
+        super().__init__(bot)
+        self.enabled = get_config().archive.enabled
 
     async def cog_load(self) -> None:
         if not self.enabled:
             return
-        try:
-            self.pool = await get_pool()
-        except RuntimeError:
+        await super().cog_load()
+        if not self.pool:
             log.warning("ARCHIVE_MESSAGES set but PG_DSN is missing")
             self.enabled = False
             return
         log.info("Message archival enabled")
-
-    async def cog_unload(self) -> None:
-        self.pool = None
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:

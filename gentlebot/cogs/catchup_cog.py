@@ -2,38 +2,31 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import timedelta
 
-import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands
-from ..db import get_pool
-from ..llm.router import router, SafetyBlocked
-from ..infra.quotas import RateLimited
 
-log = logging.getLogger(f"gentlebot.{__name__}")
+from ..infra import (
+    PoolAwareCog,
+    RateLimited,
+    get_config,
+    get_logger,
+)
+from ..llm.router import SafetyBlocked, router
+
+log = get_logger(__name__)
 
 
-class CatchupCog(commands.Cog):
+class CatchupCog(PoolAwareCog):
     """Provide a `/catchup` slash command."""
 
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot)
+        llm_config = get_config().llm
         self.max_tokens = 200
-        self.temperature = 0.6
-        self.pool: asyncpg.Pool | None = None
-
-    async def cog_load(self) -> None:
-        try:
-            self.pool = await get_pool()
-        except RuntimeError:
-            log.warning("CatchupCog disabled due to missing database URL")
-            self.pool = None
-
-    async def cog_unload(self) -> None:
-        self.pool = None
+        self.temperature = llm_config.temperature
 
     async def _collect_messages(
         self, interaction: discord.Interaction, scope: str

@@ -2,30 +2,34 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections import defaultdict, deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import asyncpg
 import discord
 from discord.ext import commands
 
-from ..db import get_pool
-from ..util import int_env
-from ..llm.router import router, SafetyBlocked
-from ..infra.quotas import RateLimited
+from ..infra import (
+    PoolAwareCog,
+    RateLimited,
+    get_config,
+    get_logger,
+    require_pool,
+)
+from ..llm.router import SafetyBlocked, router
 
-log = logging.getLogger(f"gentlebot.{__name__}")
+log = get_logger(__name__)
 
 
-class BurstThreadCog(commands.Cog):
+class BurstThreadCog(PoolAwareCog):
     """Detect bursty chat and open a thread."""
 
     def __init__(self, bot: commands.Bot) -> None:
-        self.bot = bot
-        self.window = timedelta(minutes=10)
-        self.cooldown = timedelta(minutes=int_env("BURST_COOLDOWN_MINUTES", 30))
-        self.threshold = 20
+        super().__init__(bot)
+        config = get_config().burst_thread
+        self.window = config.window
+        self.cooldown = config.cooldown
+        self.threshold = config.message_threshold
+        self.min_authors = config.min_authors
         self.bot_id = 1128886406488530966
         self.history: dict[int, deque[tuple[datetime, int, str]]] = defaultdict(
             lambda: deque(maxlen=50)
@@ -34,18 +38,8 @@ class BurstThreadCog(commands.Cog):
             lambda: datetime.min.replace(tzinfo=timezone.utc)
         )
         self.max_tokens = 10
-        self.temperature = 0.6
+        self.temperature = get_config().llm.temperature
         self.alert_tokens = 50
-        self.pool: asyncpg.Pool | None = None
-
-    async def cog_load(self) -> None:
-        try:
-            self.pool = await get_pool()
-        except RuntimeError:
-            self.pool = None
-
-    async def cog_unload(self) -> None:
-        self.pool = None
 
     async def _summarize(self, text: str) -> str:
         """Return a four-word topic summary."""
@@ -96,9 +90,8 @@ class BurstThreadCog(commands.Cog):
             f"{thread_mention}"
         )
 
+    @require_pool
     async def _log(self, channel_id: int, thread_id: int, msgs: int, authors: int) -> None:
-        if not self.pool:
-            return
         await self.pool.execute(
             """
             INSERT INTO burst_log (triggered_at, channel_id, thread_id, msg_count, author_count)
@@ -158,7 +151,7 @@ class BurstThreadCog(commands.Cog):
         if len(records) < self.threshold:
             return
         authors = {r[1] for r in records}
-        if len(authors) < 2:
+        if len(authors) < self.min_authors:
             return
         last = self.last_trigger[msg.channel.id]
         if now - last < self.cooldown:
