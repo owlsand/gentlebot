@@ -3,23 +3,21 @@ from __future__ import annotations
 
 import ast
 import json
-import logging
 import math
 import os
 import re
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Callable
+from typing import Any, Callable, Dict, List
 
 import requests
 from bs4 import BeautifulSoup
-
-from .providers.gemini import GeminiClient
-from ..infra.retries import call_with_backoff
-from ..infra.quotas import QuotaGuard, Limit, RateLimited
 from dotenv import load_dotenv
 
-log = logging.getLogger(f"gentlebot.{__name__}")
+from ..infra import Limit, QuotaGuard, RateLimited, call_with_backoff, get_logger
+from .providers.gemini import GeminiClient
+
+log = get_logger(__name__)
 
 # Ensure environment variables from a local .env are loaded so the Gemini
 # API key is available even when this module is imported before bot_config.
@@ -719,4 +717,49 @@ class LLMRouter:
         return None
 
 
-router = LLMRouter()
+# Module-level router instance with lazy initialization support
+_router: LLMRouter | None = None
+
+
+def get_router() -> LLMRouter:
+    """Return the global LLM router instance.
+
+    Creates the router on first access (lazy initialization). This is
+    useful for testing and for cases where the router may not be needed.
+    """
+    global _router
+    if _router is None:
+        _router = LLMRouter()
+    return _router
+
+
+def set_router(new_router: LLMRouter | None) -> None:
+    """Set the global LLM router instance.
+
+    Useful for testing with mock routers or for replacing the default
+    router with a custom implementation.
+    """
+    global _router
+    _router = new_router
+
+
+def reset_router() -> None:
+    """Reset the router to force re-initialization on next access."""
+    global _router
+    _router = None
+
+
+# For backward compatibility, expose a module-level `router` that is lazily
+# initialized. This class acts as a proxy that forwards all attribute access
+# and method calls to the underlying router instance.
+class _RouterProxy:
+    """Proxy that lazily initializes the router on first use."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_router(), name)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return get_router()(*args, **kwargs)
+
+
+router = _RouterProxy()

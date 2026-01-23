@@ -7,28 +7,25 @@ command posts an ephemeral response.
 """
 from __future__ import annotations
 
-import logging
+import asyncio
 import math
 import re
 import statistics
-import asyncio
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Sequence
 
-import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..db import get_pool
+from ..infra import PoolAwareCog, RateLimited, get_logger, require_pool
+from ..llm.router import SafetyBlocked, router
 from ..util import chan_name, user_name
-from ..llm.router import router, RateLimited, SafetyBlocked
 
-# Hierarchical logger as required by project guidelines
-log = logging.getLogger(f"gentlebot.{__name__}")
+log = get_logger(__name__)
 
 # Unicode braille density ramp from low to high
 BAR_CHARS = "⣀⣄⣆⣇⣧⣷⣿"
@@ -72,22 +69,11 @@ class ArchivedMessage:
     reactions: int
 
 
-class VibeCheckCog(commands.Cog):
+class VibeCheckCog(PoolAwareCog):
     """Slash command `/vibecheck` returning a server vibe report."""
 
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.pool: asyncpg.Pool | None = None
-
-    async def cog_load(self) -> None:
-        try:
-            self.pool = await get_pool()
-        except RuntimeError:
-            log.warning("VibeCheckCog disabled due to missing database URL")
-            self.pool = None
-
-    async def cog_unload(self) -> None:
-        self.pool = None
+        super().__init__(bot)
 
     # --- statistics helpers -------------------------------------------------
     async def _gather_messages(self, start: datetime, end: datetime) -> list[ArchivedMessage]:
