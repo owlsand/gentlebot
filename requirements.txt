@@ -16,6 +16,7 @@ matplotlib
 pandas
 watchfiles
 watchdog
+duckduckgo-search>=7.0.0
 APScheduler==3.10.4
 google-genai>=1.32.0
 PyYAML
