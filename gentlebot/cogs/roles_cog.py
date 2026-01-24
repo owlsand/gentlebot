@@ -17,6 +17,7 @@ Inactivity flags:
 All IDs & thresholds come from **bot_config.py**.
 """
 from __future__ import annotations
+import asyncio
 import logging
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta, date, timezone
@@ -67,6 +68,8 @@ class RoleCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Lock for protecting state mutations (messages, reactions lists)
+        self._state_lock = asyncio.Lock()
         # engagement/inactivity tracking
         self.messages: list[dict] = []
         self.reactions: list[dict] = []
@@ -307,8 +310,11 @@ class RoleCog(commands.Cog):
             "mention_ids": [u.id for u in msg.mentions],
             "reply_to": msg.reference.resolved.author.id if msg.reference and msg.reference.resolved else None,
         }
-        self.messages.append(info)
-        if msg.created_at - self.last_message_ts >= timedelta(hours=24):
+        async with self._state_lock:
+            self.messages.append(info)
+            prev_ts = self.last_message_ts
+            self.last_message_ts = msg.created_at
+        if msg.created_at - prev_ts >= timedelta(hours=24):
             log.debug(
                 "Ghostbuster winner: %s",
                 user_name(
@@ -317,7 +323,6 @@ class RoleCog(commands.Cog):
                 ),
             )
             await self._rotate_single(msg.guild, ROLE_GHOSTBUSTER, member_id)
-        self.last_message_ts = msg.created_at
 
 
     @commands.Cog.listener()
@@ -342,7 +347,8 @@ class RoleCog(commands.Cog):
             "creator": creator,
             "user": user.id,
         }
-        self.reactions.append(entry)
+        async with self._state_lock:
+            self.reactions.append(entry)
 
     # ── Badge Helpers ─────────────────────────────────────────────────────
     async def _rotate_single(self, guild: discord.Guild, role_id: int, user_id: int | None):
@@ -422,16 +428,17 @@ class RoleCog(commands.Cog):
         cutoff14 = now - timedelta(days=14)
         cutoff30 = now - timedelta(days=30)
         bot_ids = {m.id for m in guild.members if m.bot}
-        self.messages = [
-            m for m in self.messages if m["ts"] >= cutoff30 and m["author"] not in bot_ids
-        ]
-        self.reactions = [
-            r
-            for r in self.reactions
-            if r["ts"] >= cutoff30
-            and r["user"] not in bot_ids
-            and r["msg_author"] not in bot_ids
-        ]
+        async with self._state_lock:
+            self.messages = [
+                m for m in self.messages if m["ts"] >= cutoff30 and m["author"] not in bot_ids
+            ]
+            self.reactions = [
+                r
+                for r in self.reactions
+                if r["ts"] >= cutoff30
+                and r["user"] not in bot_ids
+                and r["msg_author"] not in bot_ids
+            ]
 
         counts = Counter(m["author"] for m in self.messages if m["ts"] >= cutoff14)
         top_poster = counts.most_common(1)[0][0] if counts else None

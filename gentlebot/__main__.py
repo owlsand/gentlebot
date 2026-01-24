@@ -60,10 +60,17 @@ class GentleBot(commands.Bot):
     async def setup_hook(self) -> None:
         # Load cogs bundled with the package
         cog_dir = Path(__file__).resolve().parent / "cogs"
+        failed_cogs = []
         for file in cog_dir.glob("*_cog.py"):
             if file.stem == "test_logging_cog" and not cfg.IS_TEST:
                 continue
-            await self.load_extension(f"gentlebot.cogs.{file.stem}")
+            try:
+                await self.load_extension(f"gentlebot.cogs.{file.stem}")
+            except Exception as exc:
+                logger.exception("Failed to load cog %s: %s", file.stem, exc)
+                failed_cogs.append(file.stem)
+        if failed_cogs:
+            logger.warning("Bot starting with failed cogs: %s", failed_cogs)
 
 
 bot = GentleBot(command_prefix="!", intents=intents)
@@ -157,6 +164,18 @@ async def main() -> None:
         async with bot:
             await bot.start(cfg.TOKEN)
     finally:
+        # Cancel and await backfill tasks for clean shutdown
+        for task in _backfill_tasks:
+            if not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                except Exception:
+                    logger.exception("Error awaiting backfill task")
+        _backfill_tasks.clear()
+
         if db_handler:
             await db_handler.aclose()
         if file_handler:

@@ -10,6 +10,7 @@ from ..infra import (
     PoolAwareCog,
     get_config,
     get_logger,
+    transaction,
 )
 from ..util import ReactionAction, rows_from_tag
 
@@ -202,60 +203,61 @@ class MessageArchiveCog(PoolAwareCog):
             if not exists:
                 reply_to_id = None
 
-        msg_tag = await self.pool.execute(
-            """
-            INSERT INTO discord.message (
-                message_id, guild_id, channel_id, author_id, reply_to_id,
-                content, created_at, edited_at, pinned, tts, type, flags,
-                mention_everyone, mentions, mention_roles, embeds,
-                raw_payload)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-            ON CONFLICT DO NOTHING
-            """,
-            message.id,
-            getattr(message.guild, "id", None),
-            message.channel.id,
-            message.author.id,
-            reply_to_id,
-            message.content,
-            message.created_at,
-            message.edited_at,
-            message.pinned,
-            message.tts,
-            int(message.type.value),
-            getattr(message.flags, "value", 0),
-            getattr(message, "mention_everyone", False),
-            json.dumps(getattr(message, "raw_mentions", [])),
-            json.dumps(getattr(message, "raw_role_mentions", [])),
-            json.dumps([getattr(e, "to_dict", lambda: {})() for e in message.embeds]),
-            json.dumps(payload),
-        )
-        msg_count = rows_from_tag(msg_tag)
-        att_count = 0
-        for idx, att in enumerate(message.attachments):
-            att_tag = await self.pool.execute(
+        async with transaction(self.pool) as conn:
+            msg_tag = await conn.execute(
                 """
-                INSERT INTO discord.message_attachment (
-                    message_id, attachment_id, filename, content_type, size_bytes, url, proxy_url)
-                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                INSERT INTO discord.message (
+                    message_id, guild_id, channel_id, author_id, reply_to_id,
+                    content, created_at, edited_at, pinned, tts, type, flags,
+                    mention_everyone, mentions, mention_roles, embeds,
+                    raw_payload)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                 ON CONFLICT DO NOTHING
                 """,
                 message.id,
-                idx,
-                att.filename,
-                att.content_type,
-                att.size,
-                att.url,
-                att.proxy_url,
+                getattr(message.guild, "id", None),
+                message.channel.id,
+                message.author.id,
+                reply_to_id,
+                message.content,
+                message.created_at,
+                message.edited_at,
+                message.pinned,
+                message.tts,
+                int(message.type.value),
+                getattr(message.flags, "value", 0),
+                getattr(message, "mention_everyone", False),
+                json.dumps(getattr(message, "raw_mentions", [])),
+                json.dumps(getattr(message, "raw_role_mentions", [])),
+                json.dumps([getattr(e, "to_dict", lambda: {})() for e in message.embeds]),
+                json.dumps(payload),
             )
-            att_count += rows_from_tag(att_tag)
+            msg_count = rows_from_tag(msg_tag)
+            att_count = 0
+            for idx, att in enumerate(message.attachments):
+                att_tag = await conn.execute(
+                    """
+                    INSERT INTO discord.message_attachment (
+                        message_id, attachment_id, filename, content_type, size_bytes, url, proxy_url)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    message.id,
+                    idx,
+                    att.filename,
+                    att.content_type,
+                    att.size,
+                    att.url,
+                    att.proxy_url,
+                )
+                att_count += rows_from_tag(att_tag)
 
-        await self.pool.execute(
-            "UPDATE discord.channel SET last_message_id=$1, last_message_at=$2 WHERE channel_id=$3",
-            message.id,
-            message.created_at,
-            message.channel.id,
-        )
+            await conn.execute(
+                "UPDATE discord.channel SET last_message_id=$1, last_message_at=$2 WHERE channel_id=$3",
+                message.id,
+                message.created_at,
+                message.channel.id,
+            )
         return msg_count, att_count
 
     @commands.Cog.listener()

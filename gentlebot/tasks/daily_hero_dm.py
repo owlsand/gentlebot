@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import logging
 import asyncio
+from datetime import date
 
 import pytz
 import asyncpg
@@ -12,8 +13,10 @@ import discord
 from discord.ext import commands
 
 from .. import bot_config as cfg
+from ..db import get_pool
 from ..util import build_db_url
 from ..llm.router import router, SafetyBlocked
+from ..infra import alert_task_failure, idempotent_task
 from ..infra.quotas import RateLimited
 
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -46,17 +49,15 @@ class DailyHeroDMCog(commands.Cog):
         self.pool: asyncpg.Pool | None = None
 
     async def cog_load(self) -> None:
-        url = build_db_url()
-        if url:
-            url = url.replace("postgresql+asyncpg://", "postgresql://")
-
-            async def _init(conn: asyncpg.Connection) -> None:
-                await conn.execute("SET search_path=discord,public")
-
-            self.pool = await asyncpg.create_pool(url, init=_init)
+        # Use shared pool instead of creating a separate one
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
+            log.warning("DailyHeroDM: database pool unavailable")
+            self.pool = None
         self.scheduler = AsyncIOScheduler(timezone=LA)
         trigger = CronTrigger(hour=9, minute=0, timezone=LA)
-        self.scheduler.add_job(self._send_dm, trigger)
+        self.scheduler.add_job(self._send_dm_safe, trigger)
         self.scheduler.start()
         log.info("DailyHero DM scheduler started")
 
@@ -64,9 +65,8 @@ class DailyHeroDMCog(commands.Cog):
         if self.scheduler:
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
+        # Don't close the shared pool - it's managed centrally
+        self.pool = None
 
     def _ordinal(self, n: int) -> str:
         suffix = "th"
@@ -119,16 +119,31 @@ class DailyHeroDMCog(commands.Cog):
         )
         return int(row["c"]) if row else 0
 
-    async def _send_dm(self) -> None:
+    async def _send_dm_safe(self) -> None:
+        """Wrapper for _send_dm with error handling and alerting."""
+        try:
+            await self._send_dm()
+        except Exception as exc:
+            log.exception("DailyHero DM task failed: %s", exc)
+            await alert_task_failure(
+                self.bot,
+                "daily_hero_dm",
+                exc,
+                context={"date": date.today().isoformat()},
+            )
+
+    @idempotent_task("daily_hero_dm", lambda self: date.today().isoformat())
+    async def _send_dm(self) -> str:
         await self.bot.wait_until_ready()
         guild = self.bot.get_guild(cfg.GUILD_ID)
         if not guild:
             log.error("Guild not found")
-            return
+            return "error:guild_not_found"
         role = guild.get_role(cfg.ROLE_DAILY_HERO)
         if not role:
             log.error("Daily Hero role not found")
-            return
+            return "error:role_not_found"
+        sent_count = 0
         for member in list(role.members):
             wins = await self._win_count(role.id, member.id) or 1
             message = await self._generate_message(member.display_name, wins)
@@ -139,8 +154,10 @@ class DailyHeroDMCog(commands.Cog):
                     member.display_name,
                     message,
                 )
+                sent_count += 1
             except discord.HTTPException:
                 log.warning("Failed to DM Daily Hero %s", member)
+        return f"sent:{sent_count}"
 
 
 async def setup(bot: commands.Bot) -> None:

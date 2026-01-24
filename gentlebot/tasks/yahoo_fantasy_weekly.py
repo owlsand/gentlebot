@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 import aiohttp
 import pytz
@@ -13,6 +14,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from .. import bot_config as cfg
+from ..db import get_pool
+from ..infra import alert_task_failure, idempotent_task
 from ..util import chan_name, user_name
 from .yahoo_fantasy import (
     determine_target_week,
@@ -34,6 +37,7 @@ class YahooFantasyWeeklyCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.pool = None
         self.scheduler: AsyncIOScheduler | None = None
         self._channel_id = getattr(cfg, "FANTASY_CHANNEL_ID", 0) or getattr(
             cfg, "SPORTS_CHANNEL_ID", 0
@@ -54,9 +58,15 @@ class YahooFantasyWeeklyCog(commands.Cog):
         if not self._channel_id:
             log.warning("Fantasy recap channel ID not configured; weekly recap disabled")
             return
+        # Get shared pool for idempotency tracking
+        try:
+            self.pool = await get_pool()
+        except RuntimeError:
+            log.warning("YahooFantasyWeekly: database pool unavailable")
+            self.pool = None
         self.scheduler = AsyncIOScheduler(timezone=LA)
         trigger = CronTrigger(day_of_week="tue", hour=9, minute=0, timezone=LA)
-        self.scheduler.add_job(self._post_weekly_recap, trigger)
+        self.scheduler.add_job(self._post_weekly_recap_safe, trigger)
         self.scheduler.start()
         log.info("Yahoo Fantasy weekly scheduler started")
 
@@ -64,24 +74,45 @@ class YahooFantasyWeeklyCog(commands.Cog):
         if self.scheduler:
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
+        self.pool = None
 
-    async def _post_weekly_recap(self) -> None:
+    def _get_week_key(self) -> str:
+        """Generate a weekly execution key: YYYY-WNN."""
+        today = date.today()
+        return f"{today.year}-W{today.isocalendar()[1]:02d}"
+
+    async def _post_weekly_recap_safe(self) -> None:
+        """Wrapper with error handling and alerting."""
+        try:
+            await self._post_weekly_recap()
+        except Exception as exc:
+            log.exception("Yahoo Fantasy weekly recap failed: %s", exc)
+            await alert_task_failure(
+                self.bot,
+                "yahoo_fantasy_weekly",
+                exc,
+                context={"week": self._get_week_key()},
+            )
+
+    @idempotent_task("yahoo_fantasy_weekly", lambda self: self._get_week_key())
+    async def _post_weekly_recap(self) -> str:
         if not self._enabled:
-            return
+            return "skipped:disabled"
         await self.bot.wait_until_ready()
         channel = self.bot.get_channel(self._channel_id)
         if not isinstance(channel, discord.TextChannel):
             log.error("Fantasy recap channel %s not found", self._channel_id)
-            return
+            return "error:channel_not_found"
         try:
             message = await self._build_message()
         except Exception:  # pragma: no cover - defensive logging
             log.exception("Failed to build Yahoo Fantasy recap message")
-            return
+            return "error:build_failed"
         if not message:
             log.info("Yahoo Fantasy recap skipped; no message generated")
-            return
+            return "skipped:no_message"
         await channel.send(message)
+        return "sent"
 
     @app_commands.command(
         name="fantasyrecap", description="Run the Yahoo Fantasy Football weekly recap"

@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 import asyncpg
 
+from .db import get_pool
+
 class PostgresHandler(logging.Handler):
     """Asynchronously insert log records into Postgres."""
 
@@ -13,16 +15,32 @@ class PostgresHandler(logging.Handler):
         self.table = table
         self.pool: asyncpg.Pool | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
+        self._owns_pool: bool = False  # Track whether we created our own pool
         # Ignore DEBUG records so they are not written to the database
         self.setLevel(logging.INFO)
 
     async def connect(self) -> None:
-        url = self.dsn.replace("postgresql+asyncpg://", "postgresql://")
+        # Use the shared pool if available, otherwise create our own
+        try:
+            self.pool = await get_pool()
+            self._owns_pool = False
+        except RuntimeError:
+            # Fallback to creating own pool if get_pool() fails
+            url = self.dsn.replace("postgresql+asyncpg://", "postgresql://")
 
-        async def _init(conn: asyncpg.Connection) -> None:
-            await conn.execute("SET search_path=discord,public")
+            async def _init(conn: asyncpg.Connection) -> None:
+                await conn.execute("SET search_path=discord,public")
 
-        self.pool = await asyncpg.create_pool(url, init=_init)
+            self.pool = await asyncpg.create_pool(
+                url,
+                init=_init,
+                min_size=1,
+                max_size=3,
+                command_timeout=30,
+                timeout=10,
+            )
+            self._owns_pool = True
+
         self.loop = asyncio.get_running_loop()
 
         create_sql = (
@@ -45,19 +63,23 @@ class PostgresHandler(logging.Handler):
             await self.pool.execute(create_sql)
 
     async def aclose(self) -> None:
-        if self.pool:
+        if self.pool and self._owns_pool:
             await self.pool.close()
-            self.pool = None
+        self.pool = None
 
     def close(self) -> None:
-        if self.pool:
+        # Only close the pool if we own it (not using shared pool)
+        if self.pool and self._owns_pool:
             try:
                 loop = asyncio.get_running_loop()
-            except RuntimeError:
-                asyncio.run(self.pool.close())
-            else:
                 loop.create_task(self.pool.close())
-            self.pool = None
+            except RuntimeError:
+                # No running loop, try to create one for cleanup
+                try:
+                    asyncio.get_event_loop().run_until_complete(self.pool.close())
+                except Exception:
+                    pass  # Best effort cleanup
+        self.pool = None
         super().close()
 
     def emit(self, record: logging.LogRecord) -> None:

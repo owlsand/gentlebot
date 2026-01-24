@@ -1,4 +1,5 @@
 """Infrastructure utilities for Gentlebot."""
+from .alerts import alert_task_failure, get_alert_recipients, is_alerting_enabled, send_alert
 from .cog_base import PoolAwareCog, log_errors, require_pool
 from .config import (
     ArchiveConfig,
@@ -16,10 +17,18 @@ from .logging import (
     get_logger,
     structured_log,
 )
+from .idempotent import daily_key, idempotent_task, weekly_key
 from .quotas import Limit, QuotaGuard, RateLimited
-from .retries import call_with_backoff
+from .retries import async_retry, call_with_backoff, with_retry
+from .state_cache import StateCache, get_state_cache
+from .transactions import transaction
 
 __all__ = [
+    # Alerts
+    "alert_task_failure",
+    "get_alert_recipients",
+    "is_alerting_enabled",
+    "send_alert",
     # Cog base classes
     "PoolAwareCog",
     "log_errors",
@@ -33,6 +42,10 @@ __all__ = [
     "get_config",
     "reset_config",
     "set_config",
+    # Idempotency
+    "daily_key",
+    "idempotent_task",
+    "weekly_key",
     # Logging
     "LogContext",
     "get_cog_logger",
@@ -43,5 +56,12 @@ __all__ = [
     "QuotaGuard",
     "RateLimited",
     # Retries
+    "async_retry",
     "call_with_backoff",
+    "with_retry",
+    # State Cache
+    "StateCache",
+    "get_state_cache",
+    # Transactions
+    "transaction",
 ]

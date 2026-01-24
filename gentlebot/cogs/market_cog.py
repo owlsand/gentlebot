@@ -228,6 +228,9 @@ class MarketCog(commands.Cog):
         cur.execute(
             f"CREATE TABLE IF NOT EXISTS {SCHEMA}.reminders (user INTEGER PRIMARY KEY, enabled INTEGER)"
         )
+        cur.execute(
+            f"CREATE TABLE IF NOT EXISTS {SCHEMA}.task_execution (task_name TEXT, execution_key TEXT, executed_at TEXT, PRIMARY KEY (task_name, execution_key))"
+        )
         conn.commit()
         conn.close()
 
@@ -302,6 +305,30 @@ class MarketCog(commands.Cog):
         row = cur.fetchone()
         conn.close()
         return row is not None
+
+    def _task_already_executed(self, task_name: str, key: str) -> bool:
+        """Check if a task has already been executed with the given key."""
+        conn = self._connect()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT 1 FROM {SCHEMA}.task_execution WHERE task_name=? AND execution_key=?",
+            (task_name, key),
+        )
+        row = cur.fetchone()
+        conn.close()
+        return row is not None
+
+    def _mark_task_executed(self, task_name: str, key: str) -> None:
+        """Mark a task as executed with the given key."""
+        from datetime import datetime
+        conn = self._connect()
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT OR REPLACE INTO {SCHEMA}.task_execution (task_name, execution_key, executed_at) VALUES (?, ?, ?)",
+            (task_name, key, datetime.now().isoformat()),
+        )
+        conn.commit()
+        conn.close()
 
     # ─── Fetch Helpers ───────────────────────────────────────────────────
     async def _quote_pct(self, symbol: str) -> Optional[float]:
@@ -498,12 +525,23 @@ class MarketCog(commands.Cog):
         week = _week_start(now).date().isoformat()
         if not self._bets_exist(week):
             return
+
+        # Idempotency check: skip if already processed this week
+        execution_key = f"{week}-summary"
+        if self._task_already_executed("market_summary", execution_key):
+            log.info("Market summary already processed for week %s; skipping", week)
+            return
+
         monday_open, friday_close = await self._week_open_close()
         if monday_open is None or friday_close is None:
             return
         pct = (friday_close - monday_open) / monday_open * 100
         outcome = "bullish" if pct >= 0 else "bearish"
         winners, board = self._record_scores(week, outcome)
+
+        # Mark as executed before sending message (to prevent duplicates on send failure)
+        self._mark_task_executed("market_summary", execution_key)
+
         channel = self.bot.get_channel(cfg.MONEY_TALK_CHANNEL)
         if not channel:
             log.error("Money Talk channel not found")

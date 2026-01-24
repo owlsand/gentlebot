@@ -34,7 +34,14 @@ async def get_pool() -> asyncpg.Pool:
     async def _init(conn: asyncpg.Connection) -> None:
         await conn.execute("SET search_path=discord,public")
 
-    _pool = await asyncpg.create_pool(url, init=_init)
+    _pool = await asyncpg.create_pool(
+        url,
+        init=_init,
+        min_size=2,
+        max_size=10,
+        command_timeout=30,
+        timeout=10,  # connection acquisition timeout
+    )
     return _pool
 
 

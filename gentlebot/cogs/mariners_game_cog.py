@@ -66,13 +66,21 @@ class MarinersGameCog(commands.Cog):
             self.pool = pool
             await self._ensure_table()
             await self._ensure_tracking_state()
-            await self._sync_schedule()
-            await self._load_posted()
         except Exception as exc:  # pragma: no cover - database init
             self.pool = None
             log.warning(
                 "MarinersGameCog disabled database persistence: %s", exc
             )
+        # Load posted state even if other init fails (uses existing pool if available)
+        if self.pool:
+            try:
+                await self._load_posted()
+            except Exception as exc:
+                log.warning("Failed to load posted state: %s", exc)
+            try:
+                await self._sync_schedule()
+            except Exception as exc:
+                log.warning("Failed to sync schedule: %s", exc)
         self.game_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup

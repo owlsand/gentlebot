@@ -10,6 +10,7 @@ import discord
 from discord.ext import commands
 
 from ..db import get_pool
+from ..infra import transaction
 from .. import bot_config as cfg
 
 log = logging.getLogger(f"gentlebot.{__name__}")
@@ -90,47 +91,49 @@ class RoleLogCog(commands.Cog):
     async def _record_assignment(self, guild_id: int, role_id: int, user_id: int) -> None:
         if not self.pool:
             return
-        await self.pool.execute(
-            """
-            INSERT INTO discord.role_assignment (guild_id, role_id, user_id)
-            VALUES ($1,$2,$3)
-            ON CONFLICT DO NOTHING
-            """,
-            guild_id,
-            role_id,
-            user_id,
-        )
-        await self.pool.execute(
-            """
-            INSERT INTO discord.role_event (guild_id, role_id, user_id, action)
-            VALUES ($1,$2,$3,1)
-            """,
-            guild_id,
-            role_id,
-            user_id,
-        )
+        async with transaction(self.pool) as conn:
+            await conn.execute(
+                """
+                INSERT INTO discord.role_assignment (guild_id, role_id, user_id)
+                VALUES ($1,$2,$3)
+                ON CONFLICT DO NOTHING
+                """,
+                guild_id,
+                role_id,
+                user_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO discord.role_event (guild_id, role_id, user_id, action)
+                VALUES ($1,$2,$3,1)
+                """,
+                guild_id,
+                role_id,
+                user_id,
+            )
 
     async def _record_removal(self, guild_id: int, role_id: int, user_id: int) -> None:
         if not self.pool:
             return
-        await self.pool.execute(
-            """
-            DELETE FROM discord.role_assignment
-            WHERE guild_id=$1 AND role_id=$2 AND user_id=$3
-            """,
-            guild_id,
-            role_id,
-            user_id,
-        )
-        await self.pool.execute(
-            """
-            INSERT INTO discord.role_event (guild_id, role_id, user_id, action)
-            VALUES ($1,$2,$3,0)
-            """,
-            guild_id,
-            role_id,
-            user_id,
-        )
+        async with transaction(self.pool) as conn:
+            await conn.execute(
+                """
+                DELETE FROM discord.role_assignment
+                WHERE guild_id=$1 AND role_id=$2 AND user_id=$3
+                """,
+                guild_id,
+                role_id,
+                user_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO discord.role_event (guild_id, role_id, user_id, action)
+                VALUES ($1,$2,$3,0)
+                """,
+                guild_id,
+                role_id,
+                user_id,
+            )
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
