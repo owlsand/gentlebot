@@ -222,8 +222,24 @@ READ_FILE = Tool(
     ],
 )
 
+GENERATE_IMAGE = Tool(
+    name="generate_image",
+    description=(
+        "Generate an image from a text prompt using Gemini's image generation. "
+        "The image will be attached to your response. Use for creative requests, "
+        "visualizations, or when the user asks you to create/draw/generate an image."
+    ),
+    parameters=[
+        ToolParameter(
+            name="prompt",
+            type="string",
+            description="Detailed description of the image to generate. Be specific about style, composition, colors, and subjects.",
+        ),
+    ],
+)
+
 # All available tools
-ALL_TOOLS = [WEB_SEARCH, CALCULATE, READ_FILE]
+ALL_TOOLS = [WEB_SEARCH, CALCULATE, READ_FILE, GENERATE_IMAGE]
 
 # Tool lookup by name
 TOOLS_BY_NAME: Dict[str, Tool] = {tool.name: tool for tool in ALL_TOOLS}

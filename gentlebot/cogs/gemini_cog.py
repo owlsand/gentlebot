@@ -1,5 +1,6 @@
 """Gemini-powered conversational responses and emoji reactions."""
 
+import io
 import re
 import time
 import random
@@ -14,7 +15,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from ..util import chan_name, user_name
-from ..llm.router import SafetyBlocked, SYSTEM_INSTRUCTION, router
+from ..llm.router import SafetyBlocked, SYSTEM_INSTRUCTION, router, get_router
 from ..llm.tokenizer import estimate_tokens, truncate_to_token_budget
 from ..infra.quotas import RateLimited
 from ..db import get_pool
@@ -23,30 +24,86 @@ from ..db import get_pool
 # Capability awareness section for the system prompt
 CAPABILITIES_PROMPT = """
 # YOUR CAPABILITIES
-You have access to these tools - use them when they would genuinely help:
+
+You are Gentlebot, the Discord copilot for the Gentlefolk community. You have access to tools and can guide users to your slash commands and scheduled features.
+
+## TOOLS (use these during conversation)
 
 **web_search(query, max_results?)**
 - Search the web for current information, news, recent events
-- Use when asked about things that may have changed since your training
+- Use for: live scores, recent news, weather, current events
 - Example: "What's the current score of the Seahawks game?"
 
 **calculate(expression)**
-- Evaluate math expressions: arithmetic, percentages, sqrt, log, trig functions
-- Use instead of estimating or doing mental math
-- Example: "What is 15% of 847?" -> calculate("847 * 0.15")
+- Evaluate math: arithmetic, percentages, sqrt, log, trig
+- Use for ANY math beyond simple addition
+- Example: calculate("847 * 0.15") for "15% of 847"
 
 **read_file(path, limit?, offset?)**
-- Read files from the Gentlebot codebase for context or citations
-- Use when asked about how Gentlebot works or specific code
+- Read Gentlebot codebase for context or citations
+- Use when discussing how Gentlebot works
 
-**When to use tools:**
-- Use web_search for current events, recent news, live scores, weather
-- Use calculate for ANY math beyond simple addition
-- Use read_file when discussing Gentlebot's code or features
+**generate_image(prompt)**
+- Generate an image using Gemini's image model
+- The image will be attached to your response
+- Use for: drawing requests, visualizations, creative images
+- Be detailed in your prompt for better results
 
-**When NOT to use tools:**
-- Casual conversation, jokes, opinions, general knowledge
-- Questions you can confidently answer from training data
+**When to use tools:** current events, math, code questions, image requests
+**When NOT to use:** casual chat, opinions, general knowledge
+
+## SLASH COMMANDS (guide users to these)
+
+**General:**
+- `/ask <prompt>` — Ask me anything (this command!)
+- `/imagine <prompt>` — Generate an image using Gemini
+- `/version` — Show my current version
+- `/gentlebot <message>` — Make me say something (admin only)
+
+**Sports:**
+- `/bigdumper [style]` — Cal Raleigh stats and latest homer
+- `/nextf1` — Next F1 race weekend preview with track map
+- `/f1standings` — Current F1 driver & constructor standings
+
+**Markets:**
+- `/stock <symbol> <period>` — Stock chart + key stats (1d to 10y)
+- `/earnings <symbol>` — Next earnings date for a ticker
+- `/marketmood` — US market sentiment snapshot
+- `/marketbet [direction]` — Weekly bull/bear prediction game
+
+**Community:**
+- `/vibecheck` — Summarize server vibes (uses AI)
+- `/engagement [time_window] [chart]` — Guild engagement stats
+- `/catchup [scope] [style]` — Summarize what you missed
+- `/techmeme` — Latest Techmeme tech headlines
+- `/refreshroles` — Rotate engagement badges (admin only)
+
+## SCHEDULED FEATURES (automatic)
+
+**Daily:**
+- 🌅 8:30 AM PT — Daily Digest: Awards Daily Hero, Top Poster, Reaction Magnet roles
+- 📨 9:00 AM PT — Daily Hero DM: Personalized message to today's hero
+- 🎋 10:00 PM PT — Daily Haiku: AI-generated haiku from the day's chat
+
+**Weekly:**
+- 📊 Monday 9:00 AM — Weekly VibeCheck: Server sentiment report
+- 📈 Monday 7:00 AM — Market Bet Reminder: DM to place predictions
+- 💰 Friday 1:00 PM — Market Summary: Weekly bet results
+- 🏈 Tuesday 9:00 AM — Fantasy Football Recap (during season)
+
+**Live Sports (when games are on):**
+- 🏈 Seahawks: Game threads + score updates
+- ⚾ Mariners: Game announcements
+- 🏎️ F1: Session threads for every race weekend
+
+## HOW USERS CAN INTERACT WITH YOU
+
+1. **Mention me:** @Gentlebot followed by a question
+2. **Reply to me:** Reply to any of my messages
+3. **DM me:** Send a direct message
+4. **Use /ask:** The slash command for questions
+
+I respond with tools when helpful, react to messages occasionally, and try to be concise but informative.
 """
 
 
@@ -480,14 +537,23 @@ class GeminiCog(commands.Cog):
                 log.exception("Model call failed: %s", e)
                 return
 
-        # 11) Replace placeholder mentions and send, paginating if needed
+        # 11) Check for pending images from tool calls
+        pending_images = get_router().get_pending_images()
+        files: list[discord.File] = []
+        for idx, (img_prompt, img_data) in enumerate(pending_images):
+            filename = f"generated_{idx + 1}.png"
+            files.append(discord.File(io.BytesIO(img_data), filename=filename))
+
+        # 12) Replace placeholder mentions and send, paginating if needed
         response = re.sub(r"@User\b", message.author.mention, response)
         if len(response) <= 2000:
-            await message.reply(response, mention_author=True)
+            await message.reply(response, files=files if files else None, mention_author=True)
         else:
             chunks = [response[i : i + 1900] for i in range(0, len(response), 1900)]
-            for chunk in chunks:
-                await message.reply(chunk, mention_author=True)
+            for i, chunk in enumerate(chunks):
+                # Attach images only to the first chunk
+                chunk_files = files if i == 0 and files else None
+                await message.reply(chunk, files=chunk_files, mention_author=True)
 
     # === Slash command /ask ===
     @app_commands.command(name="ask", description="Ask Gentlebot a question.")
@@ -507,11 +573,20 @@ class GeminiCog(commands.Cog):
             log.exception("Model call failed in /ask: %s", e)
             return
 
+        # Check for pending images from tool calls
+        pending_images = get_router().get_pending_images()
+        files: list[discord.File] = []
+        for idx, (img_prompt, img_data) in enumerate(pending_images):
+            filename = f"generated_{idx + 1}.png"
+            files.append(discord.File(io.BytesIO(img_data), filename=filename))
+
         if len(response) <= 2000:
-            await interaction.followup.send(response)
+            await interaction.followup.send(response, files=files if files else None)
         else:
-            for chunk in [response[i : i + 1900] for i in range(0, len(response), 1900)]:
-                await interaction.followup.send(chunk)
+            chunks = [response[i : i + 1900] for i in range(0, len(response), 1900)]
+            for i, chunk in enumerate(chunks):
+                chunk_files = files if i == 0 and files else None
+                await interaction.followup.send(chunk, files=chunk_files)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(GeminiCog(bot))
