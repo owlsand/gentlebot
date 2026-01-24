@@ -297,10 +297,19 @@ class GeminiCog(commands.Cog):
                 "server of friends."
             )
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
+        # Get conversation history from archive for continuity
+        channel_id = getattr(channel, "id", 0)
+        user_id = user.id if user else 0
+        bot_id = self.bot.user.id if self.bot.user else 0
+
+        history = await self._get_conversation_turns(
+            channel_id, user_id, bot_id, max_messages=10
+        )
+
+        # Build messages: system prompt + conversation history + current message
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history)  # Previous turns from archive
+        messages.append({"role": "user", "content": user_prompt})
 
         try:
             reply = await asyncio.to_thread(
@@ -386,6 +395,53 @@ class GeminiCog(commands.Cog):
             if content:
                 lines.append(f"{author}: {content}")
         return "\n".join(lines)
+
+    async def _get_conversation_turns(
+        self,
+        channel_id: int,
+        user_id: int,
+        bot_id: int,
+        max_messages: int = 20,
+    ) -> list[dict[str, str]]:
+        """Get recent conversation turns between user and bot from archive.
+
+        Returns alternating user/assistant messages for LLM context.
+        Uses message count (not time) to determine window.
+        """
+        if not self.pool:
+            return []
+
+        try:
+            rows = await self.pool.fetch(
+                """
+                SELECT m.content, m.author_id, m.created_at
+                FROM discord.message m
+                WHERE m.channel_id = $1
+                  AND (
+                      m.author_id = $2  -- User's messages
+                      OR m.author_id = $3  -- Bot's messages
+                  )
+                ORDER BY m.created_at DESC
+                LIMIT $4
+                """,
+                channel_id,
+                user_id,
+                bot_id,
+                max_messages,
+            )
+        except Exception:
+            log.exception("Conversation turns fetch failed")
+            return []
+
+        # Build messages (reverse to chronological order)
+        messages: list[dict[str, str]] = []
+        for row in reversed(rows):
+            role = "assistant" if row["author_id"] == bot_id else "user"
+            content = row["content"]
+            if content:
+                messages.append({"role": role, "content": content})
+
+        return messages
 
     async def choose_emoji_llm(self, message_content: str, custom_emojis: list[str]) -> str | None:
         """
