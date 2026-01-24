@@ -15,8 +15,39 @@ from discord import app_commands
 from discord.ext import commands
 from ..util import chan_name, user_name
 from ..llm.router import SafetyBlocked, SYSTEM_INSTRUCTION, router
+from ..llm.tokenizer import estimate_tokens, truncate_to_token_budget
 from ..infra.quotas import RateLimited
 from ..db import get_pool
+
+
+# Capability awareness section for the system prompt
+CAPABILITIES_PROMPT = """
+# YOUR CAPABILITIES
+You have access to these tools - use them when they would genuinely help:
+
+**web_search(query, max_results?)**
+- Search the web for current information, news, recent events
+- Use when asked about things that may have changed since your training
+- Example: "What's the current score of the Seahawks game?"
+
+**calculate(expression)**
+- Evaluate math expressions: arithmetic, percentages, sqrt, log, trig functions
+- Use instead of estimating or doing mental math
+- Example: "What is 15% of 847?" -> calculate("847 * 0.15")
+
+**read_file(path, limit?, offset?)**
+- Read files from the Gentlebot codebase for context or citations
+- Use when asked about how Gentlebot works or specific code
+
+**When to use tools:**
+- Use web_search for current events, recent news, live scores, weather
+- Use calculate for ANY math beyond simple addition
+- Use read_file when discussing Gentlebot's code or features
+
+**When NOT to use tools:**
+- Casual conversation, jokes, opinions, general knowledge
+- Questions you can confidently answer from training data
+"""
 
 
 # Use a hierarchical logger so messages propagate to the main gentlebot logger
@@ -39,7 +70,7 @@ class GeminiCog(commands.Cog):
         self.cooldown_seconds = 10
 
         # === Sanitization rules ===
-        self.MAX_PROMPT_LEN = 750
+        self.MAX_PROMPT_LEN = 4000  # Increased from 750 to allow complex questions
         self.DISALLOWED_PATTERN = re.compile(r"<@&\d+>")  # e.g. guild roles
         self.MENTION_CLEANUP = re.compile(r"<@!?(\d+)>")  # strip user mentions
 
@@ -140,9 +171,12 @@ class GeminiCog(commands.Cog):
             lines.append(f"[{timestamp}] {author}: {content}")
 
         lines.reverse()
-        token_lengths = [len(line.split()) for line in lines]
+        # Use character-based token estimation (~4 chars per token)
+        # This is more accurate than word count for mixed content
+        token_lengths = [estimate_tokens(line) for line in lines]
         total_tokens = sum(token_lengths)
-        while lines and total_tokens > 1000:
+        max_context_tokens = 1500  # Increased budget with better estimation
+        while lines and total_tokens > max_context_tokens:
             total_tokens -= token_lengths.pop(0)
             lines.pop(0)
 
@@ -177,13 +211,14 @@ class GeminiCog(commands.Cog):
         core_instructions = remainder.lstrip("\n") if remainder else SYSTEM_INSTRUCTION
 
         return (
-            "You are Gentlebot, a Discord copilot/robot for the Gentlefolk community.\n"
+            "You are Gentlebot, a Discord copilot/robot for the Gentlefolk community.\n\n"
             "# CONTEXT LAYER\n"
             f"- **Time:** {current_time}\n"
             f"- **Channel:** #{channel_name} (Topic: {topic})\n"
             f"- **User:** {user_display} (Roles: {user_roles})\n"
             "- **Recent Chat History:**\n"
             f"{history_block}\n\n"
+            f"{CAPABILITIES_PROMPT}\n\n"
             "# CORE INSTRUCTIONS\n"
             f"{core_instructions}"
         )
