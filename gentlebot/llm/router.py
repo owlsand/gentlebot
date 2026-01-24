@@ -15,7 +15,10 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from ..infra import Limit, QuotaGuard, RateLimited, call_with_backoff, get_logger
+from ..infra.http import get_sync_session
 from .providers.gemini import GeminiClient
+from .tokenizer import estimate_tokens, estimate_tokens_for_messages
+from .tools import get_all_gemini_schemas
 
 log = get_logger(__name__)
 
@@ -86,75 +89,18 @@ class LLMRouter:
     def _tokens_estimate(
         self, messages: List[Dict[str, Any]], system_instruction: str | None = None
     ) -> int:
-        count = sum(len(m.get("content", "").split()) for m in messages)
-        if system_instruction:
-            count += len(system_instruction.split())
-        return count
+        """Estimate token count using character-based heuristic.
+
+        This is more accurate than word count for mixed content.
+        """
+        return estimate_tokens_for_messages(messages, system_instruction)
 
     def _tool_schemas(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "function_declarations": [
-                    {
-                        "name": "web_search",
-                        "description": "Search the public web for up-to-date answers when local knowledge is insufficient.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {"type": "string", "description": "keywords or question to search for"},
-                                "max_results": {
-                                    "type": "integer",
-                                    "description": "maximum snippets to return",
-                                    "minimum": 1,
-                                    "maximum": 5,
-                                },
-                            },
-                            "required": ["query"],
-                        },
-                    },
-                    {
-                        "name": "calculate",
-                        "description": "Safely evaluate a math expression including unit conversions like percentages.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "expression": {
-                                    "type": "string",
-                                    "description": "math expression such as '((42 * 1.08) - 5) / 3'",
-                                }
-                            },
-                            "required": ["expression"],
-                        },
-                    },
-                    {
-                        "name": "read_file",
-                        "description": "Read a short snippet from a project file for citations or extra context.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "path": {
-                                    "type": "string",
-                                    "description": "relative path inside the repository to read",
-                                },
-                                "limit": {
-                                    "type": "integer",
-                                    "description": "maximum number of characters to return",
-                                    "minimum": 100,
-                                    "maximum": 4000,
-                                },
-                                "offset": {
-                                    "type": "integer",
-                                    "description": "character offset to start reading from",
-                                    "minimum": 0,
-                                    "maximum": 20_000,
-                                },
-                            },
-                            "required": ["path"],
-                        },
-                    },
-                ]
-            }
-        ]
+        """Get tool schemas in Gemini format.
+
+        Uses the centralized tool definitions from tools.py.
+        """
+        return get_all_gemini_schemas()
 
     def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
         calls: list[dict[str, Any]] = []
@@ -228,12 +174,9 @@ class LLMRouter:
         max_results = max(1, min(max_results, 5))
 
         def _fetch_page_text(url: str, limit: int = 2500) -> str:
+            session = get_sync_session()
             try:
-                resp = requests.get(
-                    url,
-                    timeout=8,
-                    headers={"User-Agent": "gentlebot-web-search/1.0"},
-                )
+                resp = session.get(url, timeout=8)
                 resp.raise_for_status()
             except Exception:
                 log.exception("tool=web_search status=fetch_error url=%s", url)
@@ -255,7 +198,8 @@ class LLMRouter:
             if not api_key or not search_engine:
                 return []
 
-            resp = requests.get(
+            session = get_sync_session()
+            resp = session.get(
                 "https://www.googleapis.com/customsearch/v1",
                 params={
                     "q": query,
@@ -285,7 +229,8 @@ class LLMRouter:
             return results
 
         def _from_duckduckgo() -> list[dict[str, str]]:
-            resp = requests.get(
+            session = get_sync_session()
+            resp = session.get(
                 "https://api.duckduckgo.com/",
                 params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
                 timeout=8,
@@ -319,8 +264,9 @@ class LLMRouter:
             return results
 
         def _from_jina_markdown(url: str) -> list[dict[str, str]]:
+            session = get_sync_session()
             try:
-                resp = requests.get(
+                resp = session.get(
                     f"https://r.jina.ai/{url}", params={"q": query}, timeout=8
                 )
                 resp.raise_for_status()
