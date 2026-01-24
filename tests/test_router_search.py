@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 import requests
 
 from gentlebot.llm.router import LLMRouter
+from gentlebot.infra import http as http_module
 
 
 class DummyResponse:
@@ -30,6 +33,14 @@ class DummyResponse:
             raise requests.HTTPError(f"status {self.status_code}")
 
 
+@pytest.fixture(autouse=True)
+def reset_http_session():
+    """Reset the shared HTTP session before each test."""
+    http_module.reset_sessions()
+    yield
+    http_module.reset_sessions()
+
+
 def test_web_search_falls_back_to_google_html(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure the web search tool falls back when Google returns nothing."""
 
@@ -52,7 +63,10 @@ def test_web_search_falls_back_to_google_html(monkeypatch: pytest.MonkeyPatch) -
             return DummyResponse(json_data={})
         raise AssertionError("unexpected fallback request")
 
-    monkeypatch.setattr("gentlebot.llm.router.requests.get", fake_get)
+    # Create a mock session with our fake_get
+    mock_session = MagicMock()
+    mock_session.get = fake_get
+    monkeypatch.setattr(http_module, "get_sync_session", lambda **_: mock_session)
 
     result = router._run_search({"query": "current year", "max_results": 2})
 
@@ -89,7 +103,10 @@ def test_web_search_prefers_google_when_configured(monkeypatch: pytest.MonkeyPat
             return DummyResponse(text="Full page content about the topic.")
         raise AssertionError("unexpected fallback request")
 
-    monkeypatch.setattr("gentlebot.llm.router.requests.get", fake_get)
+    # Create a mock session with our fake_get
+    mock_session = MagicMock()
+    mock_session.get = fake_get
+    monkeypatch.setattr(http_module, "get_sync_session", lambda **_: mock_session)
 
     result = router._run_search({"query": "current year", "max_results": 1})
 
