@@ -164,3 +164,17 @@ def weekly_key(self: Any) -> str:
     """Key function for weekly tasks: returns year-week string."""
     today = date.today()
     return f"{today.year}-W{today.isocalendar()[1]:02d}"
+
+
+def monthly_key(self: Any) -> str:
+    """Key function for monthly tasks: returns year-month of the previous month.
+
+    This is used for tasks that run at the beginning of a month and process
+    data from the previous month (e.g., monthly recaps).
+    """
+    from datetime import timedelta
+
+    today = date.today()
+    first_of_month = today.replace(day=1)
+    prev_month = first_of_month - timedelta(days=1)
+    return f"{prev_month.year}-{prev_month.month:02d}"

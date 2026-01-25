@@ -130,6 +130,20 @@ else:
 INACTIVE_DAYS = int_env("INACTIVE_DAYS", 14)
 DAILY_PROMPT_ENABLED = bool_env("DAILY_PROMPT_ENABLED", False)
 
+# ─── Streak milestone roles ───────────────────────────────────────────────────
+# Create these roles in Discord and add the IDs via env vars.
+# Milestones: 7, 14, 30, 60, 100 consecutive days of activity.
+STREAK_ROLES: dict[int, int] = {
+    7: int_env("ROLE_STREAK_7", 0),     # Week Warrior
+    14: int_env("ROLE_STREAK_14", 0),   # Fortnight Fighter
+    30: int_env("ROLE_STREAK_30", 0),   # Month Master
+    60: int_env("ROLE_STREAK_60", 0),   # Iron Will
+    100: int_env("ROLE_STREAK_100", 0), # Century Club
+}
+
+# Whether streak roles are cumulative (all lower tiers) or exclusive (highest only)
+STREAK_ROLES_CUMULATIVE = bool_env("STREAK_ROLES_CUMULATIVE", False)
+
 # IDs of roles automatically assigned by RolesCog
 AUTO_ROLE_IDS = {
     ROLE_GHOST,

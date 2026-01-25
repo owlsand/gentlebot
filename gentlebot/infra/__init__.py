@@ -17,7 +17,7 @@ from .logging import (
     get_logger,
     structured_log,
 )
-from .idempotent import daily_key, idempotent_task, weekly_key
+from .idempotent import daily_key, idempotent_task, monthly_key, weekly_key
 from .quotas import Limit, QuotaGuard, RateLimited
 from .retries import async_retry, call_with_backoff, with_retry
 from .state_cache import StateCache, get_state_cache
@@ -45,6 +45,7 @@ __all__ = [
     # Idempotency
     "daily_key",
     "idempotent_task",
+    "monthly_key",
     "weekly_key",
     # Logging
     "LogContext",
