@@ -6,6 +6,8 @@ Tracks consecutive daily engagement streaks and awards milestone roles:
 - 30 days: Month Master
 - 60 days: Iron Will
 - 100 days: Century Club
+
+Also announces milestone achievements publicly to celebrate user accomplishments.
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from discord.ext import commands
 
 from .. import bot_config as cfg
 from ..infra import PoolAwareCog, alert_task_failure, daily_key, idempotent_task
+from ..llm.router import get_router, SafetyBlocked
 
 if TYPE_CHECKING:
     import asyncpg
@@ -40,6 +43,34 @@ MILESTONE_NAMES = {
     30: "Month Master",
     60: "Iron Will",
     100: "Century Club",
+}
+
+# Bitmask positions for announced milestones tracking
+# bit 0 = 7-day, bit 1 = 14-day, bit 2 = 30-day, bit 3 = 60-day, bit 4 = 100-day
+MILESTONE_BITS = {
+    7: 0,
+    14: 1,
+    30: 2,
+    60: 3,
+    100: 4,
+}
+
+# Celebration titles for each milestone
+MILESTONE_TITLES = {
+    7: "\U0001f525 Week Warrior Unlocked!",
+    14: "\U0001f525\U0001f525 Fortnight Fighter Unlocked!",
+    30: "\u2b50 Month Master Unlocked!",
+    60: "\U0001f4aa Iron Will Unlocked!",
+    100: "\U0001f451 Century Club Unlocked!",
+}
+
+# Embed colors for each milestone tier
+MILESTONE_COLORS = {
+    7: discord.Color.red(),
+    14: discord.Color.orange(),
+    30: discord.Color.blue(),
+    60: discord.Color.purple(),
+    100: discord.Color.gold(),
 }
 
 
@@ -106,16 +137,125 @@ class StreakCog(PoolAwareCog):
                 return ms
         return None
 
+    # ── Bitmask Helpers for Announced Milestones ───────────────────────────
+
+    def _milestone_announced(self, announced_bitmask: int, milestone: int) -> bool:
+        """Check if a milestone has already been announced."""
+        bit_position = MILESTONE_BITS.get(milestone)
+        if bit_position is None:
+            return False
+        return bool(announced_bitmask & (1 << bit_position))
+
+    def _mark_milestone_announced(self, announced_bitmask: int, milestone: int) -> int:
+        """Return new bitmask with milestone marked as announced."""
+        bit_position = MILESTONE_BITS.get(milestone)
+        if bit_position is None:
+            return announced_bitmask
+        return announced_bitmask | (1 << bit_position)
+
+    # ── Milestone Announcements ────────────────────────────────────────────
+
+    async def _generate_celebration_message(
+        self, member: discord.Member, milestone: int, streak: int
+    ) -> str | None:
+        """Generate a personalized celebration message using LLM."""
+        if not cfg.MILESTONE_LLM_ENABLED:
+            return None
+
+        try:
+            router = get_router()
+            prompt = (
+                f"Write a short, enthusiastic congratulatory message (1-2 sentences max) for {member.display_name} "
+                f"who just reached a {milestone}-day engagement streak on Discord. "
+                f"Their total streak is now {streak} days. Be warm and encouraging but concise. "
+                f"Don't use the word 'journey' or start with 'Congratulations'. "
+                f"Sign as 'Gentlebot'."
+            )
+            messages = [{"role": "user", "content": prompt}]
+            response = router.generate(
+                "general",
+                messages,
+                temperature=0.8,
+                system_instruction="You are Gentlebot, a friendly Discord bot. Write brief, warm celebratory messages.",
+            )
+            return response.strip()
+        except SafetyBlocked:
+            log.warning("LLM celebration message blocked by safety filter")
+            return None
+        except Exception as exc:
+            log.warning("Failed to generate celebration message: %s", exc)
+            return None
+
+    async def _announce_milestone(
+        self,
+        guild: discord.Guild,
+        user_id: int,
+        milestone: int,
+        streak: int,
+    ) -> bool:
+        """Post a public celebration embed for a milestone achievement."""
+        # Get the announcement channel
+        channel_id = cfg.MILESTONE_CHANNEL_ID or getattr(cfg, "LOBBY_CHANNEL_ID", 0)
+        if not channel_id:
+            log.warning("No milestone announcement channel configured")
+            return False
+
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            log.warning("Milestone channel %d not found or not a text channel", channel_id)
+            return False
+
+        # Get the member
+        member = guild.get_member(user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.HTTPException:
+                log.warning("Could not fetch member %d for milestone announcement", user_id)
+                return False
+
+        # Build the embed
+        title = MILESTONE_TITLES.get(milestone, f"\U0001f525 {milestone}-Day Streak!")
+        color = MILESTONE_COLORS.get(milestone, discord.Color.orange())
+
+        embed = discord.Embed(
+            title=title,
+            description=f"Congratulations {member.mention}! You've reached **{streak}** consecutive days!",
+            color=color,
+        )
+
+        # Try to add LLM-generated personalized message
+        llm_message = await self._generate_celebration_message(member, milestone, streak)
+        if llm_message:
+            embed.add_field(name="From Gentlebot", value=llm_message, inline=False)
+
+        embed.set_footer(text="Keep the streak alive!")
+        embed.set_thumbnail(url=member.display_avatar.url)
+
+        try:
+            await channel.send(embed=embed)
+            log.info(
+                "Announced %d-day milestone for %s in channel %d",
+                milestone,
+                member.display_name,
+                channel_id,
+            )
+            return True
+        except discord.HTTPException as exc:
+            log.warning("Failed to send milestone announcement: %s", exc)
+            return False
+
     # ── Database Operations ────────────────────────────────────────────────
 
     async def _get_user_streak(self, user_id: int) -> dict:
         """Fetch streak info for a user."""
         if not self.pool:
-            return {"current": 0, "longest": 0, "last_active": None, "started": None}
+            return {"current": 0, "longest": 0, "last_active": None, "started": None, "announced": 0}
 
         row = await self.pool.fetchrow(
             """
-            SELECT current_streak, longest_streak, last_active_date, streak_started_date
+            SELECT current_streak, longest_streak, last_active_date, streak_started_date,
+                   COALESCE(announced_milestones, 0) AS announced_milestones
             FROM discord.user_streak
             WHERE user_id = $1
             """,
@@ -127,8 +267,9 @@ class StreakCog(PoolAwareCog):
                 "longest": row["longest_streak"],
                 "last_active": row["last_active_date"],
                 "started": row["streak_started_date"],
+                "announced": row["announced_milestones"],
             }
-        return {"current": 0, "longest": 0, "last_active": None, "started": None}
+        return {"current": 0, "longest": 0, "last_active": None, "started": None, "announced": 0}
 
     async def _get_active_users_yesterday(self) -> list[int]:
         """Find users who posted at least one message yesterday (LA timezone)."""
@@ -159,6 +300,7 @@ class StreakCog(PoolAwareCog):
         longest: int,
         active_date: date,
         started_date: date | None,
+        announced_milestones: int = 0,
     ) -> None:
         """Update or insert a user's streak record."""
         if not self.pool:
@@ -167,13 +309,15 @@ class StreakCog(PoolAwareCog):
         await self.pool.execute(
             """
             INSERT INTO discord.user_streak (
-                user_id, current_streak, longest_streak, last_active_date, streak_started_date, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, now())
+                user_id, current_streak, longest_streak, last_active_date, streak_started_date,
+                announced_milestones, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, now())
             ON CONFLICT (user_id) DO UPDATE SET
                 current_streak = EXCLUDED.current_streak,
                 longest_streak = EXCLUDED.longest_streak,
                 last_active_date = EXCLUDED.last_active_date,
                 streak_started_date = EXCLUDED.streak_started_date,
+                announced_milestones = EXCLUDED.announced_milestones,
                 updated_at = now()
             """,
             user_id,
@@ -181,6 +325,7 @@ class StreakCog(PoolAwareCog):
             longest,
             active_date,
             started_date,
+            announced_milestones,
         )
 
     async def _reset_streak(self, user_id: int) -> None:
@@ -369,7 +514,8 @@ class StreakCog(PoolAwareCog):
         # Get all existing streak records
         rows = await self.pool.fetch(
             """
-            SELECT user_id, current_streak, longest_streak, last_active_date, streak_started_date
+            SELECT user_id, current_streak, longest_streak, last_active_date, streak_started_date,
+                   COALESCE(announced_milestones, 0) AS announced_milestones
             FROM discord.user_streak
             """
         )
@@ -377,6 +523,7 @@ class StreakCog(PoolAwareCog):
         updated = 0
         reset = 0
         new_milestones = 0
+        announced = 0
 
         # Update existing streaks
         for row in rows:
@@ -385,6 +532,7 @@ class StreakCog(PoolAwareCog):
             longest = row["longest_streak"]
             last_active = row["last_active_date"]
             started = row["streak_started_date"]
+            announced_bitmask = row["announced_milestones"]
 
             if user_id in active_set:
                 # User was active yesterday
@@ -392,13 +540,12 @@ class StreakCog(PoolAwareCog):
                     # Continuing streak
                     new_streak = current + 1
                     new_longest = max(longest, new_streak)
-                    await self._update_streak(
-                        user_id, new_streak, new_longest, yesterday_la, started
-                    )
 
-                    # Check for new milestone
+                    # Check for new milestone and announce if needed
                     old_milestone = max((m for m in MILESTONES if current >= m), default=0)
                     new_milestone = max((m for m in MILESTONES if new_streak >= m), default=0)
+
+                    new_announced_bitmask = announced_bitmask
                     if new_milestone > old_milestone:
                         new_milestones += 1
                         log.info(
@@ -407,11 +554,23 @@ class StreakCog(PoolAwareCog):
                             new_milestone,
                         )
 
+                        # Check if this milestone needs to be announced
+                        if not self._milestone_announced(announced_bitmask, new_milestone):
+                            if await self._announce_milestone(guild, user_id, new_milestone, new_streak):
+                                new_announced_bitmask = self._mark_milestone_announced(
+                                    announced_bitmask, new_milestone
+                                )
+                                announced += 1
+
+                    await self._update_streak(
+                        user_id, new_streak, new_longest, yesterday_la, started, new_announced_bitmask
+                    )
                     await self._sync_streak_roles(guild, user_id, new_streak)
                     updated += 1
                 elif last_active != yesterday_la:
                     # Streak was broken, starting fresh
-                    await self._update_streak(user_id, 1, longest, yesterday_la, yesterday_la)
+                    # Keep announced_bitmask - don't reset announcements when streak breaks
+                    await self._update_streak(user_id, 1, longest, yesterday_la, yesterday_la, announced_bitmask)
                     await self._remove_all_streak_roles(guild, user_id)
                     reset += 1
                 # else: already processed today (last_active == yesterday_la)
@@ -427,10 +586,10 @@ class StreakCog(PoolAwareCog):
 
         # Create records for newly active users
         for user_id in active_set:
-            await self._update_streak(user_id, 1, 1, yesterday_la, yesterday_la)
+            await self._update_streak(user_id, 1, 1, yesterday_la, yesterday_la, 0)
             updated += 1
 
-        result = f"updated:{updated},reset:{reset},milestones:{new_milestones}"
+        result = f"updated:{updated},reset:{reset},milestones:{new_milestones},announced:{announced}"
         log.info("Streak maintenance complete: %s", result)
         return result
 
