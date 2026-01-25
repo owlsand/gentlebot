@@ -47,6 +47,7 @@ if IS_TEST:
     FANTASY_CHANNEL_ID = int_env("FANTASY_CHANNEL_ID", SPORTS_CHANNEL_ID)
     DAILY_PING_CHANNEL = 1374238199676928070
     MONEY_TALK_CHANNEL = int_env("MONEY_TALK_CHANNEL", 1374238246468456469)
+    LOBBY_CHANNEL_ID = int_env("LOBBY_CHANNEL_ID", 1135418490979893321)
 
     # -------- ROLES --------
     ROLE_GHOST = 1374598613514063942
@@ -143,6 +144,22 @@ STREAK_ROLES: dict[int, int] = {
 
 # Whether streak roles are cumulative (all lower tiers) or exclusive (highest only)
 STREAK_ROLES_CUMULATIVE = bool_env("STREAK_ROLES_CUMULATIVE", False)
+
+# ─── Streak milestone celebrations ─────────────────────────────────────────
+# Channel to post milestone announcements (defaults to LOBBY_CHANNEL_ID)
+MILESTONE_CHANNEL_ID = int_env("MILESTONE_CHANNEL_ID", 0)  # 0 = use LOBBY_CHANNEL_ID
+# Whether to use LLM for personalized celebration messages
+MILESTONE_LLM_ENABLED = bool_env("MILESTONE_LLM_ENABLED", True)
+
+# ─── Trending / What's Hot ─────────────────────────────────────────────────
+# Channel for trending content posts (defaults to LOBBY_CHANNEL_ID)
+TRENDING_CHANNEL_ID = int_env("TRENDING_CHANNEL_ID", 0)  # 0 = use LOBBY_CHANNEL_ID
+# Whether to auto-post trending digest daily
+TRENDING_AUTO_POST = bool_env("TRENDING_AUTO_POST", False)
+# Hour (0-23) to post daily trending digest (in LA timezone)
+TRENDING_AUTO_POST_HOUR = int_env("TRENDING_AUTO_POST_HOUR", 18)
+# Minimum reactions for a message to appear in trending
+TRENDING_MIN_REACTIONS = int_env("TRENDING_MIN_REACTIONS", 3)
 
 # IDs of roles automatically assigned by RolesCog
 AUTO_ROLE_IDS = {
