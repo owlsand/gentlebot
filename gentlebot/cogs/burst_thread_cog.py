@@ -59,36 +59,9 @@ class BurstThreadCog(PoolAwareCog):
             log.exception("Summary failed: %s", exc)
         return "Chat Burst Thread"
 
-    async def _alert_text(self, topic: str, thread_mention: str) -> str:
-        """Generate an enthusiastic notice suggesting a thread."""
-        prompt = (
-            "The chat topic is: "
-            + topic
-            + ".\nWrite two short sentences. First, enthusiastically observe the topic. "
-            "Second, politely suggest moving the conversation to a thread to avoid "
-            "blowing up everyone's notifications, using the placeholder <THREAD> "
-            "where the thread mention should go."
-        )
-        try:
-            content = await asyncio.to_thread(
-                router.generate,
-                "general",
-                [{"role": "user", "content": prompt}],
-                self.temperature,
-            )
-            if content:
-                content = content.replace("<THREAD>", thread_mention)
-                return "📈 " + content
-        except (RateLimited, SafetyBlocked) as exc:
-            log.warning("Alert text blocked: %s", exc)
-        except Exception as exc:  # pragma: no cover - network
-            log.exception("Alert text failed: %s", exc)
-        return (
-            "📈 Wow, looks like you're getting pretty into "
-            f"{topic}! Here's a thread if you want to take it offline "
-            "to avoid blowing up everyone else's notifications: "
-            f"{thread_mention}"
-        )
+    def _alert_text(self, topic: str, thread_mention: str) -> str:
+        """Return a mechanical notice about the new thread."""
+        return f"Thread opportunity detected: {thread_mention}"
 
     @require_pool
     async def _log(self, channel_id: int, thread_id: int, msgs: int, authors: int) -> None:
@@ -116,7 +89,7 @@ class BurstThreadCog(PoolAwareCog):
             log.exception("Failed to create burst thread")
             return
         topic = name.lower()
-        msg = await self._alert_text(topic, thread.mention)
+        msg = self._alert_text(topic, thread.mention)
         try:
             await channel.send(msg)
         except Exception:
