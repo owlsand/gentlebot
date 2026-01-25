@@ -11,7 +11,7 @@ from gentlebot.llm.tools import (
     WEB_SEARCH,
     CALCULATE,
     READ_FILE,
-    IMAGE_GENERATION,
+    GENERATE_IMAGE,
     get_tool,
     get_all_gemini_schemas,
     get_all_openai_schemas,
@@ -124,15 +124,15 @@ class TestBuiltinTools:
         assert READ_FILE.name == "read_file"
         assert len(READ_FILE.parameters) == 3  # path, limit, offset
 
-    def test_image_generation_definition(self) -> None:
-        assert IMAGE_GENERATION.name == "generate_image"
-        assert len(IMAGE_GENERATION.parameters) == 1  # prompt
+    def test_generate_image_definition(self) -> None:
+        assert GENERATE_IMAGE.name == "generate_image"
+        assert len(GENERATE_IMAGE.parameters) == 1  # prompt
 
     def test_get_tool(self) -> None:
         assert get_tool("web_search") is WEB_SEARCH
         assert get_tool("calculate") is CALCULATE
         assert get_tool("read_file") is READ_FILE
-        assert get_tool("generate_image") is IMAGE_GENERATION
+        assert get_tool("generate_image") is GENERATE_IMAGE
         assert get_tool("nonexistent") is None
 
 
