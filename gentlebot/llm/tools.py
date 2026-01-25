@@ -222,8 +222,24 @@ READ_FILE = Tool(
     ],
 )
 
+IMAGE_GENERATION = Tool(
+    name="generate_image",
+    description=(
+        "Generate an image based on a text prompt. Use this when a user asks "
+        "you to create, draw, visualize, or make a picture of something. "
+        "The generated image will be sent to the user."
+    ),
+    parameters=[
+        ToolParameter(
+            name="prompt",
+            type="string",
+            description="Detailed description of the image to generate",
+        ),
+    ],
+)
+
 # All available tools
-ALL_TOOLS = [WEB_SEARCH, CALCULATE, READ_FILE]
+ALL_TOOLS = [WEB_SEARCH, CALCULATE, READ_FILE, IMAGE_GENERATION]
 
 # Tool lookup by name
 TOOLS_BY_NAME: Dict[str, Tool] = {tool.name: tool for tool in ALL_TOOLS}
