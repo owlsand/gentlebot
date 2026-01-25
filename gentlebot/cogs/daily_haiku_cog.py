@@ -95,6 +95,50 @@ class DailyHaikuCog(commands.Cog):
         messages = [r["content"] or "" for r in rows if r["content"]]
         return "\n".join(messages), len(messages)
 
+    async def _get_most_active_channel(self, start: datetime, end: datetime) -> int | None:
+        """Find the most active text channel today based on message count."""
+        if not self.pool:
+            return None
+        row = await self.pool.fetchrow(
+            """
+            SELECT m.channel_id, COUNT(*) as msg_count
+            FROM discord.message m
+            JOIN discord.channel c ON m.channel_id = c.channel_id
+            LEFT JOIN discord."user" u ON m.author_id = u.user_id
+            WHERE m.guild_id = $1
+              AND m.created_at >= $2 AND m.created_at < $3
+              AND c.type = 0
+              AND (c.nsfw IS FALSE OR c.nsfw IS NULL)
+              AND (c.is_private IS FALSE OR c.is_private IS NULL)
+              AND (u.is_bot IS NOT TRUE)
+            GROUP BY m.channel_id
+            ORDER BY msg_count DESC
+            LIMIT 1
+            """,
+            cfg.GUILD_ID,
+            start,
+            end,
+        )
+        return row["channel_id"] if row else None
+
+    async def _channel_has_activity_since_last_haiku(self, channel_id: int, today_start: datetime) -> bool:
+        """Check if the target channel has had any activity today."""
+        if not self.pool:
+            return True  # Default to posting if we can't check
+        row = await self.pool.fetchrow(
+            """
+            SELECT COUNT(*) as cnt
+            FROM discord.message m
+            LEFT JOIN discord."user" u ON m.author_id = u.user_id
+            WHERE m.channel_id = $1
+              AND m.created_at >= $2
+              AND (u.is_bot IS NOT TRUE)
+            """,
+            channel_id,
+            today_start,
+        )
+        return row["cnt"] > 0 if row else False
+
     async def _post_haiku(self) -> None:
         await self.bot.wait_until_ready()
         now = datetime.now(tz=LA)
@@ -120,14 +164,30 @@ class DailyHaikuCog(commands.Cog):
         except Exception:
             log.exception("Haiku generation failed")
             return
-        channel = self.bot.get_channel(cfg.LOBBY_CHANNEL_ID)
+
+        # Smart channel targeting: check if lobby has activity, otherwise use most active channel
+        target_channel_id = cfg.LOBBY_CHANNEL_ID
+        lobby_active = await self._channel_has_activity_since_last_haiku(cfg.LOBBY_CHANNEL_ID, start)
+
+        if not lobby_active:
+            log.info("Lobby channel inactive today, finding most active channel")
+            most_active = await self._get_most_active_channel(start, now)
+            if most_active:
+                target_channel_id = most_active
+                log.info("Redirecting haiku to channel %d (most active today)", target_channel_id)
+            else:
+                log.info("No active channels found; skipping haiku post")
+                return
+
+        channel = self.bot.get_channel(target_channel_id)
         if not isinstance(channel, discord.TextChannel):
-            log.error("Lobby channel not found")
+            log.error("Target channel %d not found or not a text channel", target_channel_id)
             return
         try:
             await channel.send(text)
+            log.info("Haiku posted to channel %s (%d)", channel.name, target_channel_id)
         except discord.HTTPException:
-            log.warning("Failed to post haiku")
+            log.warning("Failed to post haiku to channel %d", target_channel_id)
 
 
 async def setup(bot: commands.Bot) -> None:

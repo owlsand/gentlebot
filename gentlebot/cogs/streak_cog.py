@@ -89,12 +89,137 @@ class StreakCog(PoolAwareCog):
         self.scheduler.add_job(self._maintain_streaks_safe, trigger)
         self.scheduler.start()
         log.info("StreakCog scheduler started")
+        # Schedule backfill to run after bot is ready
+        self.bot.loop.create_task(self._backfill_streaks_on_ready())
 
     async def cog_unload(self) -> None:
         if self.scheduler:
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
         await super().cog_unload()
+
+    # ── Startup Backfill ───────────────────────────────────────────────────
+
+    async def _backfill_streaks_on_ready(self) -> None:
+        """Backfill streak data from message history on bot startup."""
+        await self.bot.wait_until_ready()
+
+        if not self.pool:
+            log.warning("No pool available for streak backfill")
+            return
+
+        try:
+            await self._backfill_streaks()
+        except Exception as exc:
+            log.exception("Streak backfill failed: %s", exc)
+
+    async def _backfill_streaks(self) -> None:
+        """Calculate and update streaks from message history for all users."""
+        log.info("Starting streak backfill from message history...")
+
+        # Get all distinct non-bot users with messages, grouped by date
+        rows = await self.pool.fetch(
+            """
+            SELECT
+                m.author_id,
+                (m.created_at AT TIME ZONE 'America/Los_Angeles')::date AS activity_date
+            FROM discord.message m
+            JOIN discord."user" u ON m.author_id = u.user_id
+            WHERE u.is_bot IS NOT TRUE
+              AND m.created_at >= now() - INTERVAL '365 days'
+            GROUP BY m.author_id, (m.created_at AT TIME ZONE 'America/Los_Angeles')::date
+            ORDER BY m.author_id, activity_date
+            """
+        )
+
+        if not rows:
+            log.info("No message history found for streak backfill")
+            return
+
+        # Group activity dates by user
+        user_dates: dict[int, list[date]] = {}
+        for row in rows:
+            uid = row["author_id"]
+            activity_date = row["activity_date"]
+            if uid not in user_dates:
+                user_dates[uid] = []
+            user_dates[uid].append(activity_date)
+
+        today_la = date.today()
+        updated = 0
+        skipped = 0
+
+        for user_id, dates in user_dates.items():
+            # Check if user already has streak data
+            existing = await self.pool.fetchrow(
+                """
+                SELECT current_streak, longest_streak, last_active_date
+                FROM discord.user_streak
+                WHERE user_id = $1
+                """,
+                user_id,
+            )
+
+            # Skip if user already has meaningful streak data (not just default 1)
+            if existing and existing["current_streak"] > 1:
+                skipped += 1
+                continue
+
+            # Sort dates and calculate streak
+            sorted_dates = sorted(set(dates))
+
+            # Calculate current streak (consecutive days ending at today or yesterday)
+            current_streak = 0
+            check_date = today_la
+            for d in reversed(sorted_dates):
+                if d == check_date or d == check_date - timedelta(days=1):
+                    current_streak += 1
+                    check_date = d - timedelta(days=1)
+                elif d < check_date - timedelta(days=1):
+                    break
+
+            # Calculate longest streak ever
+            longest_streak = 0
+            streak = 1
+            for i in range(1, len(sorted_dates)):
+                if sorted_dates[i] - sorted_dates[i - 1] == timedelta(days=1):
+                    streak += 1
+                else:
+                    longest_streak = max(longest_streak, streak)
+                    streak = 1
+            longest_streak = max(longest_streak, streak)
+
+            # Determine streak start date
+            if current_streak > 0:
+                streak_started = sorted_dates[-1] - timedelta(days=current_streak - 1)
+                last_active = sorted_dates[-1]
+            else:
+                streak_started = None
+                last_active = sorted_dates[-1] if sorted_dates else None
+
+            # Update or insert streak record
+            await self.pool.execute(
+                """
+                INSERT INTO discord.user_streak (
+                    user_id, current_streak, longest_streak, last_active_date,
+                    streak_started_date, announced_milestones, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, 0, now())
+                ON CONFLICT (user_id) DO UPDATE SET
+                    current_streak = GREATEST(discord.user_streak.current_streak, EXCLUDED.current_streak),
+                    longest_streak = GREATEST(discord.user_streak.longest_streak, EXCLUDED.longest_streak),
+                    last_active_date = COALESCE(EXCLUDED.last_active_date, discord.user_streak.last_active_date),
+                    streak_started_date = COALESCE(EXCLUDED.streak_started_date, discord.user_streak.streak_started_date),
+                    updated_at = now()
+                """,
+                user_id,
+                current_streak,
+                longest_streak,
+                last_active,
+                streak_started,
+            )
+            updated += 1
+
+        log.info("Streak backfill complete: %d users updated, %d skipped", updated, skipped)
 
     # ── Helper Methods ─────────────────────────────────────────────────────
 
