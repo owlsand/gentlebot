@@ -110,7 +110,6 @@ def is_celebration(text: str) -> tuple[bool, float]:
         - confidence: 0.0-1.0 indicating how confident we are
     """
     text_lower = text.lower()
-    words = set(re.findall(r'\w+', text_lower))
 
     # Check for celebration emojis first (strong signal)
     has_celebration_emoji = any(emoji in text for emoji in CELEBRATION_EMOJIS)
