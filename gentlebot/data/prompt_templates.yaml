@@ -1,0 +1,343 @@
+# Gentlebot Daily Prompt Templates
+# =================================
+# Human-curated prompts designed for the Gentlefolk community.
+# No LLM generation - just template selection and rotation.
+#
+# Key principles:
+#   - Human voice > LLM voice
+#   - Specific > Vague
+#   - Opinionated > Neutral
+#   - Low barrier to entry (everyone can answer in 1 sentence)
+#   - Fun/playful tone (friend group, not workplace)
+#   - Food debates are gold (universal, low stakes, endless opinions)
+#
+# Types:
+#   - text: Regular text prompts posted as messages
+#   - poll: Native Discord polls (one-tap voting)
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# TEXT PROMPTS
+# ════════════════════════════════════════════════════════════════════════════
+
+text_prompts:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOT TAKES - Invites disagreement, low stakes
+  # ─────────────────────────────────────────────────────────────────────────
+  hot_take:
+    - "Steak beyond medium-rare is wasted. Fight me."
+    - "Breakfast for dinner is superior to dinner for dinner."
+    - "Audiobooks count as reading. This is not up for debate."
+    - "Reply-all should require a 30-second cooldown timer."
+    - "Sleeping with socks on is chaotic evil behavior."
+    - "Hot take: cold pizza is better than reheated pizza."
+    - "Mayo belongs on fries. Ketchup is for amateurs."
+    - "The Oxford comma is non-negotiable."
+    - "Working from home in bed is valid and I will not be taking questions."
+    - "Ice in wine is acceptable and I'm tired of pretending it's not."
+    - "Putting the milk in before the cereal is unhinged."
+    - "Airplane mode should be the default phone setting."
+    - "Hardwood floors are overrated. Carpet supremacy."
+    - "Ranch dressing is just mayo with audacity."
+    - "Monday isn't actually the worst day. Sunday night is."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # FORCED CHOICE - Everyone has an opinion, forces commitment
+  # ─────────────────────────────────────────────────────────────────────────
+  forced_choice:
+    - "One has to go forever: tacos, pizza, or burgers. Which one are you sacrificing?"
+    - "You can only keep one streaming service. Which survives?"
+    - "Delete one from existence: mosquitoes, alarm clocks, or Monday meetings."
+    - "You have to eat the same breakfast every day forever. What is it?"
+    - "One condiment for the rest of your life. What's it gonna be?"
+    - "Pick one to never do again: laundry, dishes, or cooking."
+    - "You can only drink one beverage forever (besides water). Choose wisely."
+    - "One social media platform survives the purge. Which one?"
+    - "Remove one from your life forever: coffee, cheese, or chocolate."
+    - "You can only visit one type of restaurant forever: Italian, Mexican, or Asian. Choose."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # THIS OR THAT - Binary, quick to answer
+  # ─────────────────────────────────────────────────────────────────────────
+  this_or_that:
+    - "Better breakfast: sweet or savory?"
+    - "Mountains or beach?"
+    - "Early bird or night owl?"
+    - "Call or text?"
+    - "Shower in the morning or at night?"
+    - "Book or movie adaptation?"
+    - "Window seat or aisle?"
+    - "Cats or dogs? (We're doing this.)"
+    - "Summer or winter?"
+    - "Cooking at home or eating out?"
+    - "City life or suburbs?"
+    - "Spontaneous trip or planned vacation?"
+    - "Crunchy or smooth peanut butter?"
+    - "iOS or Android?"
+    - "Save it or spend it?"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # FILL IN THE BLANK - Open-ended but structured
+  # ─────────────────────────────────────────────────────────────────────────
+  fill_in_blank:
+    - "The most underrated snack is ___."
+    - "The best part of my morning routine is ___."
+    - "___ is overrated and I'm not afraid to say it."
+    - "My guilty pleasure TV show is ___."
+    - "The best purchase I made this year was ___."
+    - "If I won the lottery tomorrow, the first thing I'd buy is ___."
+    - "___ doesn't get enough credit."
+    - "The hill I will die on is ___."
+    - "My comfort food when I'm stressed is ___."
+    - "The best thing about where I live is ___."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # WOULD YOU RATHER - Fun hypotheticals
+  # ─────────────────────────────────────────────────────────────────────────
+  would_you_rather:
+    - "Would you rather never eat cheese again or never eat chocolate again?"
+    - "Would you rather always be 10 minutes late or 30 minutes early?"
+    - "Would you rather have unlimited first-class flights or never pay for food again?"
+    - "Would you rather be able to see 10 years into your own future or 10 years into the world's future?"
+    - "Would you rather have a pause button or a rewind button for your life?"
+    - "Would you rather always have to say what's on your mind or never speak again?"
+    - "Would you rather give up air conditioning or heating?"
+    - "Would you rather have free WiFi everywhere or free coffee everywhere?"
+    - "Would you rather have no phone for a month or no bed for a month?"
+    - "Would you rather be famous but constantly recognized or unknown but wildly successful?"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # UNPOPULAR OPINION - Self-selects for hot takes
+  # ─────────────────────────────────────────────────────────────────────────
+  unpopular_opinion:
+    - "What's your most controversial food opinion?"
+    - "What's a popular movie everyone loves that you just don't get?"
+    - "What's something everyone complains about that you actually enjoy?"
+    - "What's a 'life hack' you think is actually dumb?"
+    - "What's a commonly held belief that you think is completely wrong?"
+    - "What's an opinion you have that would get you side-eyed at a dinner party?"
+    - "What's something expensive that you think is a waste of money?"
+    - "What's a popular travel destination you have zero interest in visiting?"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PERSONAL SHARE - Low barrier, positive
+  # ─────────────────────────────────────────────────────────────────────────
+  personal_share:
+    - "What's one thing you're looking forward to this week?"
+    - "What's something small that made you smile recently?"
+    - "What's a show or movie you've been binging lately?"
+    - "What's been your soundtrack lately? Drop a song recommendation."
+    - "What's the last thing you cooked that turned out really well?"
+    - "What's a small win you had this week that you didn't tell anyone about?"
+    - "What's a random skill you have that most people don't know about?"
+    - "What's the last thing you learned that surprised you?"
+    - "What's your go-to comfort activity after a long day?"
+    - "What's something you're proud of that seems silly to brag about?"
+    - "How do you recharge when you're emotionally drained?"
+    - "What's a tradition you have (personal or family) that you love?"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # FOOD DEBATES - Universal, low stakes, endless opinions
+  # ─────────────────────────────────────────────────────────────────────────
+  food_debate:
+    - "Pineapple on pizza: delicious or a crime against humanity?"
+    - "Is a hot dog a sandwich? Defend your position."
+    - "What's the correct cheese for a grilled cheese sandwich?"
+    - "Boneless wings: just chicken nuggets with delusions of grandeur?"
+    - "What's the most overrated cuisine?"
+    - "Ketchup: belongs in the fridge or the pantry?"
+    - "What's a food combination that sounds disgusting but actually slaps?"
+    - "Ranch on pizza: acceptable or grounds for friendship termination?"
+    - "What's the best fast food french fry? Wrong answers only... just kidding, fight it out."
+    - "Breakfast burrito or breakfast sandwich?"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# POLL TEMPLATES
+# ════════════════════════════════════════════════════════════════════════════
+# Native Discord polls - one-tap voting, social proof, built-in deadline
+# Duration defaults to 24 hours
+
+poll_prompts:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # FORCED ELIMINATION POLLS
+  # ─────────────────────────────────────────────────────────────────────────
+  elimination:
+    - question: "One has to go forever. Which one?"
+      options:
+        - "Tacos"
+        - "Pizza"
+        - "Burgers"
+
+    - question: "Delete one streaming service from existence"
+      options:
+        - "Netflix"
+        - "Disney+"
+        - "HBO Max"
+        - "Hulu"
+
+    - question: "One has to go. Forever."
+      options:
+        - "Coffee"
+        - "Cheese"
+        - "Chocolate"
+
+    - question: "Eliminate one from your morning routine"
+      options:
+        - "Shower"
+        - "Breakfast"
+        - "Checking your phone"
+
+    - question: "One condiment has to go forever"
+      options:
+        - "Ketchup"
+        - "Mustard"
+        - "Mayo"
+        - "Hot sauce"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # THIS OR THAT POLLS
+  # ─────────────────────────────────────────────────────────────────────────
+  binary:
+    - question: "Better breakfast?"
+      options:
+        - "Sweet (pancakes, waffles)"
+        - "Savory (eggs, bacon)"
+
+    - question: "Friday night energy?"
+      options:
+        - "Going out"
+        - "Staying in"
+
+    - question: "Morning beverage?"
+      options:
+        - "Coffee"
+        - "Tea"
+        - "Neither (chaos)"
+
+    - question: "Ideal vacation?"
+      options:
+        - "Beach"
+        - "Mountains"
+        - "City"
+
+    - question: "Best weekend activity?"
+      options:
+        - "Sleep in"
+        - "Brunch"
+        - "Adventure"
+
+    - question: "How do you eat your steak?"
+      options:
+        - "Rare / Medium-rare"
+        - "Medium"
+        - "Medium-well / Well done"
+
+    - question: "Working from home preference?"
+      options:
+        - "Always remote"
+        - "Hybrid"
+        - "Always in office"
+
+    - question: "Your ideal Sunday?"
+      options:
+        - "Active (gym, hike, errands)"
+        - "Lazy (couch, movies, naps)"
+        - "Social (brunch, friends)"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PREFERENCE POLLS
+  # ─────────────────────────────────────────────────────────────────────────
+  preference:
+    - question: "Best pizza topping?"
+      options:
+        - "Pepperoni"
+        - "Sausage"
+        - "Mushrooms"
+        - "Just cheese"
+
+    - question: "Best fast food fries?"
+      options:
+        - "McDonald's"
+        - "Chick-fil-A"
+        - "Five Guys"
+        - "Wendy's"
+
+    - question: "Ideal commute time?"
+      options:
+        - "Under 15 min"
+        - "15-30 min"
+        - "30-45 min"
+        - "I like long commutes actually"
+
+    - question: "How many alarms do you set?"
+      options:
+        - "Just one (confident)"
+        - "2-3 (reasonable)"
+        - "4+ (survival mode)"
+        - "I wake up naturally"
+
+    - question: "Best season?"
+      options:
+        - "Spring"
+        - "Summer"
+        - "Fall"
+        - "Winter"
+
+    - question: "Toilet paper: over or under?"
+      options:
+        - "Over (correct)"
+        - "Under (chaotic)"
+        - "Don't care (even more chaotic)"
+
+    - question: "Pineapple on pizza?"
+      options:
+        - "Yes, it's delicious"
+        - "Absolutely not"
+        - "Depends on the other toppings"
+
+    - question: "Default phone orientation?"
+      options:
+        - "Portrait"
+        - "Landscape"
+        - "Depends on the app"
+
+    - question: "How do you load the dishwasher?"
+      options:
+        - "Chaotically (if it fits, it ships)"
+        - "Methodically (there's a system)"
+        - "I hand wash everything"
+
+    - question: "Audiobooks: do they count as reading?"
+      options:
+        - "Yes, absolutely"
+        - "No, reading requires eyes"
+        - "It's complicated"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# METADATA
+# ════════════════════════════════════════════════════════════════════════════
+# Used by the prompt rotation system
+
+metadata:
+  version: "1.0"
+  last_updated: "2026-01-25"
+  total_text_prompts: 100
+  total_poll_prompts: 22
+  categories:
+    text:
+      - hot_take
+      - forced_choice
+      - this_or_that
+      - fill_in_blank
+      - would_you_rather
+      - unpopular_opinion
+      - personal_share
+      - food_debate
+    poll:
+      - elimination
+      - binary
+      - preference

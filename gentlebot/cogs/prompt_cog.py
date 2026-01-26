@@ -1,19 +1,25 @@
 """
-prompt_cog.py – Dynamic Daily‑Ping Prompt Generator for Gentlebot
-================================================================
-Generates a rotating, AI-powered prompt each day via Gemini inference,
-posts to DAILY_PING on schedule, and provides a command to skip to a new prompt.
+prompt_cog.py – Template-Based Daily Prompt Generator for Gentlebot
+====================================================================
+Posts human-curated prompts and native Discord polls to drive engagement.
+No LLM generation - just template selection and rotation.
+
+Key principles:
+  - Human voice > LLM voice
+  - Specific > Vague
+  - Low barrier to entry
+  - Mix of text prompts and native polls
 
 Configuration in bot_config.py:
   • DAILY_PING_CHANNEL: channel ID for daily‑ping (must be an integer)
-  • PROMPT_SCHEDULE_HOUR: (optional) local hour to schedule daily prompts
-  • PROMPT_SCHEDULE_MINUTE: (optional) local minute for prompt scheduling
-  • PROMPT_HISTORY_SIZE: how many past prompts to send as context
+  • DAILY_PROMPT_ENABLED: enable/disable the scheduler
+  • PROMPT_SCHEDULE_HOUR: local hour to schedule daily prompts
+  • PROMPT_SCHEDULE_MINUTE: local minute for prompt scheduling
+  • PROMPT_POLL_RATIO: ratio of polls vs text prompts (0.0-1.0)
 
 Requires:
-  • discord.py v2+
-  • requests
-  • zoneinfo (stdlib) or backports.zoneinfo
+  • discord.py v2.4+ (for native Poll support)
+  • PyYAML
 """
 from __future__ import annotations
 import random
@@ -21,279 +27,85 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from collections import deque
+from pathlib import Path
 import discord
 from discord.ext import commands
 from ..util import chan_name, user_name
 from ..db import get_pool
 from .. import bot_config as cfg
-from ..llm.router import router, SafetyBlocked
-from ..infra.quotas import RateLimited
 from zoneinfo import ZoneInfo
 import asyncpg
-import requests
+import yaml
 
-# Use a hierarchical logger so messages propagate to the main gentlebot logger
 log = logging.getLogger(f"gentlebot.{__name__}")
 
 # Timezone for scheduling
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 12)
 SCHEDULE_MINUTE = getattr(cfg, 'PROMPT_SCHEDULE_MINUTE', 30)
+POLL_RATIO = getattr(cfg, 'PROMPT_POLL_RATIO', 0.4)
 
-# Fallback prompts
-FALLBACK_PROMPTS = [
-    "If happiness was the national currency, what kind of work would make you rich?",
-    "What's a belief you've recently changed your mind about?",
-    "Do we have free will, or is everything predetermined?",
-    "Would society benefit more from truth at all costs or kindness at all costs?",
-    "What is one lesson you feel you learned too late in life?",
-    "How would humanity change if all humans lived to be 500 years old?",
-    "Is ignorance truly bliss?",
-    "Can morality exist independently of religion?",
-    "Would immortality be a gift or a curse?",
-    "Does art imitate life, or does life imitate art?",
-    "What's something you've accomplished that your younger self wouldn't believe?",
-    "What's one thing about your childhood you'd like to recreate as an adult?",
-    "If you could instantly master one skill, what would it be?",
-    "How do you recharge when you're emotionally drained?",
-    "What would your life look like if you had zero fear of failure?",
-    "Who is someone you're grateful to have in your life, and why?",
-    "What’s a personal boundary you've set recently?",
-    "What's your most unusual comfort food?",
-    "Describe a perfect Sunday afternoon.",
-    "How do you define personal success?",
-    "If you could live in any fictional world, which would you choose and why?",
-    "Imagine a world where people age backward. How would society adapt?",
-    "If you could teleport anywhere right now, where would you go?",
-    "If your life had a soundtrack, what would be the theme song?",
-    "If you could design a planet from scratch, what unique features would it have?",
-    "If you could experience someone else’s memory, whose would it be?",
-    "You wake up tomorrow fluent in a new language. Which language and why?",
-    "If colors had tastes, what flavor would blue be?",
-    "You get to write one law everyone must follow. What's your law?",
-    "Imagine you could have dinner with a historical figure—who and why?",
-    "What’s your favorite harmless conspiracy theory?",
-    "If animals could talk, which species would be the most annoying?",
-    "What's your favorite weird food combination?",
-    "What's an embarrassing story you're willing to share?",
-    "What's the funniest misunderstanding you've ever experienced?",
-    "If your life was a movie, who would narrate it?",
-    "Which emoji do you secretly wish existed?",
-    "If your pet could text you, what would their messages look like?",
-    "What is the most overrated snack?",
-    "Describe your personality as a type of bread.",
-    "What's your favorite morning ritual?",
-    "How do you keep your life organized?",
-    "What's one thing you bought that improved your quality of life significantly?",
-    "What's a trend you resisted but later enjoyed?",
-    "Do you prefer routine or spontaneity in your day-to-day life?",
-    "What’s one underrated habit that changed your life for the better?",
-    "What's your ideal way to spend a vacation day?",
-    "What’s something small you do that brings you consistent joy?",
-    "If you could simplify one aspect of your life immediately, what would it be?",
-    "Describe your perfect workspace setup.",
-    "What current technology feels like magic to you?",
-    "How would you feel if AI started managing all your communications?",
-    "If you could invent a new gadget, what problem would it solve?",
-    "What's a piece of technology you think humanity might regret inventing?",
-    "If you had the power to control technology for one day, what would you do?",
-    "Which future innovation do you look forward to most?",
-    "What’s one way technology has unexpectedly improved your life?",
-    "Should humans colonize other planets, or fix Earth first?",
-    "What tech product would you redesign completely?",
-    "How do you think the internet has changed your personality?",
-    "What's the last movie or show that genuinely surprised you?",
-    "If you could erase one film or book from your memory to experience it fresh again, which would it be?",
-    "What's your guilty pleasure TV show or movie?",
-    "What band or musician has influenced you most?",
-    "What’s a book you think everyone should read at least once?",
-    "Which fictional character do you identify with the most?",
-    "If you could host your own podcast, what would the main theme be?",
-    "Recommend a hidden gem (book, movie, or music).",
-    "What's the best live event you've ever attended?",
-    "What's an unpopular entertainment opinion you strongly hold?",
-    "What makes you feel immediately connected to someone new?",
-    "What quality do you value most in a friendship?",
-    "What's something you wish your community did better?",
-    "How do you navigate disagreements with people you care about?",
-    "What's a memorable act of kindness someone did for you?",
-    "How important are shared interests vs. shared values in friendships?",
-    "What's one thing people misunderstand about you?",
-    "How do you show appreciation to the people you care about?",
-    "When do you feel most connected to your community?",
-    "What's a lesson a friend taught you without realizing it?",
-    "What's the best professional advice you've ever received?",
-    "What motivates you beyond money and recognition?",
-    "If you didn't have to work for money, what would you do instead?",
-    "How do you know when it’s time to change jobs or careers?",
-    "What's a professional mistake you learned the most from?",
-    "Describe your ideal work culture.",
-    "How do you stay curious and continuously learn in your profession?",
-    "What's one thing your current career taught you about yourself?",
-    "How would your ideal workday look?",
-    "What's a professional achievement you're especially proud of?",
-    "What's one topic you could give an impromptu TED Talk on?",
-    "If you could only keep five possessions, what would they be?",
-    "How do you balance staying informed with avoiding information overload?",
-    "What's a random fact you love sharing with people?",
-    "What do you wish was taught more in schools?",
-    "What’s one rule you live your life by?",
-    "Do you think humans are fundamentally good or fundamentally flawed?",
-    "If you could see into the future, would you choose to look?",
-    "What's a challenge you initially hated but now appreciate?",
-    "What small daily pleasure makes life worth living for you?",
-    "Which app do you check first every morning and why?",
-    "How do you manage your online privacy on a daily basis?",
-    "What's one piece of digital clutter you'd love to eliminate?",
-]
+# Poll duration (24 hours)
+POLL_DURATION = timedelta(hours=24)
+
+# Path to templates file
+TEMPLATES_PATH = Path(__file__).parent.parent / "data" / "prompt_templates.yaml"
 
 
-def _strip_outer_quotes(text: str) -> str:
-    """Remove matching leading and trailing single or double quotes."""
-    text = text.strip()
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
-        return text[1:-1].strip()
-    return text
+def load_templates() -> dict:
+    """Load prompt templates from YAML file."""
+    try:
+        with open(TEMPLATES_PATH, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        log.error("Template file not found: %s", TEMPLATES_PATH)
+        return {}
+    except yaml.YAMLError as e:
+        log.error("Failed to parse template file: %s", e)
+        return {}
 
-# Prompt categories
-PROMPT_CATEGORIES = [
-    "Community Retrospective",
-    "Learning Explainer",
-    "Current Events",
-    "Creative Challenge",
-]
-
-LEARNING_TOPICS = [
-    "practical Python tips",
-    "how to scope a side project",
-    "habits for consistent learning",
-    "explainers on AI alignment basics",
-    "approachable game design concepts",
-    "debugging strategies you rely on",
-    "how to evaluate online sources",
-    "favorite note-taking systems",
-    "design patterns that actually help",
-    "how to mentor newcomers effectively",
-    "time management for remote teams",
-    "setting boundaries at work",
-    "kitchen safety basics",
-    "meal prep for busy weeks",
-    "budgeting and zero-based envelopes",
-    "tracking personal expenses",
-    "intro to retirement accounts",
-    "home maintenance checklists",
-    "how to choose contractors",
-    "apartment organization hacks",
-    "decluttering without overwhelm",
-    "basic lawn care and watering",
-    "how to read an electric bill",
-    "renters insurance explained",
-    "moving house with less stress",
-    "safety tips for power tools",
-    "starter woodworking joints",
-    "sewing repairs for beginners",
-    "mending clothes by hand",
-    "introduction to crochet stitches",
-    "knitting gauge and yarn weights",
-    "setting up a craft workspace",
-    "photography basics for DIY listings",
-    "writing polite but firm emails",
-    "facilitating productive meetings",
-    "how to delegate effectively",
-    "feedback models that reduce friction",
-    "stress management during crunch times",
-    "public speaking without slides",
-    "parenting calm-down strategies",
-    "age-appropriate chores",
-    "creating family routines",
-    "supporting homework without micromanaging",
-    "talking about online safety with kids",
-    "caring for houseplants",
-    "composting at home",
-    "energy-saving habits in winter",
-    "basic first aid everyone should know",
-    "what to pack in a go-bag",
-    "car maintenance milestones",
-    "reading nutrition labels",
-    "planning inclusive community events",
-    "volunteering without burnout",
-]
-
-CREATIVE_CHALLENGES = [
-    "write a two-sentence sci-fi hook",
-    "invent a cozy creature and describe its habitat",
-    "pitch a wholesome community ritual",
-    "design a daily micro-habit for kindness",
-    "describe an imaginary festival menu",
-    "draft a six-word memoir",
-    "invent a holiday that celebrates curiosity",
-    "outline a 10-minute build using household items",
-    "compose a haiku about today's mood",
-    "dream up a cooperative board game twist",
-    "sketch a floor plan for your dream reading nook",
-    "rewrite a classic proverb for modern times",
-    "invent a candle scent and write the label",
-    "design a whimsical mailbox for a fairy",
-    "pitch a short podcast episode title and blurb",
-    "describe a superhero whose only power is kindness",
-    "outline a three-panel comic about lost keys",
-    "draft an ad for a ridiculous household gadget",
-    "write a recipe for a dessert with no sugar",
-    "invent a festival game using only cardboard",
-    "compose a two-line lullaby",
-    "create a morning affirmation for students",
-    "name and describe a constellation you just discovered",
-    "write a postcard from a future city",
-    "design a bookmark series theme",
-    "invent a quirky coworking space perk",
-    "describe a garden planted on a balcony",
-    "pitch a mini escape room in a shoebox",
-    "outline a community scavenger hunt clue",
-    "write dialogue between a toaster and a cat",
-    "describe a room that changes with seasons",
-    "invent a new color and how it feels",
-    "draft a toast for someone trying something new",
-    "write a thank-you note to your future self",
-    "create a chore chart that feels like a game",
-    "design a bookmark for kids learning to read",
-    "write a limerick about doing taxes",
-    "invent a cozy winter tradition",
-    "describe a snow sculpture challenge",
-    "outline a five-minute desk stretch routine",
-    "write the first line of a mystery set in a library",
-    "pitch a weekend DIY project with scrap wood",
-    "write a motivational sticky note for coworkers",
-    "invent a reusable gift wrap idea",
-    "design a low-tech way to track goals",
-    "write a pep talk from your favorite plant",
-    "describe a playlist for cleaning day",
-    "create a one-minute puppet show plot",
-    "invent a mascot for a neighborhood block party",
-    "describe a quilt pattern inspired by weather",
-    "write an invitation to a kindness challenge",
-    "design a badge system for household chores",
-]
-
-CURRENT_EVENTS_ENDPOINT = (
-    "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30"
-)
-CURRENT_EVENTS_BLOCKLIST = {"sport", "sports", "game", "games"}
 
 class PromptCog(commands.Cog):
-    """Scheduled and on‑demand AI-powered prompt generator with random category selection."""
+    """
+    Template-based prompt generator with native Discord poll support.
+
+    Posts a mix of text prompts and interactive polls based on PROMPT_POLL_RATIO.
+    Tracks engagement and rotates through categories to maintain variety.
+    """
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        size = getattr(cfg, 'PROMPT_HISTORY_SIZE', 5)
-        self.history = deque(maxlen=size)
+        self.history: deque[str] = deque(maxlen=20)  # Track recent prompts to avoid repeats
         self._scheduler_task = None
         self.pool: asyncpg.Pool | None = None
         self.past_prompts: set[str] = set()
-        self.last_category: str = ""
-        self.last_topic: str | None = None
         self.prompts_enabled = getattr(cfg, "DAILY_PROMPT_ENABLED", False)
 
+        # Load templates
+        self.templates = load_templates()
+
+        # Track category usage for weighted rotation
+        self.text_category_weights: dict[str, float] = {}
+        self.poll_category_weights: dict[str, float] = {}
+        self._init_category_weights()
+
+        # Last used info for archival
+        self.last_category: str = ""
+        self.last_prompt_type: str = ""  # "text" or "poll"
+
+    def _init_category_weights(self):
+        """Initialize category weights for weighted random selection."""
+        text_prompts = self.templates.get("text_prompts", {})
+        poll_prompts = self.templates.get("poll_prompts", {})
+
+        # Equal weights initially - categories used recently get lower weights
+        for cat in text_prompts:
+            self.text_category_weights[cat] = 1.0
+        for cat in poll_prompts:
+            self.poll_category_weights[cat] = 1.0
+
     async def cog_load(self) -> None:
+        """Load past prompts from database to avoid repetition."""
         try:
             self.pool = await get_pool()
         except RuntimeError:
@@ -302,7 +114,7 @@ class PromptCog(commands.Cog):
             rows = await self.pool.fetch(
                 "SELECT prompt FROM discord.daily_prompt ORDER BY created_at"
             )
-        except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
+        except asyncpg.UndefinedTableError:
             log.warning("daily_prompt table not found; prompt history disabled")
             return
         self.past_prompts = {r["prompt"] for r in rows}
@@ -315,83 +127,99 @@ class PromptCog(commands.Cog):
             self._scheduler_task = None
         self.pool = None
 
-    async def fetch_prompt(self) -> str:
-        """Generate a new prompt via Gemini inference, including history."""
-        category = random.choice(PROMPT_CATEGORIES)
-        self.last_category = category
-        messages = [
-            {
-                'role': 'system',
-                'content': (
-                    'You generate constructive, inclusive discussion prompts for a friendly Discord group.'
-                ),
-            }
-        ]
-        messages += [{'role': 'assistant', 'content': p} for p in self.history]
-        topic = None
-        if category == "Community Retrospective":
-            topic = await self._recent_server_topic()
-            user_content = (
-                "Invite members to reflect on recent community conversations about "
-                f"'{topic}'. Ask for highlights, lessons, or next steps in a warm, inclusive tone. "
-                "Respond only with the prompt itself and keep it under 180 characters."
-            )
-        elif category == "Learning Explainer":
-            topic = random.choice(LEARNING_TOPICS)
-            user_content = (
-                "Create one prompt asking members to share a concise explainer or teaching moment about "
-                f"{topic}. Encourage practical examples and beginner-friendly framing. "
-                "Respond only with the prompt itself and keep it under 180 characters."
-            )
-        elif category == "Current Events":
-            topic = await self._current_events_topic()
-            if topic:
-                user_content = (
-                    "Generate one prompt inviting thoughtful discussion about this non-sports headline: "
-                    f"'{topic}'. Encourage context, media literacy, and real-world implications. "
-                    "Avoid sensationalism. Respond only with the prompt itself and keep it under 180 characters."
-                )
-            else:
-                user_content = (
-                    "Generate one prompt about a timely non-sports current event, encouraging reflection on its "
-                    "impact and sources. Respond only with the prompt itself and keep it under 180 characters."
-                )
-        else:  # Creative Challenge
-            topic = random.choice(CREATIVE_CHALLENGES)
-            user_content = (
-                "Create one playful creative challenge for the community: "
-                f"{topic}. Make it doable in under 10 minutes and invite sharing results. "
-                "Respond only with the prompt itself and keep it under 180 characters."
-            )
-        messages.append({'role': 'user', 'content': user_content})
-        try:
-            content = await asyncio.to_thread(
-                router.generate, "scheduled", messages, 0.8
-            )
-            if content:
-                prompt = _strip_outer_quotes(content)
-                if prompt not in self.past_prompts:
-                    self.history.append(prompt)
-                    self.past_prompts.add(prompt)
-                    self.last_topic = topic
-                    return prompt
-        except (RateLimited, SafetyBlocked) as e:
-            log.warning("scheduled prompt generation failed: %s", e)
-        except Exception as e:  # pragma: no cover - network
-            log.exception("inference error: %s", e)
-        prompt = random.choice(FALLBACK_PROMPTS) if FALLBACK_PROMPTS else "Share something interesting today."
-        prompt = _strip_outer_quotes(prompt)
-        self.history.append(prompt)
-        self.past_prompts.add(prompt)
-        self.last_topic = topic
-        return prompt
+    def _select_text_prompt(self) -> tuple[str, str]:
+        """
+        Select a text prompt using weighted random category selection.
+        Returns (prompt, category).
+        """
+        text_prompts = self.templates.get("text_prompts", {})
+        if not text_prompts:
+            return ("What's on your mind today?", "fallback")
+
+        # Weighted random selection of category
+        categories = list(text_prompts.keys())
+        weights = [self.text_category_weights.get(cat, 1.0) for cat in categories]
+
+        # Normalize weights
+        total = sum(weights)
+        if total > 0:
+            weights = [w / total for w in weights]
+        else:
+            weights = [1.0 / len(categories)] * len(categories)
+
+        category = random.choices(categories, weights=weights, k=1)[0]
+        prompts = text_prompts[category]
+
+        # Select a prompt not recently used
+        available = [p for p in prompts if p not in self.past_prompts]
+        if not available:
+            # All prompts used, reset and allow repeats of older ones
+            available = prompts
+
+        prompt = random.choice(available)
+
+        # Decrease weight of used category (will recover over time)
+        self.text_category_weights[category] *= 0.5
+
+        # Slowly restore other category weights
+        for cat in self.text_category_weights:
+            if cat != category:
+                self.text_category_weights[cat] = min(1.0, self.text_category_weights[cat] * 1.1)
+
+        return (prompt, category)
+
+    def _select_poll(self) -> tuple[dict, str]:
+        """
+        Select a poll template using weighted random category selection.
+        Returns (poll_dict, category).
+        """
+        poll_prompts = self.templates.get("poll_prompts", {})
+        if not poll_prompts:
+            return ({"question": "What's your preference?", "options": ["A", "B"]}, "fallback")
+
+        # Weighted random selection of category
+        categories = list(poll_prompts.keys())
+        weights = [self.poll_category_weights.get(cat, 1.0) for cat in categories]
+
+        # Normalize weights
+        total = sum(weights)
+        if total > 0:
+            weights = [w / total for w in weights]
+        else:
+            weights = [1.0 / len(categories)] * len(categories)
+
+        category = random.choices(categories, weights=weights, k=1)[0]
+        polls = poll_prompts[category]
+
+        # Select a poll not recently used (by question text)
+        available = [p for p in polls if p.get("question", "") not in self.past_prompts]
+        if not available:
+            available = polls
+
+        poll = random.choice(available)
+
+        # Decrease weight of used category
+        self.poll_category_weights[category] *= 0.5
+
+        # Slowly restore other category weights
+        for cat in self.poll_category_weights:
+            if cat != category:
+                self.poll_category_weights[cat] = min(1.0, self.poll_category_weights[cat] * 1.1)
+
+        return (poll, category)
+
+    def _should_use_poll(self) -> bool:
+        """Determine if this prompt should be a poll based on POLL_RATIO."""
+        return random.random() < POLL_RATIO
 
     async def _archive_prompt(
-        self, prompt: str, category: str, channel_id: int, topic: str | None = None
+        self, prompt: str, category: str, channel_id: int, prompt_type: str
     ) -> None:
+        """Store prompt in database for history tracking."""
         if not self.pool:
             return
         try:
+            # Use topic field to store prompt type (text/poll)
             await self.pool.execute(
                 """
                 INSERT INTO discord.daily_prompt
@@ -407,79 +235,13 @@ class PromptCog(commands.Cog):
                 prompt,
                 category,
                 channel_id,
-                topic,
+                prompt_type,
             )
-        except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):  # pragma: no cover - requires DB
+        except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
             log.warning("daily_prompt table not found; prompt not archived")
 
-    async def _recent_server_topic(self) -> str:
-        if not self.pool:
-            return "the community"
-        rows = await self.pool.fetch(
-            """
-            SELECT m.content
-            FROM discord.message m
-            JOIN discord."user" u ON u.user_id = m.author_id
-            JOIN discord.channel c ON c.channel_id = m.channel_id
-            WHERE u.is_bot = FALSE
-              AND c.type = 0
-              AND m.created_at >= now() - interval '72 hours'
-            ORDER BY m.created_at DESC
-            LIMIT 200
-            """,
-        )
-        text = "\n".join(r["content"] for r in rows if r["content"])
-        if not text:
-            return "the community"
-        try:
-            content = await asyncio.to_thread(
-                router.generate,
-                "scheduled",
-                [{'role': 'user', 'content': 'Summarize the main topic of these messages in a short noun phrase.\n' + text}],
-                0.8,
-            )
-            return content.strip() or "the community"
-        except RateLimited:
-            return "the community"
-        except SafetyBlocked:
-            return "the community"
-        except Exception as exc:  # pragma: no cover - network
-            log.exception("topic summary failed: %s", exc)
-            return "the community"
-
-    async def _current_events_topic(self) -> str | None:
-        """Fetch a non-sports headline from Hacker News front page as a lightweight current events source."""
-        try:
-            resp = await asyncio.to_thread(
-                requests.get,
-                CURRENT_EVENTS_ENDPOINT,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            hits = data.get("hits", [])
-            headlines: list[str] = []
-            for hit in hits:
-                title = hit.get("title") or hit.get("story_title")
-                if not title:
-                    continue
-                lowered = title.lower()
-                if any(word in lowered for word in CURRENT_EVENTS_BLOCKLIST):
-                    continue
-                headlines.append(title)
-            return random.choice(headlines) if headlines else None
-        except Exception as exc:  # pragma: no cover - network
-            log.exception("current events fetch failed: %s", exc)
-            return None
-
-    def _next_run_time(self, now: datetime) -> datetime:
-        next_run = now.replace(hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, second=0, microsecond=0)
-        if next_run <= now:
-            next_run += timedelta(days=1)
-        return next_run
-
     async def _send_prompt(self):
-        # Retrieve and cast channel ID
+        """Generate and send the daily prompt (text or poll)."""
         raw_channel = getattr(cfg, 'DAILY_PING_CHANNEL', None)
         try:
             channel_id = int(raw_channel) if raw_channel is not None else None
@@ -489,6 +251,7 @@ class PromptCog(commands.Cog):
         if channel_id is None:
             log.error("DAILY_PING_CHANNEL not set in config.")
             return
+
         channel = self.bot.get_channel(channel_id)
         if channel is None:
             try:
@@ -496,29 +259,93 @@ class PromptCog(commands.Cog):
             except Exception as exc:
                 log.error("Unable to find channel with ID %s: %s", channel_id, exc)
                 return
-        prompt = await self.fetch_prompt()
-        category = self.last_category
+
+        # Decide: poll or text?
+        if self._should_use_poll():
+            await self._send_poll(channel)
+        else:
+            await self._send_text_prompt(channel)
+
+    async def _send_text_prompt(self, channel: discord.TextChannel):
+        """Send a text-based prompt."""
+        prompt, category = self._select_text_prompt()
+
+        self.last_category = category
+        self.last_prompt_type = "text"
+
         try:
-            await channel.send(f"{prompt}")
+            await channel.send(prompt)
+            log.info("Sent text prompt [%s]: %s", category, prompt[:50])
         except Exception as exc:
-            log.error("Failed to send prompt message: %s", exc)
+            log.error("Failed to send text prompt: %s", exc)
             return
-        await self._archive_prompt(prompt, category, channel.id, self.last_topic)
+
+        # Track history
+        self.history.append(prompt)
+        self.past_prompts.add(prompt)
+
+        # Archive
+        await self._archive_prompt(prompt, category, channel.id, "text")
+
+    async def _send_poll(self, channel: discord.TextChannel):
+        """Send a native Discord poll."""
+        poll_data, category = self._select_poll()
+
+        question = poll_data.get("question", "What do you think?")
+        options = poll_data.get("options", ["Option A", "Option B"])
+
+        self.last_category = category
+        self.last_prompt_type = "poll"
+
+        try:
+            # Create native Discord poll
+            poll = discord.Poll(
+                question=discord.PollQuestion(text=question),
+                duration=POLL_DURATION,
+            )
+
+            # Add answers
+            for option in options[:10]:  # Discord limits to 10 options
+                poll.add_answer(text=option)
+
+            await channel.send(poll=poll)
+            log.info("Sent poll [%s]: %s", category, question)
+        except Exception as exc:
+            log.error("Failed to send poll: %s", exc)
+            # Fallback to text prompt if poll fails
+            await self._send_text_prompt(channel)
+            return
+
+        # Track history using question as identifier
+        self.history.append(question)
+        self.past_prompts.add(question)
+
+        # Archive
+        await self._archive_prompt(question, category, channel.id, "poll")
+
+    def _next_run_time(self, now: datetime) -> datetime:
+        """Calculate the next scheduled run time."""
+        next_run = now.replace(
+            hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, second=0, microsecond=0
+        )
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        return next_run
 
     async def _scheduler(self):
+        """Main scheduling loop for daily prompts."""
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             now = datetime.now(LOCAL_TZ)
             next_run = self._next_run_time(now)
-            # Log next scheduled time
             formatted = next_run.strftime("%I:%M:%S %p %Z").lstrip('0')
             log.info("Next prompt scheduled at %s", formatted)
-            # Sleep until then
+
             wait_seconds = (next_run - now).total_seconds()
             await asyncio.sleep(wait_seconds)
-            # Time to send prompt
+
             log.info(
-                "firing scheduled prompt at %s",
+                "Firing scheduled prompt at %s",
                 datetime.now(LOCAL_TZ).strftime("%I:%M:%S %p %Z"),
             )
             try:
@@ -526,11 +353,11 @@ class PromptCog(commands.Cog):
             except asyncio.CancelledError:
                 raise
             except Exception:
-                log.exception("scheduled prompt failed")
-            # Loop continues to schedule next day
+                log.exception("Scheduled prompt failed")
 
     @commands.Cog.listener()
     async def on_ready(self):
+        """Start or stop the scheduler based on configuration."""
         if not self.prompts_enabled:
             if self._scheduler_task and not self._scheduler_task.done():
                 self._scheduler_task.cancel()
@@ -541,13 +368,14 @@ class PromptCog(commands.Cog):
             self._scheduler_task = None
             log.info("Daily prompt scheduler paused by configuration.")
             return
-        # Start scheduler once
+
         if self._scheduler_task is None or self._scheduler_task.done():
-            log.info("Starting scheduler task.")
+            log.info("Starting prompt scheduler task.")
             self._scheduler_task = self.bot.loop.create_task(self._scheduler())
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message) -> None:
+        """Track message count for engagement metrics."""
         if msg.author.bot or not self.pool:
             return
         try:
@@ -567,14 +395,67 @@ class PromptCog(commands.Cog):
                 today,
                 tomorrow,
             )
-        except asyncpg.UndefinedTableError:  # pragma: no cover - requires DB
+        except asyncpg.UndefinedTableError:
             pass
 
     @commands.command(name='skip_prompt')
     async def skip_prompt(self, ctx: commands.Context):
-        log.info("skip_prompt invoked by %s in %s", user_name(ctx.author), chan_name(ctx.channel))
-        prompt = await self.fetch_prompt()
-        await ctx.send(f"{prompt}")
+        """Immediately generate and post a new prompt."""
+        log.info(
+            "skip_prompt invoked by %s in %s",
+            user_name(ctx.author),
+            chan_name(ctx.channel),
+        )
+
+        # Decide: poll or text?
+        if self._should_use_poll():
+            await self._send_poll(ctx.channel)
+        else:
+            prompt, category = self._select_text_prompt()
+            self.history.append(prompt)
+            self.past_prompts.add(prompt)
+            await ctx.send(prompt)
+
+    @commands.command(name='prompt_poll')
+    async def prompt_poll(self, ctx: commands.Context):
+        """Force a poll prompt (for testing)."""
+        log.info(
+            "prompt_poll invoked by %s in %s",
+            user_name(ctx.author),
+            chan_name(ctx.channel),
+        )
+        await self._send_poll(ctx.channel)
+
+    @commands.command(name='prompt_text')
+    async def prompt_text(self, ctx: commands.Context):
+        """Force a text prompt (for testing)."""
+        log.info(
+            "prompt_text invoked by %s in %s",
+            user_name(ctx.author),
+            chan_name(ctx.channel),
+        )
+        await self._send_text_prompt(ctx.channel)
+
+    @commands.command(name='prompt_stats')
+    async def prompt_stats(self, ctx: commands.Context):
+        """Show prompt system statistics."""
+        text_prompts = self.templates.get("text_prompts", {})
+        poll_prompts = self.templates.get("poll_prompts", {})
+
+        text_count = sum(len(v) for v in text_prompts.values())
+        poll_count = sum(len(v) for v in poll_prompts.values())
+
+        stats = (
+            f"**Prompt System Stats**\n"
+            f"• Text prompts: {text_count} across {len(text_prompts)} categories\n"
+            f"• Poll templates: {poll_count} across {len(poll_prompts)} categories\n"
+            f"• Poll ratio: {POLL_RATIO:.0%}\n"
+            f"• Schedule: {SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d} PT\n"
+            f"• Used prompts in history: {len(self.past_prompts)}\n"
+            f"• Scheduler enabled: {self.prompts_enabled}"
+        )
+        await ctx.send(stats)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PromptCog(bot))
