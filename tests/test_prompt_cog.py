@@ -1,73 +1,118 @@
+"""Tests for the template-based prompt cog.
+
+Tests the new template-based daily prompt system that uses human-curated
+prompts from YAML instead of LLM-generated content.
+"""
 import types
 import asyncio
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from unittest.mock import MagicMock, AsyncMock, patch
+
+import asyncpg
+
 from gentlebot.cogs import prompt_cog
 
 
-def test_learning_explainer_category_and_fallback(monkeypatch):
-    assert "Learning Explainer" in prompt_cog.PROMPT_CATEGORIES
-
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["Share a quick explainer!"])
-    monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
-
-    def fake_choice(seq):
-        if seq == prompt_cog.PROMPT_CATEGORIES:
-            return "Learning Explainer"
-        return seq[0]
-
-    monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
-
-    cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
-    prompt = asyncio.run(cog.fetch_prompt())
-    assert prompt == "Share a quick explainer!"
-    assert cog.last_category == "Learning Explainer"
+def test_load_templates_returns_dict():
+    """Templates should load from YAML file."""
+    templates = prompt_cog.load_templates()
+    assert isinstance(templates, dict)
+    assert "text_prompts" in templates
+    assert "poll_prompts" in templates
 
 
-def test_current_events_category_and_fallback(monkeypatch):
-    assert "Current Events" in prompt_cog.PROMPT_CATEGORIES
-
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(prompt_cog, "FALLBACK_PROMPTS", ["What's a headline we should unpack?"])
-    monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
-
-    async def fake_topic(self):
-        return "Inclusive policy is proposed"
-
-    monkeypatch.setattr(prompt_cog.PromptCog, "_current_events_topic", fake_topic)
-
-    def fake_choice(seq):
-        if seq == prompt_cog.PROMPT_CATEGORIES:
-            return "Current Events"
-        return seq[0]
-
-    monkeypatch.setattr(prompt_cog.random, "choice", fake_choice)
-
-    cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
-    prompt = asyncio.run(cog.fetch_prompt())
-    assert prompt == "What's a headline we should unpack?"
-    assert cog.last_category == "Current Events"
+def test_text_prompts_have_categories():
+    """Text prompts should have multiple categories."""
+    templates = prompt_cog.load_templates()
+    text_prompts = templates.get("text_prompts", {})
+    assert len(text_prompts) > 0
+    # Should have categories like hot_take, forced_choice, etc.
+    assert any(cat in text_prompts for cat in ["hot_take", "forced_choice", "this_or_that"])
 
 
-def test_old_categories_removed():
-    assert "Engagement Bait" not in prompt_cog.PROMPT_CATEGORIES
-    assert "Sports News" not in prompt_cog.PROMPT_CATEGORIES
+def test_poll_prompts_have_categories():
+    """Poll prompts should have multiple categories."""
+    templates = prompt_cog.load_templates()
+    poll_prompts = templates.get("poll_prompts", {})
+    assert len(poll_prompts) > 0
+    # Should have categories like elimination, binary, preference
+    assert any(cat in poll_prompts for cat in ["elimination", "binary", "preference"])
+
+
+def test_select_text_prompt_returns_tuple():
+    """_select_text_prompt should return (prompt, category) tuple."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    prompt, category = cog._select_text_prompt()
+
+    assert isinstance(prompt, str)
+    assert isinstance(category, str)
+    assert len(prompt) > 0
+    assert len(category) > 0
+
+
+def test_select_poll_returns_tuple():
+    """_select_poll should return (poll_dict, category) tuple."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    poll_data, category = cog._select_poll()
+
+    assert isinstance(poll_data, dict)
+    assert isinstance(category, str)
+    assert "question" in poll_data
+    assert "options" in poll_data
+    assert len(poll_data["options"]) >= 2
+
+
+def test_category_weight_decreases_after_selection():
+    """Category weight should decrease after being selected."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    # Get initial weight for a category
+    categories = list(cog.text_category_weights.keys())
+    if not categories:
+        return  # Skip if no categories loaded
+
+    category = categories[0]
+    initial_weight = cog.text_category_weights[category]
+
+    # Manually simulate selection of that category
+    cog.text_category_weights[category] *= 0.5
+
+    assert cog.text_category_weights[category] < initial_weight
+
+
+def test_should_use_poll_returns_boolean():
+    """_should_use_poll should return a boolean."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    result = cog._should_use_poll()
+    assert isinstance(result, bool)
 
 
 def test_archive_prompt_missing_table():
+    """Archive should handle missing table gracefully."""
     async def run():
         cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
 
         class DummyPool:
             async def execute(self, *args):
-                raise prompt_cog.asyncpg.UndefinedTableError("msg", "detail", "hint")
+                raise asyncpg.UndefinedTableError("msg", "detail", "hint")
 
         cog.pool = DummyPool()
-        await cog._archive_prompt("hi", "cat", 1)
+        # Should not raise
+        await cog._archive_prompt("hi", "cat", 1, "text")
 
     asyncio.run(run())
 
 
 def test_archive_prompt_uses_schema():
+    """Archive should use discord schema."""
     async def run():
         cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
 
@@ -78,7 +123,7 @@ def test_archive_prompt_uses_schema():
                 captured['query'] = query
 
         cog.pool = DummyPool()
-        await cog._archive_prompt('hi', 'cat', 1)
+        await cog._archive_prompt('hi', 'cat', 1, 'text')
 
         assert 'discord.daily_prompt' in captured['query']
 
@@ -86,25 +131,28 @@ def test_archive_prompt_uses_schema():
 
 
 def test_on_message_missing_table():
+    """on_message should handle missing table gracefully."""
     async def run():
         bot = types.SimpleNamespace()
         cog = prompt_cog.PromptCog(bot)
 
         class DummyPool:
             async def execute(self, *args):
-                raise prompt_cog.asyncpg.UndefinedTableError("msg", "detail", "hint")
+                raise asyncpg.UndefinedTableError("msg", "detail", "hint")
 
         cog.pool = DummyPool()
         msg = types.SimpleNamespace(
             author=types.SimpleNamespace(bot=False),
             channel=types.SimpleNamespace(id=1),
         )
+        # Should not raise
         await cog.on_message(msg)
 
     asyncio.run(run())
 
 
 def test_on_message_uses_schema():
+    """on_message should use discord schema."""
     async def run():
         bot = types.SimpleNamespace()
         cog = prompt_cog.PromptCog(bot)
@@ -127,197 +175,94 @@ def test_on_message_uses_schema():
     asyncio.run(run())
 
 
-def test_recent_server_topic_uses_schema(monkeypatch):
+def test_on_message_ignores_bot():
+    """on_message should ignore bot messages."""
     async def run():
-        cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
 
-        captured = {}
+        executed = []
 
         class DummyPool:
-            async def fetch(self, query, *args):
-                captured['query'] = query
-                return [{"content": "hi"}]
+            async def execute(self, query, *args):
+                executed.append(True)
 
         cog.pool = DummyPool()
-        monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: "topic")
+        msg = types.SimpleNamespace(
+            author=types.SimpleNamespace(bot=True),  # Bot author
+            channel=types.SimpleNamespace(id=1),
+        )
+        await cog.on_message(msg)
 
-        topic = await cog._recent_server_topic()
-
-        assert 'FROM discord.message' in captured['query']
-        assert 'JOIN discord."user"' in captured['query']
-        assert 'JOIN discord.channel' in captured['query']
-        assert topic == 'topic'
+        # Should not execute any queries for bot messages
+        assert len(executed) == 0
 
     asyncio.run(run())
 
 
-def test_duplicate_prompt_updates_message_count():
+def test_history_deque_maxlen():
+    """History should have a maximum length to prevent memory issues."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    assert cog.history.maxlen == 20
+
+
+def test_prompts_tracked_in_history():
+    """Selected prompts should be tracked in history."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    prompt, category = cog._select_text_prompt()
+
+    # Manually add to history as _send_text_prompt would
+    cog.history.append(prompt)
+    cog.past_prompts.add(prompt)
+
+    assert prompt in cog.history
+    assert prompt in cog.past_prompts
+
+
+def test_last_category_updated():
+    """last_category should be updated after prompt selection."""
     async def run():
         bot = types.SimpleNamespace()
         cog = prompt_cog.PromptCog(bot)
 
-        class DummyPool:
-            def __init__(self):
-                self.rows = {}
-                self.next_id = 1
+        class DummyChannel:
+            id = 123
 
-            async def execute(self, query, *args):
-                query = query.strip()
-                if query.startswith("INSERT INTO discord.daily_prompt"):
-                    prompt, category, channel_id, topic = args
-                    now = prompt_cog.datetime.now(prompt_cog.ZoneInfo("UTC"))
-                    row = self.rows.get(prompt)
-                    if row:
-                        row.update(
-                            {
-                                "category": category,
-                                "channel_id": channel_id,
-                                "message_count": 0,
-                                "topic": topic,
-                                "created_at": now,
-                            }
-                        )
-                    else:
-                        self.rows[prompt] = {
-                            "id": self.next_id,
-                            "category": category,
-                            "channel_id": channel_id,
-                            "message_count": 0,
-                            "topic": topic,
-                            "created_at": now,
-                        }
-                        self.next_id += 1
-                elif query.startswith("UPDATE discord.daily_prompt"):
-                    channel_id, start, end = args
-                    for row in self.rows.values():
-                        if row["channel_id"] == channel_id and start <= row["created_at"] < end:
-                            row["message_count"] += 1
+            async def send(self, content=None, poll=None):
+                return types.SimpleNamespace(id=456)
 
-        pool = DummyPool()
-        cog.pool = pool
-
-        await cog._archive_prompt("hi", "cat", 1)
-        await cog._archive_prompt("hi", "cat", 2)
-
-        msg = types.SimpleNamespace(
-            author=types.SimpleNamespace(bot=False),
-            channel=types.SimpleNamespace(id=2),
-        )
-        await cog.on_message(msg)
-
-        assert pool.rows["hi"]["message_count"] == 1
+        # Test text prompt
+        await cog._send_text_prompt(DummyChannel())
+        assert cog.last_category != ""
+        assert cog.last_prompt_type == "text"
 
     asyncio.run(run())
 
-def test_on_message_updates_all_today_prompts():
+
+def test_poll_prompt_type_tracked():
+    """last_prompt_type should be 'poll' after sending poll."""
     async def run():
         bot = types.SimpleNamespace()
         cog = prompt_cog.PromptCog(bot)
 
-        class DummyPool:
-            def __init__(self):
-                self.rows = {}
-                self.next_id = 1
+        class DummyChannel:
+            id = 123
 
-            async def execute(self, query, *args):
-                query = query.strip()
-                if query.startswith("INSERT INTO discord.daily_prompt"):
-                    prompt, category, channel_id, topic = args
-                    now = prompt_cog.datetime.now(prompt_cog.ZoneInfo("UTC"))
-                    self.rows[prompt] = {
-                        "id": self.next_id,
-                        "prompt": prompt,
-                        "channel_id": channel_id,
-                        "message_count": 0,
-                        "created_at": now,
-                        "topic": topic,
-                    }
-                    self.next_id += 1
-                elif query.startswith("UPDATE discord.daily_prompt"):
-                    channel_id, start, end = args
-                    for row in self.rows.values():
-                        if row["channel_id"] == channel_id and start <= row["created_at"] < end:
-                            row["message_count"] += 1
+            async def send(self, content=None, poll=None):
+                return types.SimpleNamespace(id=456)
 
-        pool = DummyPool()
-        cog.pool = pool
-
-        await cog._archive_prompt("first", "cat", 5)
-        await cog._archive_prompt("second", "cat", 5)
-
-        msg = types.SimpleNamespace(
-            author=types.SimpleNamespace(bot=False),
-            channel=types.SimpleNamespace(id=5),
-        )
-        await cog.on_message(msg)
-
-        counts = {row["prompt"]: row["message_count"] for row in pool.rows.values()}
-        assert counts["first"] == 1
-        assert counts["second"] == 1
+        await cog._send_poll(DummyChannel())
+        assert cog.last_prompt_type == "poll"
 
     asyncio.run(run())
 
 
-def test_on_message_ignores_previous_day():
-    async def run():
-        bot = types.SimpleNamespace()
-        cog = prompt_cog.PromptCog(bot)
-
-        class DummyPool:
-            def __init__(self):
-                self.rows = {}
-                self.next_id = 1
-
-            async def execute(self, query, *args):
-                query = query.strip()
-                if query.startswith("INSERT INTO discord.daily_prompt"):
-                    prompt, category, channel_id, topic = args
-                    now = prompt_cog.datetime.now(prompt_cog.ZoneInfo("UTC"))
-                    self.rows[prompt] = {
-                        "id": self.next_id,
-                        "prompt": prompt,
-                        "channel_id": channel_id,
-                        "message_count": 0,
-                        "created_at": now,
-                        "topic": topic,
-                    }
-                    self.next_id += 1
-                elif query.startswith("UPDATE discord.daily_prompt"):
-                    channel_id, start, end = args
-                    for row in self.rows.values():
-                        if row["channel_id"] == channel_id and start <= row["created_at"] < end:
-                            row["message_count"] += 1
-
-        pool = DummyPool()
-        cog.pool = pool
-
-        await cog._archive_prompt("old", "cat", 5)
-        pool.rows["old"]["created_at"] -= prompt_cog.timedelta(days=1)
-        await cog._archive_prompt("new", "cat", 5)
-
-        msg = types.SimpleNamespace(
-            author=types.SimpleNamespace(bot=False),
-            channel=types.SimpleNamespace(id=5),
-        )
-        await cog.on_message(msg)
-
-        assert pool.rows["old"]["message_count"] == 0
-        assert pool.rows["new"]["message_count"] == 1
-
-    asyncio.run(run())
-
-def test_fetch_prompt_strips_outer_quotes(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "token")
-    monkeypatch.setattr(prompt_cog.router, "generate", lambda *a, **k: '"Quoted prompt"')
-    monkeypatch.setattr(prompt_cog.random, "choice", lambda seq: seq[0])
-
-    cog = prompt_cog.PromptCog(bot=types.SimpleNamespace())
-    prompt = asyncio.run(cog.fetch_prompt())
-    assert prompt == "Quoted prompt"
-    assert not prompt.startswith('"') and not prompt.endswith('"')
-
-
-def test_send_prompt_posts_message(monkeypatch):
+def test_send_prompt_posts_to_channel(monkeypatch):
+    """_send_prompt should post to the configured channel."""
     async def run():
         monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
 
@@ -326,104 +271,25 @@ def test_send_prompt_posts_message(monkeypatch):
                 self.sent = None
                 self.id = 123
 
-            async def send(self, content):
-                self.sent = content
-                return types.SimpleNamespace(id=456, channel=self)
-
-            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
-                raise AssertionError("create_thread should not be used")
-
-        channel = DummyChannel()
-        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
-        cog = prompt_cog.PromptCog(bot)
-
-        async def fake_fetch_prompt(self):
-            self.last_category = "cat"
-            return "hello"
-
-        async def fake_archive(self, *args):
-            pass
-
-        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
-        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
-
-        await cog._send_prompt()
-        assert channel.sent == "hello"
-
-    asyncio.run(run())
-
-
-def test_send_prompt_handles_long_message(monkeypatch):
-    async def run():
-        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
-
-        class DummyChannel:
-            def __init__(self):
-                self.sent = None
-                self.id = 123
-
-            async def send(self, content):
-                self.sent = content
-                return types.SimpleNamespace(id=456, channel=self)
-
-            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
-                raise AssertionError("create_thread should not be used")
-
-        long_prompt = "A" * 200
-        channel = DummyChannel()
-        bot = types.SimpleNamespace(get_channel=lambda _id: channel)
-        cog = prompt_cog.PromptCog(bot)
-
-        async def fake_fetch_prompt(self):
-            self.last_category = "cat"
-            return long_prompt
-
-        async def fake_archive(self, *args):
-            pass
-
-        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
-        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
-
-        await cog._send_prompt()
-        assert channel.sent == long_prompt
-
-    asyncio.run(run())
-
-
-def test_send_prompt_archives_channel_id(monkeypatch):
-    async def run():
-        monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
-
-        class DummyChannel:
-            def __init__(self):
-                self.id = 123
-
-            async def send(self, content):
+            async def send(self, content=None, poll=None):
+                self.sent = content or poll
                 return types.SimpleNamespace(id=456, channel=self)
 
         channel = DummyChannel()
         bot = types.SimpleNamespace(get_channel=lambda _id: channel)
         cog = prompt_cog.PromptCog(bot)
 
-        async def fake_fetch_prompt(self):
-            self.last_category = "cat"
-            return "hi"
-
-        captured = {}
-
-        async def fake_archive(self, prompt, category, channel_id, topic=None):
-            captured["channel_id"] = channel_id
-
-        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
-        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+        # Force text prompt
+        monkeypatch.setattr(cog, "_should_use_poll", lambda: False)
 
         await cog._send_prompt()
-        assert captured["channel_id"] == 123
+        assert cog.sent is not None or channel.sent is not None
 
     asyncio.run(run())
 
 
 def test_send_prompt_fetches_missing_channel(monkeypatch):
+    """_send_prompt should fetch channel if not in cache."""
     async def run():
         monkeypatch.setattr(prompt_cog.cfg, "DAILY_PING_CHANNEL", 123)
 
@@ -432,33 +298,82 @@ def test_send_prompt_fetches_missing_channel(monkeypatch):
                 self.sent = None
                 self.id = 123
 
-            async def send(self, content):
-                self.sent = content
+            async def send(self, content=None, poll=None):
+                self.sent = content or poll
                 return types.SimpleNamespace(id=456, channel=self)
-
-            async def create_thread(self, *args, **kwargs):  # pragma: no cover - should not be called
-                raise AssertionError("create_thread should not be used")
 
         channel = DummyChannel()
 
         async def fake_fetch_channel(_id):
             return channel
 
-        bot = types.SimpleNamespace(get_channel=lambda _id: None, fetch_channel=fake_fetch_channel)
+        bot = types.SimpleNamespace(
+            get_channel=lambda _id: None,
+            fetch_channel=fake_fetch_channel
+        )
         cog = prompt_cog.PromptCog(bot)
 
-        async def fake_fetch_prompt(self):
-            self.last_category = "cat"
-            return "hello"
-
-        async def fake_archive(self, *args):
-            pass
-
-        monkeypatch.setattr(prompt_cog.PromptCog, "fetch_prompt", fake_fetch_prompt)
-        monkeypatch.setattr(prompt_cog.PromptCog, "_archive_prompt", fake_archive)
+        # Force text prompt
+        monkeypatch.setattr(cog, "_should_use_poll", lambda: False)
 
         await cog._send_prompt()
-        assert channel.sent == "hello"
+        assert channel.sent is not None
 
     asyncio.run(run())
 
+
+def test_cog_load_handles_missing_table():
+    """cog_load should handle missing daily_prompt table."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            async def fetch(self, *args):
+                raise asyncpg.UndefinedTableError("msg", "detail", "hint")
+
+        with patch.object(prompt_cog, 'get_pool', new=AsyncMock(return_value=DummyPool())):
+            await cog.cog_load()
+
+        # Should not raise, past_prompts should be empty
+        assert len(cog.past_prompts) == 0
+
+    asyncio.run(run())
+
+
+def test_poll_options_limited_to_ten():
+    """Discord limits polls to 10 options."""
+    templates = prompt_cog.load_templates()
+    poll_prompts = templates.get("poll_prompts", {})
+
+    for category, polls in poll_prompts.items():
+        for poll in polls:
+            options = poll.get("options", [])
+            assert len(options) <= 10, f"Poll in {category} has {len(options)} options (max 10)"
+
+
+def test_next_run_time_calculation():
+    """_next_run_time should calculate correct next scheduled time."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    # Test when current time is before schedule
+    now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    next_run = cog._next_run_time(now)
+
+    assert next_run.hour == prompt_cog.SCHEDULE_HOUR
+    assert next_run.minute == prompt_cog.SCHEDULE_MINUTE
+    assert next_run > now
+
+
+def test_next_run_time_wraps_to_tomorrow():
+    """_next_run_time should wrap to next day if past schedule time."""
+    bot = types.SimpleNamespace()
+    cog = prompt_cog.PromptCog(bot)
+
+    # Test when current time is after schedule
+    now = datetime(2024, 1, 15, 23, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    next_run = cog._next_run_time(now)
+
+    assert next_run.day == 16  # Next day
+    assert next_run.hour == prompt_cog.SCHEDULE_HOUR

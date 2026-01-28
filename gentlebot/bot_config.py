@@ -38,7 +38,7 @@ YAHOO_LEAGUE_KEY = os.getenv("YAHOO_LEAGUE_KEY")
 if IS_TEST:
     # -------- TEST SERVER IDs --------
     GUILD_ID = 1135418490979893318
-    
+
     # -------- CHANNELS --------
     FINANCE_CHANNEL_ID=1135418490979893321 #test channel for market_bot.py
     MARKET_CHANNEL_ID = int_env("MARKET_CHANNEL_ID", 0)
@@ -48,6 +48,7 @@ if IS_TEST:
     DAILY_PING_CHANNEL = 1374238199676928070
     MONEY_TALK_CHANNEL = int_env("MONEY_TALK_CHANNEL", 1374238246468456469)
     LOBBY_CHANNEL_ID = int_env("LOBBY_CHANNEL_ID", 1135418490979893321)
+    WINS_CHANNEL_ID = int_env("WINS_CHANNEL_ID", 1465222564514103358)  # #wins channel for celebrations
 
     # -------- ROLES --------
     ROLE_GHOST = 1374598613514063942
@@ -83,6 +84,7 @@ else:
     DAILY_PING_CHANNEL = 1136095810510143518
     MONEY_TALK_CHANNEL = int_env("MONEY_TALK_CHANNEL", 1160414402076491878)
     LOBBY_CHANNEL_ID = int_env("LOBBY_CHANNEL_ID", 973284857885126749)
+    WINS_CHANNEL_ID = int_env("WINS_CHANNEL_ID", 0)  # #wins channel for celebrations
 
 
     # -------- ROLES --------
@@ -130,6 +132,14 @@ else:
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
 INACTIVE_DAYS = int_env("INACTIVE_DAYS", 14)
 DAILY_PROMPT_ENABLED = bool_env("DAILY_PROMPT_ENABLED", False)
+
+# ─── Daily Prompt Schedule ─────────────────────────────────────────────────
+# Schedule time in LA timezone (America/Los_Angeles)
+# Experiment with different times to optimize engagement
+PROMPT_SCHEDULE_HOUR = int_env("PROMPT_SCHEDULE_HOUR", 12)
+PROMPT_SCHEDULE_MINUTE = int_env("PROMPT_SCHEDULE_MINUTE", 30)
+# Ratio of polls vs text prompts (0.0 = all text, 1.0 = all polls)
+PROMPT_POLL_RATIO = float(os.getenv("PROMPT_POLL_RATIO", "0.4"))
 
 # ─── Streak milestone roles ───────────────────────────────────────────────────
 # Create these roles in Discord and add the IDs via env vars.

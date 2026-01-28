@@ -1,5 +1,5 @@
 aiohttp
-discord.py>=2.3
+discord.py>=2.4
 requests
 feedparser
 python-dotenv>=1.0.0
