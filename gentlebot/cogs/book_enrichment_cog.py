@@ -34,6 +34,7 @@ from .. import bot_config as cfg
 from ..llm.router import router, SafetyBlocked
 from ..infra import RateLimited
 from ..util import user_name, chan_name
+from ..capabilities import CogCapabilities, ReactionCapability
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -55,6 +56,17 @@ MAX_CACHE_SIZE = 100
 
 class BookEnrichmentCog(commands.Cog):
     """Provides book information enrichment for #reading channel."""
+
+    CAPABILITIES = CogCapabilities(
+        reactions=[
+            ReactionCapability(
+                emoji="📚",
+                trigger="Book mentions",
+                description="React to get book info: rating, synopsis, and similar recommendations",
+                channel_restriction="#reading",
+            ),
+        ]
+    )
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

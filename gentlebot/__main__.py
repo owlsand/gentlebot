@@ -17,6 +17,7 @@ from .postgres_handler import PostgresHandler
 from .util import build_db_url
 from .db import close_pool
 from .version import get_version
+from .capabilities import CapabilityRegistry
 
 # ─── Logging Setup ─────────────────────────────────────────────────────────
 logger = logging.getLogger("gentlebot")
@@ -71,6 +72,10 @@ class GentleBot(commands.Bot):
                 failed_cogs.append(file.stem)
         if failed_cogs:
             logger.warning("Bot starting with failed cogs: %s", failed_cogs)
+
+        # Initialize capability registry after all cogs are loaded
+        self.capability_registry = CapabilityRegistry(self)
+        await self.capability_registry.discover()
 
 
 bot = GentleBot(command_prefix="!", intents=intents)

@@ -30,6 +30,7 @@ from .. import bot_config as cfg
 from ..llm.router import router, SafetyBlocked
 from ..infra import RateLimited
 from ..util import user_name, chan_name
+from ..capabilities import CogCapabilities, ReactionCapability
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -89,6 +90,16 @@ def _should_skip_url(url: str) -> bool:
 
 class LinkSummarizerCog(commands.Cog):
     """Provides link summarization via reaction interface."""
+
+    CAPABILITIES = CogCapabilities(
+        reactions=[
+            ReactionCapability(
+                emoji="📋",
+                trigger="Shared links",
+                description="React to get an AI-generated summary of the linked page",
+            ),
+        ]
+    )
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

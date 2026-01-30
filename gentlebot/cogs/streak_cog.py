@@ -25,6 +25,12 @@ from discord.ext import commands
 from .. import bot_config as cfg
 from ..infra import PoolAwareCog, alert_task_failure, daily_key, idempotent_task
 from ..llm.router import get_router, SafetyBlocked
+from ..capabilities import (
+    CogCapabilities,
+    CommandCapability,
+    ScheduledCapability,
+    Category,
+)
 
 if TYPE_CHECKING:
     import asyncpg
@@ -76,6 +82,29 @@ MILESTONE_COLORS = {
 
 class StreakCog(PoolAwareCog):
     """Tracks engagement streaks and assigns milestone roles."""
+
+    CAPABILITIES = CogCapabilities(
+        commands=[
+            CommandCapability(
+                name="streak",
+                description="/streak [user] — Check your engagement streak (or someone else's)",
+                category=Category.ENGAGEMENT,
+            ),
+            CommandCapability(
+                name="streakboard",
+                description="/streakboard — Show the top streak holders",
+                category=Category.ENGAGEMENT,
+            ),
+        ],
+        scheduled=[
+            ScheduledCapability(
+                name="Streak Maintenance",
+                schedule="12:05 AM PT",
+                description="Updates streaks, awards milestone roles, announces achievements",
+                category=Category.SCHEDULED_DAILY,
+            ),
+        ],
+    )
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
