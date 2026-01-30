@@ -22,7 +22,7 @@ PST = pytz.timezone("America/Los_Angeles")
 
 
 class SeahawksThreadCog(commands.Cog):
-    """Background task that opens Seahawks game threads."""
+    """Background task that opens Seahawks game threads with live updates."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -31,6 +31,7 @@ class SeahawksThreadCog(commands.Cog):
         self.threads: Dict[str, discord.Thread] = {}
         self.opponents: Dict[str, str] = {}
         self.quarters_sent: Dict[str, int] = {}
+        self.final_posted: set[str] = set()  # Track which games have final summaries
         self.game_task.start()
         self.score_task.start()
 
@@ -185,6 +186,112 @@ class SeahawksThreadCog(commands.Cog):
         state = data.get("type", {}).get("state", "")
         return period, state
 
+    def fetch_game_summary(self, game_id: str) -> Dict[str, Any]:
+        """Fetch post-game summary with key stats."""
+        url = (
+            "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?"
+            f"event={game_id}"
+        )
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract final scores
+        box = data.get("boxscore", {})
+        teams = box.get("teams", [])
+        sea_team = next(
+            (t for t in teams if t.get("team", {}).get("abbreviation") == "SEA"),
+            None,
+        )
+        opp_team = next(
+            (t for t in teams if t.get("team", {}).get("abbreviation") != "SEA"),
+            None,
+        )
+
+        if not sea_team or not opp_team:
+            return {}
+
+        # Get scores from linescore totals
+        sea_stats = sea_team.get("statistics", [])
+        opp_stats = opp_team.get("statistics", [])
+
+        def _get_stat(stats: List[Dict], name: str) -> str:
+            for stat in stats:
+                if stat.get("name") == name or stat.get("label") == name:
+                    return stat.get("displayValue", "0")
+            return "0"
+
+        # Extract key stats
+        summary = {
+            "sea_score": sum(int(ls.get("value", 0)) for ls in sea_team.get("linescores", [])),
+            "opp_score": sum(int(ls.get("value", 0)) for ls in opp_team.get("linescores", [])),
+            "opp_name": opp_team.get("team", {}).get("displayName", "Opponent"),
+            "opp_abbr": opp_team.get("team", {}).get("abbreviation", "OPP"),
+            "sea_passing_yards": _get_stat(sea_stats, "passingYards"),
+            "sea_rushing_yards": _get_stat(sea_stats, "rushingYards"),
+            "sea_total_yards": _get_stat(sea_stats, "totalYards"),
+            "sea_turnovers": _get_stat(sea_stats, "turnovers"),
+            "opp_passing_yards": _get_stat(opp_stats, "passingYards"),
+            "opp_rushing_yards": _get_stat(opp_stats, "rushingYards"),
+            "opp_total_yards": _get_stat(opp_stats, "totalYards"),
+            "opp_turnovers": _get_stat(opp_stats, "turnovers"),
+        }
+
+        # Try to get key players from the game
+        try:
+            leaders = data.get("leaders", [])
+            for leader in leaders:
+                team = leader.get("team", {})
+                if team.get("abbreviation") == "SEA":
+                    for cat in leader.get("leaders", []):
+                        if cat.get("name") == "passingLeader":
+                            athlete = cat.get("leaders", [{}])[0].get("athlete", {})
+                            summary["sea_qb"] = athlete.get("displayName", "")
+                            summary["sea_qb_stats"] = cat.get("leaders", [{}])[0].get("displayValue", "")
+                        elif cat.get("name") == "rushingLeader":
+                            athlete = cat.get("leaders", [{}])[0].get("athlete", {})
+                            summary["sea_rb"] = athlete.get("displayName", "")
+                            summary["sea_rb_stats"] = cat.get("leaders", [{}])[0].get("displayValue", "")
+        except Exception:
+            pass  # Leaders are optional
+
+        return summary
+
+    def _format_final_summary(self, summary: Dict[str, Any]) -> str:
+        """Format the post-game summary message."""
+        sea_score = summary.get("sea_score", 0)
+        opp_score = summary.get("opp_score", 0)
+        opp_name = summary.get("opp_name", "Opponent")
+
+        # Determine win/loss
+        if sea_score > opp_score:
+            result = "🎉 **SEAHAWKS WIN!**"
+        elif sea_score < opp_score:
+            result = "😔 Seahawks lose"
+        else:
+            result = "🤝 **TIE GAME**"
+
+        lines = [
+            f"## {result}",
+            f"**Final Score:** Seahawks {sea_score} - {opp_name} {opp_score}",
+            "",
+            "**Team Stats:**",
+            f"• Total Yards: SEA {summary.get('sea_total_yards', '-')} | {summary.get('opp_abbr', 'OPP')} {summary.get('opp_total_yards', '-')}",
+            f"• Passing: SEA {summary.get('sea_passing_yards', '-')} | {summary.get('opp_abbr', 'OPP')} {summary.get('opp_passing_yards', '-')}",
+            f"• Rushing: SEA {summary.get('sea_rushing_yards', '-')} | {summary.get('opp_abbr', 'OPP')} {summary.get('opp_rushing_yards', '-')}",
+            f"• Turnovers: SEA {summary.get('sea_turnovers', '-')} | {summary.get('opp_abbr', 'OPP')} {summary.get('opp_turnovers', '-')}",
+        ]
+
+        # Add key players if available
+        if summary.get("sea_qb"):
+            lines.append("")
+            lines.append("**Key Performers:**")
+            lines.append(f"• QB {summary['sea_qb']}: {summary.get('sea_qb_stats', '')}")
+            if summary.get("sea_rb"):
+                lines.append(f"• RB {summary['sea_rb']}: {summary.get('sea_rb_stats', '')}")
+
+        return "\n".join(lines)
+
     # ---- helpers ----------------------------------------------------------------
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -245,7 +352,7 @@ class SeahawksThreadCog(commands.Cog):
         await self._open_threads()
 
     async def _update_scores(self) -> None:
-        """Send quarter score updates to active game threads."""
+        """Send quarter score updates and final summaries to active game threads."""
         for gid, thread in list(self.threads.items()):
             try:
                 lines = self.fetch_linescores(gid)
@@ -253,6 +360,8 @@ class SeahawksThreadCog(commands.Cog):
             except Exception:  # pragma: no cover - network
                 log.exception("Failed to fetch scores for %s", gid)
                 continue
+
+            # Post quarter updates
             posted = self.quarters_sent.get(gid, 0)
             sea_tot = opp_tot = 0
             for qnum, (sea_q, opp_q) in enumerate(lines, start=1):
@@ -271,6 +380,18 @@ class SeahawksThreadCog(commands.Cog):
                     log.exception("Failed to send score update for %s Q%s", gid, qnum)
                 posted += 1
             self.quarters_sent[gid] = posted
+
+            # Post final summary when game ends
+            if state == "post" and gid not in self.final_posted:
+                try:
+                    summary = self.fetch_game_summary(gid)
+                    if summary:
+                        final_msg = self._format_final_summary(summary)
+                        await thread.send(final_msg)
+                        log.info("Posted final summary for game %s", gid)
+                    self.final_posted.add(gid)
+                except Exception:  # pragma: no cover - network
+                    log.exception("Failed to post final summary for %s", gid)
 
     @tasks.loop(minutes=5)
     async def score_task(self) -> None:
