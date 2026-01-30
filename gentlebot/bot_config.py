@@ -170,6 +170,10 @@ TRENDING_AUTO_POST_HOUR = int_env("TRENDING_AUTO_POST_HOUR", 18)
 # Minimum reactions for a message to appear in trending
 TRENDING_MIN_REACTIONS = int_env("TRENDING_MIN_REACTIONS", 3)
 
+# ─── Link Summarizer ──────────────────────────────────────────────────────
+# Whether link summarization is enabled (auto-detects links, offers summaries)
+LINK_SUMMARIZER_ENABLED = bool_env("LINK_SUMMARIZER_ENABLED", True)
+
 # IDs of roles automatically assigned by RolesCog
 AUTO_ROLE_IDS = {
     ROLE_GHOST,
