@@ -49,6 +49,7 @@ if IS_TEST:
     MONEY_TALK_CHANNEL = int_env("MONEY_TALK_CHANNEL", 1374238246468456469)
     LOBBY_CHANNEL_ID = int_env("LOBBY_CHANNEL_ID", 1135418490979893321)
     WINS_CHANNEL_ID = int_env("WINS_CHANNEL_ID", 1465222564514103358)  # #wins channel for celebrations
+    READING_CHANNEL_ID = int_env("READING_CHANNEL_ID", 0)  # #reading channel for book enrichment
 
     # -------- ROLES --------
     ROLE_GHOST = 1374598613514063942
@@ -85,7 +86,7 @@ else:
     MONEY_TALK_CHANNEL = int_env("MONEY_TALK_CHANNEL", 1160414402076491878)
     LOBBY_CHANNEL_ID = int_env("LOBBY_CHANNEL_ID", 973284857885126749)
     WINS_CHANNEL_ID = int_env("WINS_CHANNEL_ID", 0)  # #wins channel for celebrations
-
+    READING_CHANNEL_ID = int_env("READING_CHANNEL_ID", 0)  # #reading channel for book enrichment
 
     # -------- ROLES --------
     ROLE_GHOST = 1373545254497816626
@@ -169,10 +170,12 @@ TRENDING_AUTO_POST = bool_env("TRENDING_AUTO_POST", False)
 TRENDING_AUTO_POST_HOUR = int_env("TRENDING_AUTO_POST_HOUR", 18)
 # Minimum reactions for a message to appear in trending
 TRENDING_MIN_REACTIONS = int_env("TRENDING_MIN_REACTIONS", 3)
-
 # ─── Link Summarizer ──────────────────────────────────────────────────────
 # Whether link summarization is enabled (auto-detects links, offers summaries)
 LINK_SUMMARIZER_ENABLED = bool_env("LINK_SUMMARIZER_ENABLED", True)
+# ─── Book Enrichment ──────────────────────────────────────────────────────
+# Whether book enrichment is enabled (auto-detects books in #reading)
+BOOK_ENRICHMENT_ENABLED = bool_env("BOOK_ENRICHMENT_ENABLED", True)
 
 # IDs of roles automatically assigned by RolesCog
 AUTO_ROLE_IDS = {
