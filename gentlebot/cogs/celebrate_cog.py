@@ -10,7 +10,7 @@ Features:
   • /celebrate_stats - Show celebration leaderboard
 
 Configuration in bot_config.py:
-  • TENOR_API_KEY: API key for Tenor GIF service
+  • GIPHY_API_KEY: API key for Giphy GIF service
   • CELEBRATE_LLM_ENABLED: Whether to use LLM for messages (default: True)
 """
 from __future__ import annotations
@@ -37,9 +37,9 @@ from ..util import user_name, chan_name
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
-# Tenor API configuration
-TENOR_API_KEY = os.getenv("TENOR_API_KEY", "")
-TENOR_SEARCH_URL = "https://tenor.googleapis.com/v2/search"
+# Giphy API configuration
+GIPHY_API_KEY = os.getenv("GIPHY_API_KEY", "")
+GIPHY_SEARCH_URL = "https://api.giphy.com/v1/gifs/search"
 
 # Celebration search terms for variety
 CELEBRATION_SEARCH_TERMS = [
@@ -121,21 +121,20 @@ class CelebrateCog(commands.Cog):
             """
         )
 
-    def _fetch_tenor_gifs(self, search_term: str, limit: int = 5) -> List[str]:
-        """Fetch GIF URLs from Tenor API."""
-        if not TENOR_API_KEY:
-            log.warning("TENOR_API_KEY not configured, skipping GIF fetch")
+    def _fetch_giphy_gifs(self, search_term: str, limit: int = 5) -> List[str]:
+        """Fetch GIF URLs from Giphy API."""
+        if not GIPHY_API_KEY:
+            log.warning("GIPHY_API_KEY not configured, skipping GIF fetch")
             return []
 
         try:
             resp = self.session.get(
-                TENOR_SEARCH_URL,
+                GIPHY_SEARCH_URL,
                 params={
-                    "key": TENOR_API_KEY,
+                    "api_key": GIPHY_API_KEY,
                     "q": search_term,
                     "limit": limit * 2,  # Fetch extra to allow for random selection
-                    "media_filter": "gif",
-                    "contentfilter": "medium",
+                    "rating": "pg",  # Keep it family-friendly
                 },
                 timeout=8,
             )
@@ -143,12 +142,13 @@ class CelebrateCog(commands.Cog):
             data = resp.json()
 
             gifs = []
-            for result in data.get("results", []):
-                media_formats = result.get("media_formats", {})
-                # Prefer gif format, fall back to tinygif for smaller files
-                gif_format = media_formats.get("gif") or media_formats.get("tinygif")
-                if gif_format:
-                    url = gif_format.get("url")
+            for result in data.get("data", []):
+                # Get the original GIF URL - Discord will auto-embed it
+                images = result.get("images", {})
+                # Use downsized for smaller file size, original as fallback
+                gif_data = images.get("downsized") or images.get("original")
+                if gif_data:
+                    url = gif_data.get("url")
                     if url:
                         gifs.append(url)
 
@@ -157,7 +157,7 @@ class CelebrateCog(commands.Cog):
             return gifs[:limit]
 
         except Exception as exc:
-            log.warning("Failed to fetch Tenor GIFs for '%s': %s", search_term, exc)
+            log.warning("Failed to fetch Giphy GIFs for '%s': %s", search_term, exc)
             return []
 
     async def _generate_celebration_message(
@@ -275,7 +275,7 @@ Requirements:
         search_term = random.choice(CELEBRATION_SEARCH_TERMS)
 
         # Fetch GIFs and generate message concurrently
-        gif_task = asyncio.to_thread(self._fetch_tenor_gifs, search_term, 3)
+        gif_task = asyncio.to_thread(self._fetch_giphy_gifs, search_term, 3)
         message_task = self._generate_celebration_message(
             user.display_name,
             reason,
