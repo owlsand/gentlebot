@@ -160,6 +160,11 @@ MILESTONE_CHANNEL_ID = int_env("MILESTONE_CHANNEL_ID", 0)  # 0 = use LOBBY_CHANN
 # Whether to use LLM for personalized celebration messages
 MILESTONE_LLM_ENABLED = bool_env("MILESTONE_LLM_ENABLED", True)
 
+# ─── Celebrate Command ────────────────────────────────────────────────────
+# TENOR_API_KEY: API key for Tenor GIF service (set in .env)
+# Whether to use LLM for personalized celebration messages
+CELEBRATE_LLM_ENABLED = bool_env("CELEBRATE_LLM_ENABLED", True)
+
 # ─── Trending / What's Hot ─────────────────────────────────────────────────
 # Channel for trending content posts (defaults to LOBBY_CHANNEL_ID)
 TRENDING_CHANNEL_ID = int_env("TRENDING_CHANNEL_ID", 0)  # 0 = use LOBBY_CHANNEL_ID
