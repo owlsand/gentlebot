@@ -55,10 +55,10 @@ async def send_alert(
 
         await send_alert(
             bot,
-            "Daily Hero DM Failed",
-            "Could not send DM to user 12345: HTTPException",
+            "Daily Digest Failed",
+            "Could not assign roles: HTTPException",
             severity="error",
-            context={"task": "daily_hero_dm", "user_id": "12345"},
+            context={"task": "daily_digest", "guild_id": "12345"},
         )
     """
     if not ALERT_USER_IDS:

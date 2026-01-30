@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 import asyncio
-import re
 import asyncpg
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,7 +11,7 @@ import discord
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..util import build_db_url, ReactionAction, user_name
+from ..util import build_db_url
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -114,33 +113,6 @@ class DailyDigestCog(commands.Cog):
         )
         return [(r["author_id"], r["c"], r["last_ts"]) for r in rows]
 
-    async def _yesterday_top_poster(self) -> list[tuple[int, int]]:
-        if not self.pool:
-            return []
-        now = datetime.now(tz=LA)
-        start = datetime(now.year, now.month, now.day, tzinfo=LA) - timedelta(days=1)
-        end = start + timedelta(days=1)
-        log.debug("Fetching top posters between %s and %s", start, end)
-        rows = await self.pool.fetch(
-            """
-            SELECT m.author_id,
-                   COUNT(*) AS c,
-                   MAX(m.created_at) AS last_ts
-            FROM discord.message m
-            JOIN discord."user" u ON m.author_id = u.user_id
-            WHERE m.created_at >= $1 AND m.created_at < $2
-              AND u.is_bot IS NOT TRUE
-            GROUP BY m.author_id
-            ORDER BY c DESC, last_ts ASC
-            LIMIT 5
-            """,
-            start,
-            end,
-        )
-        result = [(r["author_id"], r["c"]) for r in rows]
-        log.debug("Yesterday's top posters: %s", result)
-        return result
-
     async def _assign_roles(self, guild: discord.Guild, mapping: dict[int, int]) -> None:
         for user_id, role_id in mapping.items():
             if role_id == 0:
@@ -194,22 +166,6 @@ class DailyDigestCog(commands.Cog):
             except discord.HTTPException:
                 log.warning("Failed to unpin digest message %s", message_id)
 
-    async def _last_hero_time(self, user_id: int) -> datetime | None:
-        if not self.pool:
-            return None
-        row = await self.pool.fetchrow(
-            """
-            SELECT event_at
-            FROM discord.role_event
-            WHERE role_id=$1 AND user_id=$2 AND action=1
-            ORDER BY event_at DESC
-            LIMIT 1
-            """,
-            cfg.ROLE_DAILY_HERO,
-            user_id,
-        )
-        return row["event_at"] if row else None
-
     async def run_digest(self) -> None:
         await self.bot.wait_until_ready()
         guild = self.bot.get_guild(cfg.GUILD_ID)
@@ -219,26 +175,6 @@ class DailyDigestCog(commands.Cog):
 
         top_msgs = await self._top_posters(14)
         top_reacts = await self._reaction_magnets(14)
-        hero_candidates = await self._yesterday_top_poster()
-        log.debug(
-            "Hero candidates: %s",
-            [user_name(guild.get_member(uid) or uid) for uid, _ in hero_candidates],
-        )
-        hero: int | None = None
-        for uid, _ in hero_candidates:
-            last = await self._last_hero_time(uid)
-            name = user_name(guild.get_member(uid) or uid)
-            log.debug(
-                "Evaluating candidate %s with last hero time %s",
-                name,
-                last,
-            )
-            if not last or last <= datetime.now(tz=LA) - timedelta(hours=72):
-                hero = uid
-                log.debug("Selected Daily Hero: %s", name)
-                break
-        if hero is None:
-            log.debug("No eligible Daily Hero found")
 
         tier_roles = cfg.TIERED_BADGES
         msg_map = assign_tiers([uid for uid, _, _ in top_msgs], tier_roles['top_poster']['roles'])
@@ -250,37 +186,12 @@ class DailyDigestCog(commands.Cog):
         for role_id, users in winners.items():
             await self._sync_role(guild, role_id, users)
 
-        if hero:
-            await self._sync_role(guild, cfg.ROLE_DAILY_HERO, [hero])
-            member = guild.get_member(hero)
-            if member:
-                try:
-                    # await member.send(
-                    #     "Congrats! You're today's Daily Hero. Run /suggest-topic to keep chats lively!"
-                    # )
-                    pass  # message sending disabled for auditing
-                except discord.HTTPException:
-                    log.warning("Failed to DM Daily Hero %s", member)
-
-
         channel_id = getattr(cfg, 'LOBBY_CHANNEL_ID', getattr(cfg, 'DAILY_PING_CHANNEL', 0))
         channel = self.bot.get_channel(channel_id)
         if not channel:
             log.error("Digest channel not found: %s", channel_id)
             return
-        if hero:
-            member = guild.get_member(hero)
-        else:
-            member = None
-        if isinstance(channel, discord.TextChannel):
-            topic = channel.topic or ""
-            topic = re.sub(r"^👑 Daily Hero:.*?\| ?", "", topic)
-            if member:
-                topic = f"\U0001f451 Daily Hero: {member.display_name} (expires 08:30 PT) | {topic}"
-            try:
-                await channel.edit(topic=topic[:1024])
-            except discord.HTTPException:
-                log.warning("Failed to update channel topic")
+
         now = datetime.now(tz=LA)
         def _m(uid: int) -> str:
             member = guild.get_member(uid)
@@ -318,10 +229,6 @@ class DailyDigestCog(commands.Cog):
             return next(c_iter, 0)
 
         desc = [f"**Gentlefolk Daily Digest {now.strftime('%b %d')}**"]
-        if hero:
-            desc.append(f"**Daily Hero:** \U0001f451 {_m(hero)}")
-        else:
-            desc.append("**Daily Hero:** No Daily Hero (0 msgs)")
         desc.append("\n**Top Poster**")
         if top_msgs:
             gold_c = next_count()
