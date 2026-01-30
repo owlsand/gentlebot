@@ -162,7 +162,7 @@ MILESTONE_CHANNEL_ID = int_env("MILESTONE_CHANNEL_ID", 0)  # 0 = use LOBBY_CHANN
 MILESTONE_LLM_ENABLED = bool_env("MILESTONE_LLM_ENABLED", True)
 
 # ─── Celebrate Command ────────────────────────────────────────────────────
-# TENOR_API_KEY: API key for Tenor GIF service (set in .env)
+# GIPHY_API_KEY: API key for Giphy GIF service (set in .env)
 # Whether to use LLM for personalized celebration messages
 CELEBRATE_LLM_ENABLED = bool_env("CELEBRATE_LLM_ENABLED", True)
 

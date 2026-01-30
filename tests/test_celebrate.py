@@ -42,21 +42,21 @@ def test_fallback_message_contains_emojis():
     assert any(emoji in message for emoji in CELEBRATION_EMOJIS)
 
 
-def test_tenor_gifs_no_api_key():
-    """_fetch_tenor_gifs should return empty list when no API key is configured."""
+def test_giphy_gifs_no_api_key():
+    """_fetch_giphy_gifs should return empty list when no API key is configured."""
     bot = types.SimpleNamespace()
     from gentlebot.cogs.celebrate_cog import CelebrateCog
 
     cog = CelebrateCog(bot)
     cog.pool = None
 
-    with patch("gentlebot.cogs.celebrate_cog.TENOR_API_KEY", ""):
-        result = cog._fetch_tenor_gifs("celebrate", limit=3)
+    with patch("gentlebot.cogs.celebrate_cog.GIPHY_API_KEY", ""):
+        result = cog._fetch_giphy_gifs("celebrate", limit=3)
         assert result == []
 
 
-def test_tenor_gifs_successful_fetch():
-    """_fetch_tenor_gifs should parse Tenor API response correctly."""
+def test_giphy_gifs_successful_fetch():
+    """_fetch_giphy_gifs should parse Giphy API response correctly."""
     bot = types.SimpleNamespace()
     from gentlebot.cogs.celebrate_cog import CelebrateCog
 
@@ -65,17 +65,17 @@ def test_tenor_gifs_successful_fetch():
 
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "results": [
-            {"media_formats": {"gif": {"url": "https://tenor.com/gif1.gif"}}},
-            {"media_formats": {"gif": {"url": "https://tenor.com/gif2.gif"}}},
+        "data": [
+            {"images": {"downsized": {"url": "https://media.giphy.com/gif1.gif"}}},
+            {"images": {"downsized": {"url": "https://media.giphy.com/gif2.gif"}}},
         ]
     }
 
-    with patch("gentlebot.cogs.celebrate_cog.TENOR_API_KEY", "test-key"):
+    with patch("gentlebot.cogs.celebrate_cog.GIPHY_API_KEY", "test-key"):
         with patch.object(cog.session, "get", return_value=mock_response):
-            result = cog._fetch_tenor_gifs("celebrate", limit=2)
+            result = cog._fetch_giphy_gifs("celebrate", limit=2)
             assert len(result) == 2
-            assert all(url.startswith("https://tenor.com") for url in result)
+            assert all("giphy.com" in url for url in result)
 
 
 def test_generate_celebration_message_llm_disabled():
