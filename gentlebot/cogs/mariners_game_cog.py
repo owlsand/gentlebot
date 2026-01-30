@@ -1,10 +1,17 @@
-"""Automatically post Mariners game summaries after each final result."""
+"""Mariners game day companion with threads, live updates, and summaries.
+
+Features:
+  - Auto-creates game threads 1 hour before game time
+  - Posts live inning-by-inning score updates during games
+  - Posts detailed post-game summaries with stats
+  - Surfaces /bigdumper command for Cal Raleigh tracker
+"""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any, Awaitable, Dict, Iterable, Optional
+from datetime import datetime, time, timedelta, timezone
+from typing import Any, Awaitable, Dict, Iterable, List, Optional, Tuple
 
 import asyncio
 import asyncpg
@@ -52,13 +59,17 @@ class _ImmediateResult:
 
 
 class MarinersGameCog(commands.Cog):
-    """Background task posting a summary after each Mariners game."""
+    """Game day companion with threads, live updates, and summaries."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.posted: set[str] = set()
         self.pool: asyncpg.Pool | None = None
         self.tracking_since: datetime = datetime.now(tz=pytz.utc)
+        # Track game threads and live updates
+        self.threads: Dict[str, discord.Thread] = {}
+        self.threads_opened: set[str] = set()
+        self.innings_posted: Dict[str, int] = {}  # game_id -> last inning posted
 
     async def cog_load(self) -> None:  # pragma: no cover - startup
         try:
@@ -82,9 +93,13 @@ class MarinersGameCog(commands.Cog):
             except Exception as exc:
                 log.warning("Failed to sync schedule: %s", exc)
         self.game_task.start()
+        self.thread_task.start()
+        self.live_score_task.start()
 
     async def cog_unload(self) -> None:  # pragma: no cover - cleanup
         self.game_task.cancel()
+        self.thread_task.cancel()
+        self.live_score_task.cancel()
 
     # ------------------------------------------------------------------ helpers
     async def _ensure_table(self) -> None:
@@ -889,6 +904,209 @@ class MarinersGameCog(commands.Cog):
         lines.append(f"{TEAM_ABBR} — {sea_perf}")
         lines.append(f"{summary.get('opp_abbr','')} — {opp_perf}")
         return "\n".join(lines)
+
+    # ---------------------------------------------------------------- thread helpers
+    def _fetch_upcoming_games(self) -> List[Dict[str, Any]]:
+        """Fetch upcoming Mariners games for thread creation."""
+        games: List[Dict[str, Any]] = []
+        try:
+            with self._build_session() as session:
+                resp = session.get(ESPN_SCHEDULE_URL, timeout=STATS_TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            log.warning("Failed to fetch Mariners schedule: %s", exc)
+            return games
+
+        for event in data.get("events", []):
+            competitions = event.get("competitions", [])
+            if not competitions:
+                continue
+            comp = competitions[0]
+            state = comp.get("status", {}).get("type", {}).get("state", "pre")
+            if state == "post":
+                continue  # Skip finished games
+
+            try:
+                start = parser.isoparse(comp.get("date"))
+                if start.tzinfo is None:
+                    start = pytz.utc.localize(start)
+            except (TypeError, ValueError):
+                continue
+
+            competitors = comp.get("competitors", [])
+            try:
+                sea_comp = next(
+                    c for c in competitors if c.get("team", {}).get("abbreviation") == TEAM_ABBR
+                )
+                opp_comp = next(c for c in competitors if c is not sea_comp)
+            except StopIteration:
+                continue
+
+            games.append({
+                "id": str(event.get("id")),
+                "start": start,
+                "opponent": opp_comp.get("team", {}).get("displayName", "Opponent"),
+                "opp_abbr": opp_comp.get("team", {}).get("abbreviation", "OPP"),
+                "home_away": sea_comp.get("homeAway", "home"),
+                "short_name": event.get("shortName", ""),
+                "state": state,
+            })
+
+        return games
+
+    def _thread_title(self, game: Dict[str, Any]) -> str:
+        """Generate thread title for a game."""
+        start_pst = game["start"].astimezone(PST_TZ)
+        time_str = start_pst.strftime("%-m/%-d, %-I:%M%p").lower()
+        return f"⚾ {game['short_name']} ({time_str} PT)"
+
+    def _thread_opening_message(self, game: Dict[str, Any]) -> str:
+        """Generate the opening message for a game thread."""
+        start_pst = game["start"].astimezone(PST_TZ)
+        lines = [
+            f"## ⚾ Mariners vs {game['opponent']}",
+            f"**First Pitch:** {start_pst.strftime('%I:%M %p PT')}",
+            "",
+            "Live inning updates will be posted here!",
+            "",
+            "💪 Track Cal Raleigh's homer count with `/bigdumper`",
+        ]
+        return "\n".join(lines)
+
+    def _fetch_live_linescore(self, game_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch live linescore for an in-progress game."""
+        try:
+            with self._build_session() as session:
+                resp = session.get(
+                    ESPN_SUMMARY_URL,
+                    params={"event": game_id, "region": "us", "lang": "en"},
+                    timeout=STATS_TIMEOUT,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            log.warning("Failed to fetch live score for %s: %s", game_id, exc)
+            return None
+
+        try:
+            comp = data.get("header", {}).get("competitions", [{}])[0]
+            competitors = comp.get("competitors", [])
+            sea_comp = next(
+                c for c in competitors if c.get("team", {}).get("abbreviation") == TEAM_ABBR
+            )
+            opp_comp = next(c for c in competitors if c is not sea_comp)
+
+            status = comp.get("status", {})
+            period = status.get("period", 0)
+            state = status.get("type", {}).get("state", "pre")
+            detail = status.get("type", {}).get("shortDetail", "")
+
+            sea_score = int(float(sea_comp.get("score", "0") or "0"))
+            opp_score = int(float(opp_comp.get("score", "0") or "0"))
+
+            return {
+                "inning": period,
+                "state": state,
+                "detail": detail,
+                "sea_score": sea_score,
+                "opp_score": opp_score,
+                "opp_abbr": opp_comp.get("team", {}).get("abbreviation", "OPP"),
+            }
+        except Exception as exc:
+            log.warning("Failed to parse live score for %s: %s", game_id, exc)
+            return None
+
+    async def _open_game_threads(self) -> None:
+        """Create game threads 1 hour before game time."""
+        now = datetime.now(tz=pytz.utc)
+
+        try:
+            games = await asyncio.to_thread(self._fetch_upcoming_games)
+        except Exception:
+            log.exception("Failed to fetch upcoming Mariners games")
+            return
+
+        for game in games:
+            gid = game["id"]
+            if gid in self.threads_opened:
+                continue
+
+            # Open thread 1 hour before game
+            open_time = game["start"] - timedelta(hours=1)
+            if not (open_time <= now < game["start"]):
+                continue
+
+            channel = self.bot.get_channel(getattr(cfg, "SPORTS_CHANNEL_ID", 0))
+            if not isinstance(channel, discord.TextChannel):
+                log.error("Sports channel not found for Mariners thread")
+                self.threads_opened.add(gid)
+                continue
+
+            title = self._thread_title(game)
+            try:
+                thread = await channel.create_thread(
+                    name=title,
+                    auto_archive_duration=1440,
+                    type=discord.ChannelType.public_thread,
+                )
+                opening_msg = self._thread_opening_message(game)
+                await thread.send(opening_msg)
+                self.threads[gid] = thread
+                self.threads_opened.add(gid)
+                self.innings_posted[gid] = 0
+                log.info("Created Mariners game thread: %s", title)
+            except Exception:
+                log.exception("Failed to create Mariners thread %s", title)
+
+    async def _update_live_scores(self) -> None:
+        """Post inning-by-inning score updates to active threads."""
+        for gid, thread in list(self.threads.items()):
+            try:
+                score = await asyncio.to_thread(self._fetch_live_linescore, gid)
+            except Exception:
+                log.exception("Failed to fetch live score for %s", gid)
+                continue
+
+            if not score:
+                continue
+
+            current_inning = score.get("inning", 0)
+            last_posted = self.innings_posted.get(gid, 0)
+            state = score.get("state", "pre")
+
+            # Post update when inning changes
+            if current_inning > last_posted and state == "in":
+                sea_score = score.get("sea_score", 0)
+                opp_score = score.get("opp_score", 0)
+                opp_abbr = score.get("opp_abbr", "OPP")
+                detail = score.get("detail", f"Inning {current_inning}")
+
+                msg = f"**{detail}**: Mariners {sea_score} — {opp_abbr} {opp_score}"
+                try:
+                    await thread.send(msg)
+                    self.innings_posted[gid] = current_inning
+                except Exception:
+                    log.exception("Failed to send inning update for %s", gid)
+
+            # Clean up finished games from active tracking
+            if state == "post":
+                # Remove from active threads but keep in threads_opened
+                self.threads.pop(gid, None)
+                self.innings_posted.pop(gid, None)
+
+    # ---------------------------------------------------------------- background tasks
+    @tasks.loop(minutes=30)
+    async def thread_task(self) -> None:
+        """Check for games starting soon and create threads."""
+        await self.bot.wait_until_ready()
+        await self._open_game_threads()
+
+    @tasks.loop(minutes=5)
+    async def live_score_task(self) -> None:
+        """Update live scores for active game threads."""
+        await self.bot.wait_until_ready()
+        await self._update_live_scores()
 
     # ---------------------------------------------------------------- background
     @tasks.loop(minutes=10)
