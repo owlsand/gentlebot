@@ -19,6 +19,7 @@ from discord.ext import commands
 
 from .. import bot_config as cfg
 from ..util import build_db_url
+from ..capabilities import CogCapabilities, CommandCapability, Category
 
 if TYPE_CHECKING:
     pass
@@ -30,6 +31,16 @@ LA = pytz.timezone("America/Los_Angeles")
 
 class TrendingCog(commands.Cog):
     """Surfaces trending content and hot channels."""
+
+    CAPABILITIES = CogCapabilities(
+        commands=[
+            CommandCapability(
+                name="trending",
+                description="/trending [hours] — See top-reacted messages and hot channels",
+                category=Category.COMMUNITY,
+            ),
+        ]
+    )
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

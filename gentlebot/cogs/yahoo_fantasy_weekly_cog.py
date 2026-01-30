@@ -17,6 +17,14 @@ from .. import bot_config as cfg
 from ..db import get_pool
 from ..infra import alert_task_failure, idempotent_task
 from ..util import chan_name, user_name
+
+from ..capabilities import (
+    CogCapabilities,
+    CommandCapability,
+    ScheduledCapability,
+    Category,
+)
+
 from ..tasks.yahoo_fantasy import (
     determine_target_week,
     extract_league_context,
@@ -34,6 +42,24 @@ LA = pytz.timezone("America/Los_Angeles")
 
 class YahooFantasyWeeklyCog(commands.Cog):
     """Scheduler that posts the Yahoo Fantasy Football recap each Tuesday."""
+
+    CAPABILITIES = CogCapabilities(
+        commands=[
+            CommandCapability(
+                name="fantasyrecap",
+                description="/fantasyrecap — Run the Yahoo Fantasy Football weekly recap",
+                category=Category.SPORTS,
+            ),
+        ],
+        scheduled=[
+            ScheduledCapability(
+                name="Fantasy Football Recap",
+                schedule="Tuesday 9:00 AM PT",
+                description="Weekly fantasy football scoreboard and standings (during season)",
+                category=Category.SCHEDULED_WEEKLY,
+            ),
+        ],
+    )
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

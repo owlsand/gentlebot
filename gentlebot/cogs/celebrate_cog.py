@@ -34,6 +34,7 @@ from ..db import get_pool
 from ..llm.router import router, SafetyBlocked
 from ..infra import RateLimited
 from ..util import user_name, chan_name
+from ..capabilities import CogCapabilities, CommandCapability, Category
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
@@ -61,6 +62,21 @@ CELEBRATION_EMOJIS = ["🎉", "🥳", "👏", "💪", "⭐", "🔥", "✨", "�
 
 class CelebrateCog(commands.Cog):
     """Provides the /celebrate command for community celebrations."""
+
+    CAPABILITIES = CogCapabilities(
+        commands=[
+            CommandCapability(
+                name="celebrate",
+                description="/celebrate @user [reason] — Celebrate someone with GIFs and cheers",
+                category=Category.COMMUNITY,
+            ),
+            CommandCapability(
+                name="celebrate_stats",
+                description="/celebrate_stats [days] — See the most celebrated community members",
+                category=Category.COMMUNITY,
+            ),
+        ]
+    )
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
