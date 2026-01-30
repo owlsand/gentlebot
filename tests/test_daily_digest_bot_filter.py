@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 import discord
 from discord.ext import commands
-from gentlebot.tasks import daily_digest
+from gentlebot.cogs import daily_digest_cog as daily_digest
 
 
 def test_sync_role_skips_bot_member(monkeypatch):
