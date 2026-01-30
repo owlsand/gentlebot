@@ -145,22 +145,6 @@ class VibeCheckCog(PoolAwareCog):
         )
         return {r["channel_id"] for r in rows}
 
-    async def _daily_hero_wins(self, user_ids: Iterable[int]) -> dict[int, int]:
-        """Return total Daily Hero wins for the given users."""
-        if not self.pool:
-            return {}
-        role_id = getattr(cfg, "ROLE_DAILY_HERO", 0)
-        wins: dict[int, int] = {}
-        for uid in user_ids:
-            row = await self.pool.fetchrow(
-                "SELECT COUNT(*) AS c FROM discord.role_event WHERE role_id=$1 AND user_id=$2 AND action=1",
-                role_id,
-                uid,
-            )
-            if row and row["c"]:
-                wins[int(uid)] = int(row["c"])
-        return wins
-
     def _media_bucket(self, msg: ArchivedMessage) -> str:
         """Classify message into link/image/text buckets."""
         text = msg.content or ""
@@ -293,8 +277,6 @@ class VibeCheckCog(PoolAwareCog):
                         member.id, getattr(member, "display_name", str(member.id))
                     )
 
-        hero_counts = await self._daily_hero_wins(uid for uid, _ in top_posters)
-
         reactions_total = sum(m.reactions for m in cur_msgs)
         rxn_per_msg = reactions_total / cur_count if cur_count else 0.0
 
@@ -385,9 +367,7 @@ class VibeCheckCog(PoolAwareCog):
         for uid, medal in top_posters:
             cnt = posters.get(uid, 0)
             name = author_names.get(uid, str(uid))
-            hero = hero_counts.get(uid, 0)
-            hero_note = f", {hero}x Daily Hero"
-            lines.append(f"{medal} @{name} ({cnt} msgs{hero_note})")
+            lines.append(f"{medal} @{name} ({cnt} msgs)")
         if not top_posters:
             lines.append("No posters found")
         lines.append("")

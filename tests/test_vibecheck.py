@@ -110,9 +110,6 @@ def test_vibecheck_defers(monkeypatch):
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
     monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
-    async def fake_hero_wins(uids):
-        return {}
-    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
 
     class DummyResponse:
         def __init__(self):
@@ -152,7 +149,7 @@ def test_vibecheck_defers(monkeypatch):
     assert "- tip" in output.splitlines()
 
 
-def test_third_place_includes_hero_counts(monkeypatch):
+def test_top_posters_shows_message_counts(monkeypatch):
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
     cog = VibeCheckCog(bot)
     cog.pool = object()
@@ -184,11 +181,6 @@ def test_third_place_includes_hero_counts(monkeypatch):
         return {1}
 
     monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
-
-    async def fake_hero_wins(uids):
-        return {1: 5, 2: 2, 3: 1}
-
-    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
 
     class DummyResponse:
         def __init__(self):
@@ -246,9 +238,9 @@ def test_third_place_includes_hero_counts(monkeypatch):
     first = next(l for l in lines if l.startswith("🥇"))
     second = next(l for l in lines if l.startswith("🥈"))
     third = next(l for l in lines if l.startswith("🥉"))
-    assert "@u1" in first and "3 msgs" in first and "5x Daily Hero" in first
-    assert "@u2" in second and "5 msgs" in second and "2x Daily Hero" in second
-    assert "@u3" in third and "4 msgs" in third and "1x Daily Hero" in third
+    assert "@u1" in first and "3 msgs" in first
+    assert "@u2" in second and "5 msgs" in second
+    assert "@u3" in third and "4 msgs" in third
 
 
 def test_vibecheck_uses_top_poster_roles(monkeypatch):
@@ -277,14 +269,10 @@ def test_vibecheck_uses_top_poster_roles(monkeypatch):
     async def fake_public_ids():
         return {1}
 
-    async def fake_hero_wins(uids):
-        return {uid: 0 for uid in uids}
-
     monkeypatch.setattr(cog, "_gather_messages", fake_gather)
     monkeypatch.setattr(cog, "_friendship_tips", fake_tips)
     monkeypatch.setattr(cog, "_derive_topics", fake_topics)
     monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
-    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
 
     monkeypatch.setattr(
         cfg,
@@ -371,11 +359,6 @@ def test_vibecheck_omits_private_channels(monkeypatch):
     monkeypatch.setattr(cog, "_derive_topics", fake_topics)
     monkeypatch.setattr(cog, "_public_channel_ids", fake_public_ids)
 
-    async def fake_hero_wins2(uids):
-        return {}
-
-    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins2)
-
     class DummyGuild:
         def __init__(self):
             self.default_role = object()
@@ -448,11 +431,6 @@ def test_gather_messages_filters_private_channels(monkeypatch):
         return ("t1", "t2")
 
     monkeypatch.setattr(cog, "_derive_topics", fake_topics)
-
-    async def fake_hero_wins(_: object):
-        return {}
-
-    monkeypatch.setattr(cog, "_daily_hero_wins", fake_hero_wins)
 
     class DummyGuild:
         def __init__(self):
@@ -556,35 +534,4 @@ def test_public_channel_ids_query():
     assert pool.queries, "query not executed"
     q = pool.queries[0].lower()
     assert "is_private" in q
-
-
-def test_daily_hero_wins_query():
-    bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
-    cog = VibeCheckCog(bot)
-
-    class DummyPool:
-        def __init__(self):
-            self.queries: list[str] = []
-
-        async def fetchrow(self, query, *args):
-            self.queries.append(query)
-            uid = args[1]
-            data = {1: 3, 2: 1}
-            return {"c": data.get(uid, 0)}
-
-    pool = DummyPool()
-    cog.pool = pool
-
-    async def run():
-        wins = await cog._daily_hero_wins([1, 2])
-        await bot.close()
-        return wins
-
-    wins = asyncio.run(run())
-
-    assert len(pool.queries) == 2
-    q = pool.queries[0].lower()
-    assert "role_event" in q
-    assert "action=1" in q.replace(" ", "")
-    assert wins == {1: 3, 2: 1}
 

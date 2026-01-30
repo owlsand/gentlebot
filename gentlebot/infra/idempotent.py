@@ -78,8 +78,8 @@ def idempotent_task(
             def __init__(self, bot):
                 self.pool = None  # Set during cog_load
 
-            @idempotent_task("daily_hero_dm", lambda self: date.today().isoformat())
-            async def _send_dm(self):
+            @idempotent_task("daily_digest", lambda self: date.today().isoformat())
+            async def _run_digest(self):
                 # This will only run once per day
                 ...
 
