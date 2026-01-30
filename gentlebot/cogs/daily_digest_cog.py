@@ -12,28 +12,11 @@ from discord.ext import commands
 
 from .. import bot_config as cfg
 from ..util import build_db_url
+from ..tasks.daily_digest import assign_tiers
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
 LA = pytz.timezone("America/Los_Angeles")
-
-# ─── Helper Functions ──────────────────────────────────────────────────────
-
-def assign_tiers(rankings: list[int], roles: dict[str, int]) -> dict[int, int]:
-    """Return user→role mapping for tiered badges using fixed ranges."""
-
-    result: dict[int, int] = {}
-    tiers = (
-        ("gold", 0, 1),    # top 1
-        ("silver", 1, 2),  # next 1
-        ("bronze", 2, 4),  # next 2
-    )
-    for name, start, end in tiers:
-        role_id = roles.get(name, 0)
-        for idx in range(start, min(end, len(rankings))):
-            result[rankings[idx]] = role_id
-    return result
-
 
 class DailyDigestCog(commands.Cog):
     """Daily Digest scheduler for engagement badges."""

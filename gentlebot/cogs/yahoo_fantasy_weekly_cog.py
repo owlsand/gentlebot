@@ -17,7 +17,7 @@ from .. import bot_config as cfg
 from ..db import get_pool
 from ..infra import alert_task_failure, idempotent_task
 from ..util import chan_name, user_name
-from .yahoo_fantasy import (
+from ..tasks.yahoo_fantasy import (
     determine_target_week,
     extract_league_context,
     fetch_access_token,
