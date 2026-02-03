@@ -182,6 +182,18 @@ LINK_SUMMARIZER_ENABLED = bool_env("LINK_SUMMARIZER_ENABLED", True)
 # Whether book enrichment is enabled (auto-detects books in #reading)
 BOOK_ENRICHMENT_ENABLED = bool_env("BOOK_ENRICHMENT_ENABLED", True)
 
+# ─── Hall of Fame ─────────────────────────────────────────────────────────
+# Community-curated archive of exceptional messages
+HALL_OF_FAME_ENABLED = bool_env("HALL_OF_FAME_ENABLED", True)
+# Channel ID where inducted messages are cross-posted (0 = disabled)
+HALL_OF_FAME_CHANNEL_ID = int_env("HALL_OF_FAME_CHANNEL_ID", 0)
+# Minimum total reactions for a message to be nominated
+HOF_NOMINATION_THRESHOLD = int_env("HOF_NOMINATION_THRESHOLD", 10)
+# Trophy votes needed for induction into Hall of Fame
+HOF_VOTE_THRESHOLD = int_env("HOF_VOTE_THRESHOLD", 3)
+# Emoji used for nominations and voting
+HOF_EMOJI = "\U0001f3c6"  # 🏆
+
 # IDs of roles automatically assigned by RolesCog
 AUTO_ROLE_IDS = {
     ROLE_GHOST,
