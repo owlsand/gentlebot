@@ -175,7 +175,7 @@ class LinkSummarizerCog(commands.Cog):
         """Use LLM to summarize the page content."""
         domain = _extract_domain(url)
 
-        prompt = f"""Summarize this web page content into a brief, useful summary.
+        prompt = f"""Summarize this web page content into key bullet points.
 
 URL: {url}
 Domain: {domain}
@@ -184,11 +184,13 @@ Content:
 {content[:6000]}
 
 Requirements:
-- Start with "**TL;DR:** " followed by 2-3 sentences capturing the key point
-- If there are specific quotes, facts, or numbers, include the most important one
-- Keep total response under 400 characters
+- Return exactly 2-3 bullet points with the key takeaways
+- Start each bullet with "• " (bullet character)
+- Each bullet should be one concise sentence capturing a key point
+- If there are specific quotes, facts, or numbers, include the most important ones
+- Keep total response under 350 characters
 - Don't include the URL in your response
-- If the content seems incomplete or unclear, summarize what's available"""
+- Do NOT write paragraphs - bullets only"""
 
         try:
             response = await asyncio.to_thread(
