@@ -9,7 +9,7 @@ from discord.ext import commands
 from apscheduler.triggers.cron import CronTrigger
 
 from gentlebot import bot_config as cfg
-from gentlebot.tasks.daily_haiku import DailyHaikuCog, build_prompt
+from gentlebot.cogs.daily_haiku_cog import DailyHaikuCog, build_prompt
 from gentlebot.llm.router import router
 
 
@@ -43,7 +43,7 @@ def test_haiku_scheduled(cog, monkeypatch):
         def shutdown(self, wait=False):
             pass
 
-    import gentlebot.tasks.daily_haiku as module
+    import gentlebot.cogs.daily_haiku_cog as module
 
     monkeypatch.setattr(module, "AsyncIOScheduler", DummyScheduler)
 
@@ -83,7 +83,7 @@ def test_post_haiku_posts_message(cog, monkeypatch):
         )
 
         sent: list[str] = []
-        import gentlebot.tasks.daily_haiku as module
+        import gentlebot.cogs.daily_haiku_cog as module
 
         class DummyDateTime(dt.datetime):
             @classmethod
@@ -129,7 +129,7 @@ def test_post_haiku_skips_when_insufficient_messages(cog, monkeypatch):
         cog.pool = DummyPool()
 
         sent: list[str] = []
-        import gentlebot.tasks.daily_haiku as module
+        import gentlebot.cogs.daily_haiku_cog as module
 
         class DummyChannel(SimpleNamespace):
             async def send(self, message):
