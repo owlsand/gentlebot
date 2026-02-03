@@ -178,6 +178,11 @@ TRENDING_MIN_REACTIONS = int_env("TRENDING_MIN_REACTIONS", 3)
 # ─── Link Summarizer ──────────────────────────────────────────────────────
 # Whether link summarization is enabled (auto-detects links, offers summaries)
 LINK_SUMMARIZER_ENABLED = bool_env("LINK_SUMMARIZER_ENABLED", True)
+# ─── TL;DR Reactions ──────────────────────────────────────────────────────
+# Whether TL;DR reactions for long messages is enabled
+TLDR_ENABLED = bool_env("TLDR_ENABLED", True)
+# Minimum message length (characters) to trigger TL;DR reaction
+TLDR_MIN_LENGTH = int_env("TLDR_MIN_LENGTH", 500)
 # ─── Book Enrichment ──────────────────────────────────────────────────────
 # Whether book enrichment is enabled (auto-detects books in #reading)
 BOOK_ENRICHMENT_ENABLED = bool_env("BOOK_ENRICHMENT_ENABLED", True)
