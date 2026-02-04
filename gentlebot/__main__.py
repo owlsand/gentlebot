@@ -14,6 +14,8 @@ from discord.ext import commands
 
 from . import bot_config as cfg
 from .postgres_handler import PostgresHandler
+from .github_handler import GitHubIssueHandler
+from .infra.github_issues import get_github_issue_config
 from .util import build_db_url
 from .db import close_pool
 from .version import get_version
@@ -151,6 +153,8 @@ async def main() -> None:
     db_url = build_db_url()
     db_handler = None
     file_handler = None
+    github_handler = None
+
     if db_url:
         db_handler = PostgresHandler(db_url)
         await db_handler.connect()
@@ -164,6 +168,15 @@ async def main() -> None:
         )
         file_handler.setFormatter(log_format)
         root_logger.addHandler(file_handler)
+
+    # Initialize GitHub issue handler (PROD only)
+    github_config = get_github_issue_config()
+    env = os.getenv("env", "PROD").upper()
+    if github_config.enabled and env == "PROD":
+        github_handler = GitHubIssueHandler(github_config)
+        await github_handler.connect()
+        root_logger.addHandler(github_handler)
+        logger.info("GitHub issue handler enabled for error reporting")
 
     try:
         async with bot:
@@ -181,6 +194,8 @@ async def main() -> None:
                     logger.exception("Error awaiting backfill task")
         _backfill_tasks.clear()
 
+        if github_handler:
+            github_handler.close()
         if db_handler:
             await db_handler.aclose()
         if file_handler:

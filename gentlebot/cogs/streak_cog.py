@@ -23,7 +23,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from .. import bot_config as cfg
-from ..infra import PoolAwareCog, alert_task_failure, daily_key, idempotent_task
+from ..infra import PoolAwareCog, daily_key, idempotent_task
 from ..llm.router import get_router, SafetyBlocked
 from ..capabilities import (
     CogCapabilities,
@@ -636,12 +636,6 @@ class StreakCog(PoolAwareCog):
             await self._maintain_streaks()
         except Exception as exc:
             log.exception("Streak maintenance task failed: %s", exc)
-            await alert_task_failure(
-                self.bot,
-                "streak_maintenance",
-                exc,
-                context={"date": date.today().isoformat()},
-            )
 
     @idempotent_task("streak_maintenance", daily_key)
     async def _maintain_streaks(self) -> str:

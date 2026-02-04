@@ -15,7 +15,7 @@ from discord.ext import commands
 
 from .. import bot_config as cfg
 from ..db import get_pool
-from ..infra import alert_task_failure, idempotent_task
+from ..infra import idempotent_task
 from ..util import chan_name, user_name
 
 from ..capabilities import (
@@ -108,17 +108,11 @@ class YahooFantasyWeeklyCog(commands.Cog):
         return f"{today.year}-W{today.isocalendar()[1]:02d}"
 
     async def _post_weekly_recap_safe(self) -> None:
-        """Wrapper with error handling and alerting."""
+        """Wrapper with error handling."""
         try:
             await self._post_weekly_recap()
         except Exception as exc:
             log.exception("Yahoo Fantasy weekly recap failed: %s", exc)
-            await alert_task_failure(
-                self.bot,
-                "yahoo_fantasy_weekly",
-                exc,
-                context={"week": self._get_week_key()},
-            )
 
     @idempotent_task("yahoo_fantasy_weekly", lambda self: self._get_week_key())
     async def _post_weekly_recap(self) -> str:
