@@ -1,6 +1,6 @@
 """Infrastructure utilities for Gentlebot."""
-from .alerts import alert_task_failure, get_alert_recipients, is_alerting_enabled, send_alert
 from .cog_base import PoolAwareCog, log_errors, require_pool
+from .github_issues import GitHubIssueConfig, get_github_issue_config
 from .config import (
     ArchiveConfig,
     BurstThreadConfig,
@@ -24,15 +24,13 @@ from .state_cache import StateCache, get_state_cache
 from .transactions import transaction
 
 __all__ = [
-    # Alerts
-    "alert_task_failure",
-    "get_alert_recipients",
-    "is_alerting_enabled",
-    "send_alert",
     # Cog base classes
     "PoolAwareCog",
     "log_errors",
     "require_pool",
+    # GitHub Issues
+    "GitHubIssueConfig",
+    "get_github_issue_config",
     # Configuration
     "ArchiveConfig",
     "BurstThreadConfig",
