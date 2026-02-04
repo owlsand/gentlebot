@@ -203,14 +203,6 @@ def test_insert_message_updates_channel(monkeypatch):
         cog = MessageArchiveCog(bot)
         cog.pool = pool
 
-        executed = []
-
-        async def fake_execute(query, *args):
-            executed.append(query)
-            return "INSERT 0 1"
-
-        pool.execute = fake_execute
-
         class Dummy:
             def __init__(self, **kw):
                 self.__dict__.update(kw)
@@ -240,7 +232,8 @@ def test_insert_message_updates_channel(monkeypatch):
         )
 
         await cog._insert_message(message)
-        assert any("UPDATE discord.channel SET last_message_id" in q for q in executed)
+        # Queries now go through DummyConnection which appends to pool.executed
+        assert any("UPDATE discord.channel SET last_message_id" in q for q in pool.executed)
 
     asyncio.run(run_test())
 
