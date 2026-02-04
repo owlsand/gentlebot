@@ -75,6 +75,7 @@ def test_close_asyncio_run_not_called(monkeypatch):
         pool = DummyPool()
         handler = PostgresHandler("postgresql+asyncpg://u:p@localhost/db")
         handler.pool = pool
+        handler._owns_pool = True  # Handler must own the pool to close it
 
         called = False
 

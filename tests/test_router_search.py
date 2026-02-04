@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from gentlebot.llm import router as llm_router
 from gentlebot.llm.router import LLMRouter
 from gentlebot.infra import http as http_module
 
@@ -67,7 +68,7 @@ def test_web_search_falls_back_to_jina(monkeypatch: pytest.MonkeyPatch) -> None:
     # Create a mock session with our fake_get
     mock_session = MagicMock()
     mock_session.get = fake_get
-    monkeypatch.setattr(http_module, "get_sync_session", lambda **_: mock_session)
+    monkeypatch.setattr(llm_router, "get_sync_session", lambda **_: mock_session)
 
     # Mock duckduckgo-search to return no results (simulating failure)
     mock_ddgs = MagicMock()
@@ -114,7 +115,7 @@ def test_web_search_prefers_google_when_configured(monkeypatch: pytest.MonkeyPat
     # Create a mock session with our fake_get
     mock_session = MagicMock()
     mock_session.get = fake_get
-    monkeypatch.setattr(http_module, "get_sync_session", lambda **_: mock_session)
+    monkeypatch.setattr(llm_router, "get_sync_session", lambda **_: mock_session)
 
     result = router._run_search({"query": "current year", "max_results": 1})
 
@@ -142,7 +143,7 @@ def test_web_search_uses_duckduckgo_search_fallback(monkeypatch: pytest.MonkeyPa
 
     mock_session = MagicMock()
     mock_session.get = fake_get
-    monkeypatch.setattr(http_module, "get_sync_session", lambda **_: mock_session)
+    monkeypatch.setattr(llm_router, "get_sync_session", lambda **_: mock_session)
 
     # Mock duckduckgo-search to return results
     mock_ddgs = MagicMock()
@@ -177,7 +178,7 @@ def test_web_search_returns_error_detail_on_failure(monkeypatch: pytest.MonkeyPa
 
     mock_session = MagicMock()
     mock_session.get = fake_get
-    monkeypatch.setattr(http_module, "get_sync_session", lambda **_: mock_session)
+    monkeypatch.setattr(llm_router, "get_sync_session", lambda **_: mock_session)
 
     # Mock duckduckgo-search to fail
     mock_ddgs = MagicMock()

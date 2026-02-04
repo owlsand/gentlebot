@@ -14,3 +14,4 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
 echo "Setup complete. Activate the environment with 'source venv/bin/activate'"
+echo "Run tests with: make test"

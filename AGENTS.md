@@ -18,16 +18,13 @@ Gentlebot is a modular Discord bot built with **discord.py** v2. Each feature li
  - The Gemini cogs require `GEMINI_API_KEY`; other cogs may use public APIs.
 
 ## Tests
-Before committing run the local checks below.  Install dependencies with
-`pip install -r requirements.txt` first so modules import cleanly.
+Before committing, run tests locally:
+```
+make test              # run unit tests
+make harness           # ensure all cogs load offline
+```
 
-Run these commands to verify everything loads:
-```
-python -m pytest -q       # run unit tests in tests/
-python test_harness.py    # ensure all cogs load offline
-```
-To simulate a Discord connection without starting the bot, run
-`BOT_OFFLINE=1 ./dev_run.sh --offline` which executes the harness script.
+Tests run automatically on every pull request via GitHub Actions.
 
 ## Coding style
 - Follow PEP8 with four-space indents and type hints where practical.

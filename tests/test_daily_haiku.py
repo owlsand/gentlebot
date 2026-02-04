@@ -9,7 +9,7 @@ from discord.ext import commands
 from apscheduler.triggers.cron import CronTrigger
 
 from gentlebot import bot_config as cfg
-from gentlebot.tasks.daily_haiku import DailyHaikuCog, build_prompt
+from gentlebot.cogs.daily_haiku_cog import DailyHaikuCog, build_prompt
 from gentlebot.llm.router import router
 
 
@@ -43,7 +43,7 @@ def test_haiku_scheduled(cog, monkeypatch):
         def shutdown(self, wait=False):
             pass
 
-    import gentlebot.tasks.daily_haiku as module
+    import gentlebot.cogs.daily_haiku_cog as module
 
     monkeypatch.setattr(module, "AsyncIOScheduler", DummyScheduler)
 
@@ -71,6 +71,10 @@ def test_post_haiku_posts_message(cog, monkeypatch):
                 captured_start.append(start)
                 return [{"content": str(i)} for i in range(51)]
 
+            async def fetchrow(self, q, *args):
+                # Return activity count > 0 to indicate lobby is active
+                return {"cnt": 1}
+
             async def close(self):
                 pass
 
@@ -83,7 +87,7 @@ def test_post_haiku_posts_message(cog, monkeypatch):
         )
 
         sent: list[str] = []
-        import gentlebot.tasks.daily_haiku as module
+        import gentlebot.cogs.daily_haiku_cog as module
 
         class DummyDateTime(dt.datetime):
             @classmethod
@@ -94,6 +98,8 @@ def test_post_haiku_posts_message(cog, monkeypatch):
         monkeypatch.setattr(module, "datetime", DummyDateTime)
 
         class DummyChannel(SimpleNamespace):
+            name = "test-channel"
+
             async def send(self, message):
                 sent.append(message)
 
@@ -123,15 +129,20 @@ def test_post_haiku_skips_when_insufficient_messages(cog, monkeypatch):
             async def fetch(self, q, guild_id, start, end):
                 return [{"content": "msg"} for _ in range(50)]
 
+            async def fetchrow(self, q, *args):
+                return {"cnt": 1}
+
             async def close(self):
                 pass
 
         cog.pool = DummyPool()
 
         sent: list[str] = []
-        import gentlebot.tasks.daily_haiku as module
+        import gentlebot.cogs.daily_haiku_cog as module
 
         class DummyChannel(SimpleNamespace):
+            name = "test-channel"
+
             async def send(self, message):
                 sent.append(message)
 
