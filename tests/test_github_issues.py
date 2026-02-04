@@ -434,10 +434,19 @@ async def test_create_github_issue_success():
         return_value={"html_url": "https://github.com/owner/repo/issues/1"}
     )
 
-    with patch("aiohttp.ClientSession") as mock_session:
-        mock_session.return_value.__aenter__.return_value.post.return_value.__aenter__.return_value = (
-            mock_response
-        )
+    # Create proper async context manager mocks
+    mock_post_cm = AsyncMock()
+    mock_post_cm.__aenter__.return_value = mock_response
+    mock_post_cm.__aexit__.return_value = None
+
+    mock_session_instance = MagicMock()
+    mock_session_instance.post.return_value = mock_post_cm
+
+    mock_session_cm = AsyncMock()
+    mock_session_cm.__aenter__.return_value = mock_session_instance
+    mock_session_cm.__aexit__.return_value = None
+
+    with patch("gentlebot.infra.github_issues.aiohttp.ClientSession", return_value=mock_session_cm):
         result = await create_github_issue(config, "Test Issue", "Test body")
 
     assert result is not None
@@ -467,10 +476,19 @@ async def test_create_github_issue_api_error():
     mock_response.status = 401
     mock_response.text = AsyncMock(return_value="Bad credentials")
 
-    with patch("aiohttp.ClientSession") as mock_session:
-        mock_session.return_value.__aenter__.return_value.post.return_value.__aenter__.return_value = (
-            mock_response
-        )
+    # Create proper async context manager mocks
+    mock_post_cm = AsyncMock()
+    mock_post_cm.__aenter__.return_value = mock_response
+    mock_post_cm.__aexit__.return_value = None
+
+    mock_session_instance = MagicMock()
+    mock_session_instance.post.return_value = mock_post_cm
+
+    mock_session_cm = AsyncMock()
+    mock_session_cm.__aenter__.return_value = mock_session_instance
+    mock_session_cm.__aexit__.return_value = None
+
+    with patch("gentlebot.infra.github_issues.aiohttp.ClientSession", return_value=mock_session_cm):
         result = await create_github_issue(config, "Test Issue", "Test body")
 
     assert result is None
