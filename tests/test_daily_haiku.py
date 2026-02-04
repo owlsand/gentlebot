@@ -98,6 +98,8 @@ def test_post_haiku_posts_message(cog, monkeypatch):
         monkeypatch.setattr(module, "datetime", DummyDateTime)
 
         class DummyChannel(SimpleNamespace):
+            name = "test-channel"
+
             async def send(self, message):
                 sent.append(message)
 
@@ -139,6 +141,8 @@ def test_post_haiku_skips_when_insufficient_messages(cog, monkeypatch):
         import gentlebot.cogs.daily_haiku_cog as module
 
         class DummyChannel(SimpleNamespace):
+            name = "test-channel"
+
             async def send(self, message):
                 sent.append(message)
 

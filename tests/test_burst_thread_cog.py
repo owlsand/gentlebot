@@ -39,7 +39,8 @@ def test_burst_triggers_thread(monkeypatch):
 
         monkeypatch.setattr(cog, "_summarize", fake_summary)
 
-        async def fake_alert(topic, mention):
+        def fake_alert(topic, mention):
+            # This should be a regular function, not async, matching production signature
             return (
                 f"📈 Wow, looks like you're getting pretty into {topic}! "
                 f"Here's a thread if you want to take it offline to avoid blowing up "

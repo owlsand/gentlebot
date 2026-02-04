@@ -10,6 +10,14 @@ from gentlebot.cogs.message_archive_cog import MessageArchiveCog, _privacy_kind
 from gentlebot.util import build_db_url, ReactionAction
 
 
+class DummyTransaction:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+
 class DummyConnection:
     def __init__(self, pool):
         self.pool = pool
@@ -20,6 +28,9 @@ class DummyConnection:
     async def fetchval(self, query, *args):
         self.pool.executed.append(query)
         return True
+
+    def transaction(self):
+        return DummyTransaction()
 
 
 class DummyPool:

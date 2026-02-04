@@ -7,12 +7,23 @@ from gentlebot.cogs.role_log_cog import RoleLogCog
 import json
 
 
+class DummyTransaction:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+
 class DummyConnection:
     def __init__(self, pool):
         self.pool = pool
 
     async def execute(self, query, *args):
         self.pool.executed.append((query, args))
+
+    def transaction(self):
+        return DummyTransaction()
 
 
 class DummyAcquireContext:
