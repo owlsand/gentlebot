@@ -243,9 +243,26 @@ def test_last_category_updated():
     asyncio.run(run())
 
 
-def test_poll_prompt_type_tracked():
+def test_poll_prompt_type_tracked(monkeypatch):
     """last_prompt_type should be 'poll' after sending poll."""
     async def run():
+        # Mock discord.Poll and discord.PollQuestion for environments where they don't exist
+        class MockPollQuestion:
+            def __init__(self, text):
+                self.text = text
+
+        class MockPoll:
+            def __init__(self, question, duration):
+                self.question = question
+                self.duration = duration
+                self.answers = []
+
+            def add_answer(self, text):
+                self.answers.append(text)
+
+        monkeypatch.setattr(prompt_cog.discord, "Poll", MockPoll, raising=False)
+        monkeypatch.setattr(prompt_cog.discord, "PollQuestion", MockPollQuestion, raising=False)
+
         bot = types.SimpleNamespace()
         cog = prompt_cog.PromptCog(bot)
 
@@ -283,7 +300,7 @@ def test_send_prompt_posts_to_channel(monkeypatch):
         monkeypatch.setattr(cog, "_should_use_poll", lambda: False)
 
         await cog._send_prompt()
-        assert cog.sent is not None or channel.sent is not None
+        assert channel.sent is not None
 
     asyncio.run(run())
 

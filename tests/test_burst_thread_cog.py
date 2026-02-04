@@ -68,7 +68,11 @@ def test_burst_triggers_thread(monkeypatch):
             create_thread = staticmethod(fake_create_thread)
 
         channel = DummyChannel(id=10, guild=SimpleNamespace(get_member=lambda uid: SimpleNamespace(id=uid)))
-        channel.send = lambda msg: sent.append(msg)
+
+        async def async_send(msg):
+            sent.append(msg)
+
+        channel.send = async_send
         monkeypatch.setattr(discord, "TextChannel", DummyChannel)
         base_ts = discord.utils.utcnow()
         authors = [SimpleNamespace(id=1, bot=False), SimpleNamespace(id=2, bot=False)]

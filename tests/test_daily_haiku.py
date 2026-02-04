@@ -71,6 +71,10 @@ def test_post_haiku_posts_message(cog, monkeypatch):
                 captured_start.append(start)
                 return [{"content": str(i)} for i in range(51)]
 
+            async def fetchrow(self, q, *args):
+                # Return activity count > 0 to indicate lobby is active
+                return {"cnt": 1}
+
             async def close(self):
                 pass
 
@@ -122,6 +126,9 @@ def test_post_haiku_skips_when_insufficient_messages(cog, monkeypatch):
         class DummyPool:
             async def fetch(self, q, guild_id, start, end):
                 return [{"content": "msg"} for _ in range(50)]
+
+            async def fetchrow(self, q, *args):
+                return {"cnt": 1}
 
             async def close(self):
                 pass

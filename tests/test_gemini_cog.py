@@ -72,7 +72,7 @@ def test_on_message_dm_receives_reply(monkeypatch):
 
     asyncio.run(cog.on_message(message))
 
-    message.reply.assert_called_once_with("hi", mention_author=True)
+    message.reply.assert_called_once_with("hi", files=None, mention_author=True)
     message.add_reaction.assert_called_once()
 
 
@@ -185,7 +185,7 @@ def test_on_message_includes_archive_context(monkeypatch):
 
     assert "Alice: hello" in captured["prompt"]
     assert "User message: hi" in captured["prompt"]
-    message.reply.assert_called_once_with("ok", mention_author=True)
+    message.reply.assert_called_once_with("ok", files=None, mention_author=True)
 
 
 def test_on_message_context_sanitization(monkeypatch):
@@ -225,7 +225,7 @@ def test_on_message_context_sanitization(monkeypatch):
 
     assert "<@&5>" not in captured["prompt"]
     assert len(captured["prompt"]) <= cog.MAX_PROMPT_LEN
-    message.reply.assert_called_once_with("ok", mention_author=True)
+    message.reply.assert_called_once_with("ok", files=None, mention_author=True)
 
 
 def test_on_message_replaces_user_placeholder(monkeypatch):
@@ -297,7 +297,7 @@ def test_on_message_dm_without_text(monkeypatch):
     asyncio.run(cog.on_message(message))
 
     assert "pinged you directly" in captured["prompt"]
-    message.reply.assert_called_once_with("Howdy!", mention_author=True)
+    message.reply.assert_called_once_with("Howdy!", files=None, mention_author=True)
 
 
 def test_on_message_replies_to_direct_mention_without_text(monkeypatch):
@@ -338,4 +338,4 @@ def test_on_message_replies_to_direct_mention_without_text(monkeypatch):
     asyncio.run(cog.on_message(message))
 
     assert "pinged you directly" in captured["prompt"]
-    message.reply.assert_called_once_with("Hello there!", mention_author=True)
+    message.reply.assert_called_once_with("Hello there!", files=None, mention_author=True)

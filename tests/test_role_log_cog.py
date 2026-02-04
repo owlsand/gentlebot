@@ -7,6 +7,26 @@ from gentlebot.cogs.role_log_cog import RoleLogCog
 import json
 
 
+class DummyConnection:
+    def __init__(self, pool):
+        self.pool = pool
+
+    async def execute(self, query, *args):
+        self.pool.executed.append((query, args))
+
+
+class DummyAcquireContext:
+    def __init__(self, pool):
+        self.pool = pool
+        self.conn = DummyConnection(pool)
+
+    async def __aenter__(self):
+        return self.conn
+
+    async def __aexit__(self, *args):
+        pass
+
+
 class DummyPool:
     def __init__(self):
         self.executed = []
@@ -16,6 +36,9 @@ class DummyPool:
 
     async def execute(self, query, *args):
         self.executed.append((query, args))
+
+    def acquire(self):
+        return DummyAcquireContext(self)
 
 
 async def fake_create_pool(url, *args, **kwargs):
