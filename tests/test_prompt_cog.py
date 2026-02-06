@@ -394,3 +394,225 @@ def test_next_run_time_wraps_to_tomorrow():
 
     assert next_run.day == 16  # Next day
     assert next_run.hour == prompt_cog.SCHEDULE_HOUR
+
+
+def test_get_cooldown_info_no_pool():
+    """_get_cooldown_info should return no cooldown when pool is None."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+        cog.pool = None
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert should_skip is False
+        assert next_eligible is None
+        assert low_count == 0
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_no_prompts():
+    """_get_cooldown_info should return no cooldown when no prompts exist."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return []
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert should_skip is False
+        assert next_eligible is None
+        assert low_count == 0
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_good_engagement():
+    """_get_cooldown_info should return no cooldown when last prompt had good engagement."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return [
+                    {"created_at": datetime.now(ZoneInfo("UTC")), "message_count": 5},
+                ]
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert should_skip is False
+        assert next_eligible is None
+        assert low_count == 0
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_one_low_engagement():
+    """_get_cooldown_info should return 1 day cooldown for 1 low-engagement prompt."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        # Prompt was just posted (0 hours ago), low engagement
+        now = datetime.now(ZoneInfo("UTC"))
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return [
+                    {"created_at": now, "message_count": 0},
+                ]
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert should_skip is True
+        assert next_eligible is not None
+        assert low_count == 1
+        # Cooldown should be ~1 day from the prompt time
+        expected_eligible = now + timedelta(days=1)
+        assert abs((next_eligible - expected_eligible).total_seconds()) < 60
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_exponential_backoff():
+    """_get_cooldown_info should calculate exponential cooldown."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        # 3 consecutive low-engagement prompts should give 4 day cooldown (2^2)
+        now = datetime.now(ZoneInfo("UTC"))
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return [
+                    {"created_at": now, "message_count": 0},
+                    {"created_at": now - timedelta(days=1), "message_count": 1},
+                    {"created_at": now - timedelta(days=2), "message_count": 0},
+                ]
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert low_count == 3
+        # 3 low-engagement prompts = 2^(3-1) = 4 days cooldown
+        expected_eligible = now + timedelta(days=4)
+        assert abs((next_eligible - expected_eligible).total_seconds()) < 60
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_streak_broken():
+    """_get_cooldown_info should stop counting when engagement is good."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        now = datetime.now(ZoneInfo("UTC"))
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return [
+                    {"created_at": now, "message_count": 0},           # low
+                    {"created_at": now - timedelta(days=1), "message_count": 1},  # low
+                    {"created_at": now - timedelta(days=2), "message_count": 5},  # GOOD - breaks streak
+                    {"created_at": now - timedelta(days=3), "message_count": 0},  # low (not counted)
+                ]
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert low_count == 2  # Only counts until good engagement found
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_cooldown_expired():
+    """_get_cooldown_info should allow posting when cooldown has expired."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        # Prompt was 2 days ago with low engagement (1 day cooldown has passed)
+        old_time = datetime.now(ZoneInfo("UTC")) - timedelta(days=2)
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return [
+                    {"created_at": old_time, "message_count": 0},
+                ]
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert should_skip is False  # Cooldown expired, can post
+        assert next_eligible is None
+        assert low_count == 1  # Still tracks the low engagement count
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_max_cooldown_capped():
+    """_get_cooldown_info should cap cooldown at MAX_COOLDOWN_DAYS."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        now = datetime.now(ZoneInfo("UTC"))
+        # 10 consecutive low-engagement prompts would be 2^9 = 512 days without cap
+        rows = [
+            {"created_at": now - timedelta(days=i), "message_count": 0}
+            for i in range(10)
+        ]
+
+        class DummyPool:
+            async def fetch(self, *args):
+                return rows
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert low_count == 10
+        # Should be capped at MAX_COOLDOWN_DAYS (7 by default)
+        max_cooldown = min(2 ** (10 - 1), prompt_cog.MAX_COOLDOWN_DAYS)
+        expected_max = now + timedelta(days=max_cooldown)
+        # The actual next_eligible should not exceed the capped value
+        assert next_eligible <= expected_max + timedelta(seconds=60)
+
+    asyncio.run(run())
+
+
+def test_get_cooldown_info_handles_missing_table():
+    """_get_cooldown_info should handle missing table gracefully."""
+    async def run():
+        bot = types.SimpleNamespace()
+        cog = prompt_cog.PromptCog(bot)
+
+        class DummyPool:
+            async def fetch(self, *args):
+                raise asyncpg.UndefinedTableError("msg", "detail", "hint")
+
+        cog.pool = DummyPool()
+
+        should_skip, next_eligible, low_count = await cog._get_cooldown_info()
+
+        assert should_skip is False
+        assert next_eligible is None
+        assert low_count == 0
+
+    asyncio.run(run())
