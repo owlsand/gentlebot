@@ -45,6 +45,10 @@ SCHEDULE_HOUR = getattr(cfg, 'PROMPT_SCHEDULE_HOUR', 12)
 SCHEDULE_MINUTE = getattr(cfg, 'PROMPT_SCHEDULE_MINUTE', 30)
 POLL_RATIO = getattr(cfg, 'PROMPT_POLL_RATIO', 0.4)
 
+# Engagement-based cooldown settings
+MIN_RESPONSES = getattr(cfg, 'PROMPT_MIN_RESPONSES', 2)
+MAX_COOLDOWN_DAYS = getattr(cfg, 'PROMPT_MAX_COOLDOWN_DAYS', 7)
+
 # Poll duration (24 hours)
 POLL_DURATION = timedelta(hours=24)
 
@@ -212,6 +216,83 @@ class PromptCog(commands.Cog):
         """Determine if this prompt should be a poll based on POLL_RATIO."""
         return random.random() < POLL_RATIO
 
+    async def _get_cooldown_info(self) -> tuple[bool, datetime | None, int]:
+        """
+        Calculate cooldown based on recent engagement history.
+
+        Returns:
+            (should_skip, next_eligible_time, consecutive_low_engagement_count)
+
+        Logic:
+            - Query recent prompts ordered by date (most recent first)
+            - Count consecutive prompts with message_count < MIN_RESPONSES
+            - Cooldown = 2^(count-1) days, capped at MAX_COOLDOWN_DAYS
+            - If last prompt was within cooldown period, skip
+        """
+        if not self.pool:
+            return (False, None, 0)
+
+        try:
+            # Get last 10 prompts to analyze engagement pattern
+            rows = await self.pool.fetch(
+                """
+                SELECT created_at, message_count
+                FROM discord.daily_prompt
+                ORDER BY created_at DESC
+                LIMIT 10
+                """
+            )
+        except asyncpg.UndefinedTableError:
+            return (False, None, 0)
+
+        if not rows:
+            return (False, None, 0)
+
+        # Count consecutive low-engagement prompts from the most recent
+        consecutive_low = 0
+        for row in rows:
+            if row["message_count"] < MIN_RESPONSES:
+                consecutive_low += 1
+            else:
+                break  # Good engagement breaks the streak
+
+        if consecutive_low == 0:
+            # Last prompt had good engagement, no cooldown needed
+            return (False, None, 0)
+
+        # Calculate required cooldown: 2^(n-1) days, capped at max
+        # n=1 → 1 day, n=2 → 2 days, n=3 → 4 days, n=4 → 8 days...
+        cooldown_days = min(2 ** (consecutive_low - 1), MAX_COOLDOWN_DAYS)
+
+        # Check if enough time has passed since last prompt
+        last_prompt_time = rows[0]["created_at"]
+        # Make last_prompt_time timezone-aware if it isn't
+        if last_prompt_time.tzinfo is None:
+            from zoneinfo import ZoneInfo
+            last_prompt_time = last_prompt_time.replace(tzinfo=ZoneInfo("UTC"))
+
+        next_eligible = last_prompt_time + timedelta(days=cooldown_days)
+        now = datetime.now(LOCAL_TZ)
+
+        if now < next_eligible:
+            # Still in cooldown period
+            log.info(
+                "Cooldown active: %d consecutive low-engagement prompts, "
+                "waiting until %s (%d day cooldown)",
+                consecutive_low,
+                next_eligible.strftime("%Y-%m-%d %I:%M %p %Z"),
+                cooldown_days,
+            )
+            return (True, next_eligible, consecutive_low)
+
+        # Cooldown period has passed
+        log.info(
+            "Cooldown expired: was %d days for %d consecutive low-engagement prompts",
+            cooldown_days,
+            consecutive_low,
+        )
+        return (False, None, consecutive_low)
+
     async def _archive_prompt(
         self, prompt: str, category: str, channel_id: int, prompt_type: str
     ) -> None:
@@ -333,16 +414,54 @@ class PromptCog(commands.Cog):
         return next_run
 
     async def _scheduler(self):
-        """Main scheduling loop for daily prompts."""
+        """Main scheduling loop for daily prompts with engagement-based cooldown."""
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             now = datetime.now(LOCAL_TZ)
             next_run = self._next_run_time(now)
+
+            # Check if we're in a cooldown period due to low engagement
+            should_skip, cooldown_until, low_count = await self._get_cooldown_info()
+
+            if should_skip and cooldown_until:
+                # In cooldown - calculate when we should next check
+                # Wake up at the scheduled time on the day cooldown expires
+                cooldown_date = cooldown_until.astimezone(LOCAL_TZ).date()
+                next_check = datetime(
+                    cooldown_date.year,
+                    cooldown_date.month,
+                    cooldown_date.day,
+                    SCHEDULE_HOUR,
+                    SCHEDULE_MINUTE,
+                    tzinfo=LOCAL_TZ,
+                )
+                # If that time already passed today, move to next day
+                if next_check <= now:
+                    next_check += timedelta(days=1)
+
+                formatted = next_check.strftime("%I:%M:%S %p %Z on %b %d").lstrip('0')
+                log.info(
+                    "Cooldown active (%d low-engagement prompts). "
+                    "Next check at %s",
+                    low_count,
+                    formatted,
+                )
+                wait_seconds = (next_check - now).total_seconds()
+                await asyncio.sleep(wait_seconds)
+                continue  # Re-check cooldown after waking
+
+            # No cooldown - schedule normally
             formatted = next_run.strftime("%I:%M:%S %p %Z").lstrip('0')
             log.info("Next prompt scheduled at %s", formatted)
 
             wait_seconds = (next_run - now).total_seconds()
             await asyncio.sleep(wait_seconds)
+
+            # Re-check cooldown right before sending (engagement might have been updated)
+            should_skip, _, _ = await self._get_cooldown_info()
+            if should_skip:
+                log.info("Cooldown triggered just before send, skipping this cycle")
+                continue
 
             log.info(
                 "Firing scheduled prompt at %s",
@@ -438,12 +557,22 @@ class PromptCog(commands.Cog):
 
     @commands.command(name='prompt_stats')
     async def prompt_stats(self, ctx: commands.Context):
-        """Show prompt system statistics."""
+        """Show prompt system statistics including cooldown status."""
         text_prompts = self.templates.get("text_prompts", {})
         poll_prompts = self.templates.get("poll_prompts", {})
 
         text_count = sum(len(v) for v in text_prompts.values())
         poll_count = sum(len(v) for v in poll_prompts.values())
+
+        # Check cooldown status
+        should_skip, cooldown_until, low_count = await self._get_cooldown_info()
+        if should_skip and cooldown_until:
+            cooldown_str = cooldown_until.astimezone(LOCAL_TZ).strftime("%b %d at %I:%M %p")
+            cooldown_status = f"⏸️ Paused until {cooldown_str} ({low_count} low-engagement prompts)"
+        elif low_count > 0:
+            cooldown_status = f"✅ Ready (cooldown expired, was {low_count} low-engagement)"
+        else:
+            cooldown_status = "✅ Active (good engagement)"
 
         stats = (
             f"**Prompt System Stats**\n"
@@ -452,7 +581,9 @@ class PromptCog(commands.Cog):
             f"• Poll ratio: {POLL_RATIO:.0%}\n"
             f"• Schedule: {SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d} PT\n"
             f"• Used prompts in history: {len(self.past_prompts)}\n"
-            f"• Scheduler enabled: {self.prompts_enabled}"
+            f"• Scheduler enabled: {self.prompts_enabled}\n"
+            f"• Engagement threshold: {MIN_RESPONSES} responses\n"
+            f"• Cooldown status: {cooldown_status}"
         )
         await ctx.send(stats)
 
