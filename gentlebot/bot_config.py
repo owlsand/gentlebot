@@ -131,7 +131,7 @@ else:
 
 # ─── Optional overrides via env‑vars ───────────────────────────────────────
 INACTIVE_DAYS = int_env("INACTIVE_DAYS", 14)
-DAILY_PROMPT_ENABLED = bool_env("DAILY_PROMPT_ENABLED", False)
+DAILY_PROMPT_ENABLED = bool_env("DAILY_PROMPT_ENABLED", True)
 
 # ─── Daily Prompt Schedule ─────────────────────────────────────────────────
 # Schedule time in LA timezone (America/Los_Angeles)
@@ -140,6 +140,11 @@ PROMPT_SCHEDULE_HOUR = int_env("PROMPT_SCHEDULE_HOUR", 12)
 PROMPT_SCHEDULE_MINUTE = int_env("PROMPT_SCHEDULE_MINUTE", 30)
 # Ratio of polls vs text prompts (0.0 = all text, 1.0 = all polls)
 PROMPT_POLL_RATIO = float(os.getenv("PROMPT_POLL_RATIO", "0.4"))
+# Engagement-based cooldown: if prompts get low engagement, back off exponentially
+# Minimum message count to consider a prompt "engaged" (at least 2 responses)
+PROMPT_MIN_RESPONSES = int_env("PROMPT_MIN_RESPONSES", 2)
+# Maximum cooldown days (caps exponential growth)
+PROMPT_MAX_COOLDOWN_DAYS = int_env("PROMPT_MAX_COOLDOWN_DAYS", 7)
 
 # ─── Streak milestone roles ───────────────────────────────────────────────────
 # Create these roles in Discord and add the IDs via env vars.
