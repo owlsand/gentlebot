@@ -53,12 +53,26 @@ def get_github_issue_config() -> GitHubIssueConfig:
     labels_str = os.getenv("GITHUB_ISSUE_LABELS", "bug,auto-generated")
     labels = [label.strip() for label in labels_str.split(",") if label.strip()]
 
+    def _int_env(var: str, default: int) -> int:
+        """Return int value from env, tolerating inline comments."""
+        raw = os.getenv(var)
+        if raw is None:
+            return default
+        value = raw.split("#", 1)[0].strip()
+        if not value:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            log.warning("Invalid integer for %s: %s; using %s", var, raw, default)
+            return default
+
     return GitHubIssueConfig(
         enabled=os.getenv("GITHUB_ISSUES_ENABLED", "").lower() in ("true", "1", "yes"),
         token=os.getenv("GITHUB_TOKEN", ""),
         repo=os.getenv("GITHUB_REPO", ""),
-        rate_limit=int(os.getenv("GITHUB_ISSUE_RATE_LIMIT", "10")),
-        dedup_hours=int(os.getenv("GITHUB_ISSUE_DEDUP_HOURS", "24")),
+        rate_limit=_int_env("GITHUB_ISSUE_RATE_LIMIT", 10),
+        dedup_hours=_int_env("GITHUB_ISSUE_DEDUP_HOURS", 24),
         labels=labels,
     )
 
