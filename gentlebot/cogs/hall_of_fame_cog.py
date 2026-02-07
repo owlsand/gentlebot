@@ -124,7 +124,7 @@ class HallOfFameCog(PoolAwareCog):
                     re.message_id,
                     COUNT(DISTINCT (re.user_id, re.emoji)) AS reaction_count
                 FROM discord.reaction_event re
-                WHERE re.reaction_action = 'add'
+                WHERE re.reaction_action = 'MESSAGE_REACTION_ADD'
                   AND re.event_at >= NOW() - INTERVAL '%s days'
                   AND re.message_id IS NOT NULL
                 GROUP BY re.message_id

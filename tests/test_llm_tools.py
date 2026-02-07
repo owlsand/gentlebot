@@ -8,7 +8,6 @@ from gentlebot.llm.tools import (
     Tool,
     ToolParameter,
     ALL_TOOLS,
-    WEB_SEARCH,
     CALCULATE,
     READ_FILE,
     GENERATE_IMAGE,
@@ -110,11 +109,7 @@ class TestBuiltinTools:
     """Tests for the built-in tool definitions."""
 
     def test_all_tools_count(self) -> None:
-        assert len(ALL_TOOLS) == 4
-
-    def test_web_search_definition(self) -> None:
-        assert WEB_SEARCH.name == "web_search"
-        assert len(WEB_SEARCH.parameters) == 2  # query, max_results
+        assert len(ALL_TOOLS) == 3
 
     def test_calculate_definition(self) -> None:
         assert CALCULATE.name == "calculate"
@@ -129,10 +124,10 @@ class TestBuiltinTools:
         assert len(GENERATE_IMAGE.parameters) == 1  # prompt
 
     def test_get_tool(self) -> None:
-        assert get_tool("web_search") is WEB_SEARCH
         assert get_tool("calculate") is CALCULATE
         assert get_tool("read_file") is READ_FILE
         assert get_tool("generate_image") is GENERATE_IMAGE
+        assert get_tool("web_search") is None
         assert get_tool("nonexistent") is None
 
 
@@ -143,14 +138,14 @@ class TestSchemaGenerators:
         schemas = get_all_gemini_schemas()
         assert len(schemas) == 1
         assert "function_declarations" in schemas[0]
-        assert len(schemas[0]["function_declarations"]) == 4
+        assert len(schemas[0]["function_declarations"]) == 3
 
     def test_get_all_openai_schemas(self) -> None:
         schemas = get_all_openai_schemas()
-        assert len(schemas) == 4
+        assert len(schemas) == 3
         assert all(s["type"] == "function" for s in schemas)
 
     def test_get_all_claude_schemas(self) -> None:
         schemas = get_all_claude_schemas()
-        assert len(schemas) == 4
+        assert len(schemas) == 3
         assert all("input_schema" in s for s in schemas)

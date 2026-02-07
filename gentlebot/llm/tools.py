@@ -239,7 +239,7 @@ GENERATE_IMAGE = Tool(
 )
 
 # All available tools
-ALL_TOOLS = [WEB_SEARCH, CALCULATE, READ_FILE, GENERATE_IMAGE]
+ALL_TOOLS = [CALCULATE, READ_FILE, GENERATE_IMAGE]
 
 # Tool lookup by name
 TOOLS_BY_NAME: Dict[str, Tool] = {tool.name: tool for tool in ALL_TOOLS}
