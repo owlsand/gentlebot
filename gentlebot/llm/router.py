@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List
 from dotenv import load_dotenv
 
 from ..infra import Limit, QuotaGuard, RateLimited, call_with_backoff, get_logger
+from ..infra.retries import _extract_status
 from .providers.gemini import GeminiClient
 from .tokenizer import estimate_tokens, estimate_tokens_for_messages
 from .tools import get_all_gemini_schemas
@@ -67,9 +68,9 @@ class LLMRouter:
 
         self.quota = QuotaGuard(
             {
-                "general": _limit("general", Limit(rpm=15, tpm=1_000_000, rpd=1_500)),
+                "general": _limit("general", Limit(rpm=5, tpm=1_000_000, rpd=1_500)),
                 "scheduled": _limit("scheduled", Limit(rpm=2, tpm=1_000_000, rpd=1_500)),
-                "image": _limit("image", Limit(rpm=10, tpm=1_000_000, rpd=1_500)),
+                "image": _limit("image", Limit(rpm=5, tpm=1_000_000, rpd=1_500)),
             }
         )
         self.tool_limits = QuotaGuard(
@@ -380,7 +381,7 @@ class LLMRouter:
                 )
                 raise
             except Exception as exc:
-                status = getattr(getattr(exc, "response", None), "status_code", None)
+                status = _extract_status(exc)
                 if allow_fallback and (status == 429 or (status and 500 <= status < 600)):
                     log.warning(
                         "route=%s model=%s tokens_in=%s status=%s fallback=general",
