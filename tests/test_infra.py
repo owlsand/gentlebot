@@ -9,7 +9,6 @@ import pytest
 
 from gentlebot.infra import (
     ArchiveConfig,
-    BurstThreadConfig,
     CogConfig,
     LLMConfig,
     PoolAwareCog,
@@ -79,13 +78,6 @@ def test_llm_config_from_env() -> None:
         assert config.temperature == 0.8
 
 
-def test_burst_thread_config_properties() -> None:
-    """BurstThreadConfig provides timedelta properties."""
-    config = BurstThreadConfig(window_minutes=5, cooldown_minutes=15)
-    assert config.window.total_seconds() == 5 * 60
-    assert config.cooldown.total_seconds() == 15 * 60
-
-
 def test_reaction_config_defaults() -> None:
     """ReactionConfig has expected defaults."""
     config = ReactionConfig()
@@ -110,7 +102,6 @@ def test_cog_config_from_env() -> None:
     reset_config()
     config = CogConfig.from_env()
     assert isinstance(config.llm, LLMConfig)
-    assert isinstance(config.burst_thread, BurstThreadConfig)
     assert isinstance(config.reaction, ReactionConfig)
     assert isinstance(config.archive, ArchiveConfig)
 
