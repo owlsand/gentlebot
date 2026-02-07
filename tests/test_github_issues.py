@@ -306,6 +306,17 @@ def test_get_github_issue_config_from_env(monkeypatch):
     assert config.labels == ["error", "automated"]
 
 
+def test_get_github_issue_config_inline_comments(monkeypatch):
+    """Inline comments in env values should be ignored."""
+    monkeypatch.setenv("GITHUB_ISSUE_RATE_LIMIT", "10      \t\t\t\t# Max issues per hour")
+    monkeypatch.setenv("GITHUB_ISSUE_DEDUP_HOURS", "24 # Dedup hours")
+
+    config = get_github_issue_config()
+
+    assert config.rate_limit == 10
+    assert config.dedup_hours == 24
+
+
 # ─── Handler Tests ─────────────────────────────────────────────────────────
 
 
