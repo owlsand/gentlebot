@@ -136,6 +136,8 @@ async def on_error(event: str, *args, **kwargs) -> None:
 async def on_command_error(
     ctx: commands.Context, exc: commands.CommandError
 ) -> None:
+    if isinstance(exc, commands.CommandNotFound):
+        return
     logger.exception("Error in command '%s'", getattr(ctx.command, 'name', 'unknown'), exc_info=exc)
 
 @bot.tree.error

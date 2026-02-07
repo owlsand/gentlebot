@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from datetime import timedelta
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -65,35 +64,6 @@ class LLMConfig:
         )
 
 
-@dataclass(frozen=True)
-class BurstThreadConfig:
-    """Configuration for burst thread detection."""
-
-    window_minutes: int = 10
-    cooldown_minutes: int = 30
-    message_threshold: int = 20
-    min_authors: int = 2
-
-    @classmethod
-    def from_env(cls) -> "BurstThreadConfig":
-        """Create config from environment variables."""
-        return cls(
-            window_minutes=_int_env("BURST_WINDOW_MINUTES", 10),
-            cooldown_minutes=_int_env("BURST_COOLDOWN_MINUTES", 30),
-            message_threshold=_int_env("BURST_MESSAGE_THRESHOLD", 20),
-            min_authors=_int_env("BURST_MIN_AUTHORS", 2),
-        )
-
-    @property
-    def window(self) -> timedelta:
-        """Return window as timedelta."""
-        return timedelta(minutes=self.window_minutes)
-
-    @property
-    def cooldown(self) -> timedelta:
-        """Return cooldown as timedelta."""
-        return timedelta(minutes=self.cooldown_minutes)
-
 
 @dataclass(frozen=True)
 class ReactionConfig:
@@ -136,7 +106,6 @@ class CogConfig:
     """
 
     llm: LLMConfig = field(default_factory=LLMConfig.from_env)
-    burst_thread: BurstThreadConfig = field(default_factory=BurstThreadConfig.from_env)
     reaction: ReactionConfig = field(default_factory=ReactionConfig.from_env)
     archive: ArchiveConfig = field(default_factory=ArchiveConfig.from_env)
 
@@ -145,7 +114,6 @@ class CogConfig:
         """Create all configs from environment variables."""
         return cls(
             llm=LLMConfig.from_env(),
-            burst_thread=BurstThreadConfig.from_env(),
             reaction=ReactionConfig.from_env(),
             archive=ArchiveConfig.from_env(),
         )

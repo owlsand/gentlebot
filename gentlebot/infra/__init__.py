@@ -3,7 +3,6 @@ from .cog_base import PoolAwareCog, log_errors, require_pool
 from .github_issues import GitHubIssueConfig, get_github_issue_config
 from .config import (
     ArchiveConfig,
-    BurstThreadConfig,
     CogConfig,
     LLMConfig,
     ReactionConfig,
@@ -33,7 +32,6 @@ __all__ = [
     "get_github_issue_config",
     # Configuration
     "ArchiveConfig",
-    "BurstThreadConfig",
     "CogConfig",
     "LLMConfig",
     "ReactionConfig",

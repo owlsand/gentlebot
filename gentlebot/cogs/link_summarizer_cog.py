@@ -269,14 +269,7 @@ Requirements:
         if payload.user_id == self.bot.user.id:
             return
 
-        # Check if we have cached data for this message
-        cached = _summary_cache.get(payload.message_id)
-        if not cached:
-            return
-
-        url, existing_summary = cached
-
-        # Get the channel and message
+        # Get the channel and message first (needed for both cache hit and miss)
         channel = self.bot.get_channel(payload.channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return
@@ -288,6 +281,18 @@ Requirements:
         except discord.HTTPException:
             log.warning("Failed to fetch message %s", payload.message_id)
             return
+
+        # Try cache first; on miss, extract URL from message content
+        cached = _summary_cache.get(payload.message_id)
+        if cached:
+            url, existing_summary = cached
+        else:
+            urls = URL_PATTERN.findall(message.content)
+            urls = [u for u in urls if not _should_skip_url(u)]
+            if not urls:
+                return
+            url = urls[0]
+            existing_summary = ""
 
         # If we already have a summary, use it
         if existing_summary:

@@ -412,7 +412,7 @@ class GeminiCog(commands.Cog):
             custom = [str(e) for e in message.guild.emojis] if message.guild and message.guild.emojis else []
             emoji_resp = await self.choose_emoji_llm(message.content, custom)
             pool = custom + self.default_emojis
-            emoji_to_use = emoji_resp if emoji_resp else random.choice(pool)
+            emoji_to_use = emoji_resp if emoji_resp in pool else random.choice(pool)
             try:
                 await message.add_reaction(emoji_to_use)
             except Exception as e:
