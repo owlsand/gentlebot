@@ -336,6 +336,26 @@ class LLMRouter:
                             system_instruction=system_prompt,
                         )
                     raise
+                except Exception as exc:
+                    if (
+                        tool_schemas
+                        and getattr(exc, "code", None) == 400
+                        and "function calling" in str(exc).lower()
+                    ):
+                        log.warning(
+                            "route=%s model=%s status=tool_unsupported retrying_without_tools",
+                            route,
+                            model,
+                        )
+                        return self.client.generate(
+                            model=model,
+                            messages=current_messages,
+                            temperature=temp,
+                            json_mode=json_mode,
+                            thinking_budget=think_budget,
+                            system_instruction=system_prompt,
+                        )
+                    raise
 
             try:
                 resp = call_with_backoff(_call)
@@ -441,7 +461,20 @@ class LLMRouter:
         except RateLimited:
             log.info("route=image model=%s tokens_in=%s status=rate_limited", model, tokens_in)
             raise
-        except Exception:
+        except Exception as exc:
+            if (
+                getattr(exc, "code", None) == 400
+                and "modalities" in str(exc).lower()
+            ):
+                log.error(
+                    "route=image model=%s does not support image generation. "
+                    "Set MODEL_IMAGE to a compatible model (e.g. gemini-2.5-flash-image).",
+                    model,
+                )
+                raise ValueError(
+                    f"Model '{model}' does not support image generation. "
+                    f"Update MODEL_IMAGE to a compatible model (e.g. gemini-2.5-flash-image)."
+                ) from exc
             log.exception(
                 "route=image model=%s tokens_in=%s status=error", model, tokens_in
             )
