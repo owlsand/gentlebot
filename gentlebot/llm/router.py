@@ -5,17 +5,13 @@ import ast
 import json
 import math
 import os
-import re
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
-import requests
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from ..infra import Limit, QuotaGuard, RateLimited, call_with_backoff, get_logger
-from ..infra.http import get_sync_session
 from .providers.gemini import GeminiClient
 from .tokenizer import estimate_tokens, estimate_tokens_for_messages
 from .tools import get_all_gemini_schemas
@@ -37,11 +33,10 @@ SYSTEM_INSTRUCTION = (
     "Style constraints:\n"
     "- Present trade-offs and probabilities where relevant.\n\n"
     "Tools:\n"
-    "- `web_search(query, max_results?)` — fetch fresh facts from the web when local context is insufficient.\n"
+    "- Web search is built-in via Google Search grounding. Simply answer questions about current events or recent facts naturally.\n"
     "- `calculate(expression)` — evaluate math and unit conversions instead of estimating.\n"
     "- `read_file(path, limit?, offset?)` — inspect project files for citations or context; stay within the repo and keep snippets short.\n"
-    "Call tools only when needed, summarize their results for the user, and do not invent tool outputs.\n"
-    "When using the search tool, do not merely tell the user what the search results are. You must read the content, extract the specific answer to the user's question, and state that answer directly. If the snippet is insufficient, fetch the full page text."
+    "Call tools only when needed, summarize their results for the user, and do not invent tool outputs."
 )
 
 class SafetyBlocked(Exception):
@@ -57,7 +52,7 @@ class LLMRouter:
         self.models = {
             "general": os.getenv("MODEL_GENERAL", "gemini-flash-latest"),
             "scheduled": os.getenv("MODEL_SCHEDULED", "gemini-2.5-pro"),
-            "image": os.getenv("MODEL_IMAGE", "gemini-2.0-flash-preview-image"),
+            "image": os.getenv("MODEL_IMAGE", "gemini-2.5-flash-image"),
         }
         def _limit(route: str, default: Limit) -> Limit:
             prefix = f"GEMINI_{route.upper()}_"
@@ -79,7 +74,6 @@ class LLMRouter:
         )
         self.tool_limits = QuotaGuard(
             {
-                "web_search": Limit(rpm=5, rpd=250),
                 "calculate": Limit(rpm=10, rpd=500),
                 "read_file": Limit(rpm=8, rpd=400),
                 "generate_image": Limit(rpm=5, rpd=50),
@@ -107,9 +101,12 @@ class LLMRouter:
     def _tool_schemas(self) -> list[dict[str, Any]]:
         """Get tool schemas in Gemini format.
 
-        Uses the centralized tool definitions from tools.py.
+        Includes custom function declarations from tools.py plus Gemini's
+        native Google Search grounding tool.
         """
-        return get_all_gemini_schemas()
+        schemas = get_all_gemini_schemas()
+        schemas.append({"google_search": {}})
+        return schemas
 
     def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
         calls: list[dict[str, Any]] = []
@@ -170,341 +167,10 @@ class LLMRouter:
 
     def _tool_handlers(self) -> dict[str, Callable[[dict[str, Any]], str]]:
         return {
-            "web_search": self._run_search,
             "calculate": self._run_calculate,
             "read_file": self._run_read_file,
             "generate_image": self._run_generate_image,
         }
-
-    def _run_search(self, params: dict[str, Any]) -> str:
-        """Execute a web search using multiple fallback strategies.
-
-        Search strategies (in order):
-        1. Google Custom Search API (if configured)
-        2. DuckDuckGo text search via duckduckgo-search library
-        3. DuckDuckGo Instant Answer API (for Wikipedia-style facts)
-        4. Jina markdown fallback (Google HTML scraping)
-
-        Returns formatted search results with snippets and page content.
-        """
-        query = str(params.get("query", "")).strip()
-        max_results = int(params.get("max_results", 3) or 3)
-        if not query:
-            raise ValueError("query is required")
-        max_results = max(1, min(max_results, 5))
-        errors_encountered: list[str] = []
-
-        def _fetch_page_text(url: str, limit: int = 2500) -> str:
-            """Fetch and extract text content from a web page."""
-            session = get_sync_session()
-            try:
-                resp = session.get(url, timeout=8)
-                resp.raise_for_status()
-            except requests.exceptions.Timeout:
-                log.warning("tool=web_search status=fetch_timeout url=%s", url)
-                return ""
-            except requests.exceptions.ConnectionError:
-                log.warning("tool=web_search status=fetch_connection_error url=%s", url)
-                return ""
-            except requests.exceptions.HTTPError as exc:
-                log.warning(
-                    "tool=web_search status=fetch_http_error url=%s code=%s",
-                    url,
-                    exc.response.status_code if exc.response else "unknown",
-                )
-                return ""
-            except Exception:
-                log.exception("tool=web_search status=fetch_error url=%s", url)
-                return ""
-
-            content_type = resp.headers.get("Content-Type", "")
-            if "text" not in content_type and "html" not in content_type:
-                return ""
-
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "noscript", "nav", "footer", "header"]):
-                tag.decompose()
-            text = " ".join(soup.stripped_strings)
-            return text[:limit]
-
-        def _from_google() -> list[dict[str, str]]:
-            """Search using Google Custom Search API."""
-            api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
-            search_engine = os.getenv("GOOGLE_SEARCH_CX")
-            if not api_key or not search_engine:
-                log.debug("tool=web_search status=google_not_configured")
-                return []
-
-            session = get_sync_session()
-            resp = session.get(
-                "https://www.googleapis.com/customsearch/v1",
-                params={
-                    "q": query,
-                    "key": api_key,
-                    "cx": search_engine,
-                    "num": max_results,
-                    "safe": "active",
-                },
-                timeout=8,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-
-            results: list[dict[str, str]] = []
-            for item in payload.get("items", []) or []:
-                title = re.sub(r"\s+", " ", (item.get("title") or "").strip())
-                snippet = re.sub(r"\s+", " ", (item.get("snippet") or "").strip())
-                link = item.get("link")
-                if title or snippet or link:
-                    results.append(
-                        {
-                            "title": title,
-                            "snippet": snippet,
-                            "link": link or "",
-                        }
-                    )
-            log.info("tool=web_search source=google results=%d query=%s", len(results), query)
-            return results
-
-        def _from_duckduckgo_search() -> list[dict[str, str]]:
-            """Search using duckduckgo-search library for actual web results.
-
-            This is different from the Instant Answer API - it returns real
-            web search results like you'd see on duckduckgo.com.
-            """
-            try:
-                from duckduckgo_search import DDGS
-            except ImportError:
-                log.warning("tool=web_search status=ddgs_not_installed")
-                return []
-
-            try:
-                with DDGS() as ddgs:
-                    results: list[dict[str, str]] = []
-                    for r in ddgs.text(query, max_results=max_results, safesearch="moderate"):
-                        title = r.get("title", "")
-                        snippet = r.get("body", "")
-                        link = r.get("href", "")
-                        if title or snippet or link:
-                            results.append({
-                                "title": title,
-                                "snippet": snippet,
-                                "link": link,
-                            })
-                    log.info("tool=web_search source=ddgs results=%d query=%s", len(results), query)
-                    return results
-            except Exception as exc:
-                log.warning("tool=web_search source=ddgs status=error error=%s query=%s", str(exc), query)
-                return []
-
-        def _from_duckduckgo_instant() -> list[dict[str, str]]:
-            """Search using DuckDuckGo Instant Answer API.
-
-            Note: This API provides Wikipedia-style summaries and related topics,
-            NOT actual web search results. Use as a supplementary source.
-            """
-            session = get_sync_session()
-            resp = session.get(
-                "https://api.duckduckgo.com/",
-                params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
-                timeout=8,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            results: list[dict[str, str]] = []
-            abstract = payload.get("AbstractText")
-            abstract_url = payload.get("AbstractURL")
-            if abstract:
-                results.append(
-                    {
-                        "title": (payload.get("Heading") or "DuckDuckGo result").strip(),
-                        "snippet": str(abstract),
-                        "link": str(abstract_url or ""),
-                    }
-                )
-            for topic in payload.get("RelatedTopics", []):
-                if isinstance(topic, dict):
-                    text = topic.get("Text") or topic.get("Result")
-                    link = topic.get("FirstURL") or topic.get("FirstUrl") or ""
-                    if text:
-                        results.append(
-                            {
-                                "title": topic.get("Name") or "Related topic",
-                                "snippet": str(text),
-                                "link": str(link),
-                            }
-                        )
-                if len(results) >= max_results:
-                    break
-            log.info("tool=web_search source=ddg_instant results=%d query=%s", len(results), query)
-            return results
-
-        def _from_jina_markdown(url: str, source_name: str) -> list[dict[str, str]]:
-            """Fetch search results via Jina Reader API.
-
-            Jina converts web pages to markdown, which we parse for search results.
-            Uses a browser-like User-Agent for better compatibility.
-            """
-            session = get_sync_session()
-            try:
-                # Use browser-like headers for Jina requests
-                headers = {
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 Safari/537.36"
-                    ),
-                }
-                resp = session.get(
-                    f"https://r.jina.ai/{url}",
-                    params={"q": query},
-                    headers=headers,
-                    timeout=12,
-                )
-                resp.raise_for_status()
-            except requests.exceptions.HTTPError as exc:
-                status = getattr(exc.response, "status_code", None)
-                log.warning(
-                    "tool=web_search source=%s status=jina_error code=%s query=%s",
-                    source_name,
-                    status,
-                    query,
-                )
-                return []
-            except Exception as exc:
-                log.warning(
-                    "tool=web_search source=%s status=jina_exception error=%s query=%s",
-                    source_name,
-                    str(exc),
-                    query,
-                )
-                return []
-
-            text = resp.text
-            marker = "Markdown Content:"
-            if marker in text:
-                text = text.split(marker, 1)[1]
-            lines = [line.strip() for line in text.splitlines()]
-            entries: list[dict[str, str]] = []
-            current_title = ""
-            current_link = ""
-            current_snippets: list[str] = []
-            for line in lines:
-                if not line or line.startswith("About "):
-                    continue
-                if line.startswith("-") or line.startswith("="):
-                    continue
-                match = re.match(r"^(\d+)\.\s+(.*)$", line)
-                link_match = re.match(r"^\[(.+?)\]\((https?://[^\)]+)\)$", line)
-                if match:
-                    if current_title or current_link or current_snippets:
-                        entries.append(
-                            {
-                                "title": current_title,
-                                "link": current_link,
-                                "snippet": " ".join(current_snippets).strip(),
-                            }
-                        )
-                    current_title = re.sub(r"\s+", " ", match.group(2)).strip()
-                    current_link = ""
-                    current_snippets = []
-                    continue
-                if link_match:
-                    if current_title or current_link or current_snippets:
-                        entries.append(
-                            {
-                                "title": current_title,
-                                "link": current_link,
-                                "snippet": " ".join(current_snippets).strip(),
-                            }
-                        )
-                    title = re.sub(r"\s+", " ", link_match.group(1)).strip()
-                    url_text = link_match.group(2).strip()
-                    current_title = title
-                    current_link = url_text
-                    current_snippets = []
-                    continue
-                if (current_title or current_link) and not line.startswith("--"):
-                    snippet = re.sub(r"\s+", " ", line).strip()
-                    if snippet:
-                        current_snippets.append(snippet)
-            if current_title or current_link or current_snippets:
-                entries.append(
-                    {
-                        "title": current_title,
-                        "link": current_link,
-                        "snippet": " ".join(current_snippets).strip(),
-                    }
-                )
-            log.info("tool=web_search source=%s results=%d query=%s", source_name, len(entries), query)
-            return entries
-
-        # Execute search strategies in order of reliability
-        results: list[dict[str, str]] = []
-
-        # Strategy 1: Google Custom Search API (most reliable if configured)
-        try:
-            results = _from_google()
-        except Exception as exc:
-            errors_encountered.append(f"Google API: {exc}")
-            log.exception("tool=web_search status=google_error query=%s", query)
-
-        # Strategy 2: DuckDuckGo text search (real web results)
-        if not results:
-            try:
-                results = _from_duckduckgo_search()
-            except Exception as exc:
-                errors_encountered.append(f"DDG Search: {exc}")
-                log.exception("tool=web_search status=ddgs_error query=%s", query)
-
-        # Strategy 3: Jina + Google HTML fallback
-        if not results:
-            try:
-                results = _from_jina_markdown("http://www.google.com/search", "jina_google")
-            except Exception as exc:
-                errors_encountered.append(f"Jina Google: {exc}")
-                log.exception("tool=web_search status=jina_google_error query=%s", query)
-
-        # Strategy 4: DuckDuckGo Instant Answer API (facts/Wikipedia summaries)
-        if not results:
-            try:
-                results = _from_duckduckgo_instant()
-            except Exception as exc:
-                errors_encountered.append(f"DDG Instant: {exc}")
-                log.exception("tool=web_search status=ddg_instant_error query=%s", query)
-
-        # Strategy 5: Jina + DuckDuckGo HTML fallback
-        if not results:
-            try:
-                results = _from_jina_markdown("http://duckduckgo.com/html/", "jina_ddg")
-            except Exception as exc:
-                errors_encountered.append(f"Jina DDG: {exc}")
-                log.exception("tool=web_search status=jina_ddg_error query=%s", query)
-
-        if not results:
-            error_detail = "; ".join(errors_encountered) if errors_encountered else "All search methods returned no results"
-            log.warning("tool=web_search status=no_results query=%s errors=%s", query, error_detail)
-            return f"No search results found. Tried: {error_detail}"
-
-        # Format and return results with page content when available
-        extracted: list[str] = []
-        for entry in results[:max_results]:
-            link = entry.get("link", "")
-            snippet = entry.get("snippet", "")
-            title = entry.get("title") or "Result"
-            page_text = _fetch_page_text(link) if link else ""
-            body = page_text or snippet
-            if not body:
-                continue
-            header = title
-            if link:
-                header = f"{title} — {link}"
-            extracted.append(f"{header}\n{body}")
-
-        if not extracted:
-            return "Search returned results but could not extract content."
-
-        return "\n\n".join(extracted)
 
     def _run_calculate(self, params: dict[str, Any]) -> str:
         expression = str(params.get("expression", "")).strip()
@@ -622,7 +288,7 @@ class LLMRouter:
                 block,
             )
 
-        for attempt in range(3):
+        for attempt in range(5):
             system_prompt = system_instruction or SYSTEM_INSTRUCTION
             tokens_in = self._tokens_estimate(current_messages, system_prompt)
             allow_fallback = route == "scheduled" and attempt == 0
@@ -745,10 +411,7 @@ class LLMRouter:
                 tool_feedback.append(
                     {
                         "role": "user",
-                        "content": (
-                            "Use the tool output above to extract the specific answer. If the results are only links or metadata, "
-                            "call web_search again with the most promising link to fetch the page content before responding."
-                        ),
+                        "content": "Use the tool output above to answer the user's question.",
                     }
                 )
                 current_messages = current_messages + tool_feedback

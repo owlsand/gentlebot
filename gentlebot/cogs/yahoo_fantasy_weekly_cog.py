@@ -228,3 +228,7 @@ class YahooFantasyWeeklyCog(commands.Cog):
             log.info("Yahoo Fantasy week %s scoreboard not final; skipping recap", recap.week)
             return None
         return format_weekly_recap(recap)
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(YahooFantasyWeeklyCog(bot))
