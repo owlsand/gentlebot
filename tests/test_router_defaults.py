@@ -7,5 +7,12 @@ def test_image_route_defaults_to_free_model(monkeypatch):
     monkeypatch.delenv("GEMINI_IMAGE_RPM", raising=False)
     router = LLMRouter()
     assert router.models["image"] == "gemini-2.5-flash-image"
-    assert router.quota.limits["image"].rpm == 10
+    assert router.quota.limits["image"].rpm == 5
 
+
+def test_general_route_default_rpm(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    monkeypatch.delenv("MODEL_GENERAL", raising=False)
+    monkeypatch.delenv("GEMINI_GENERAL_RPM", raising=False)
+    router = LLMRouter()
+    assert router.quota.limits["general"].rpm == 5

@@ -14,6 +14,21 @@ T = TypeVar("T")
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def _extract_status(exc: BaseException) -> int | None:
+    """Return the HTTP status code from an exception, or *None*.
+
+    Checks ``exc.response.status_code`` (httpx / requests style) first,
+    then falls back to ``exc.code`` (Gemini SDK ``APIError``).
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is not None:
+        return int(status)
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code
+    return None
+
+
 def call_with_backoff(
     fn: Callable[[], T],
     retries: int = 3,
@@ -25,15 +40,27 @@ def call_with_backoff(
         try:
             return fn()
         except Exception as exc:  # pragma: no cover - network
-            status = getattr(getattr(exc, "response", None), "status_code", None)
+            status = _extract_status(exc)
             # Only retry on a small set of transient HTTP errors.
-            if status not in {408, 409} and not (status and 500 <= status < 600):
+            if status not in {408, 409, 429} and not (status and 500 <= status < 600):
                 raise
             # Bail out if we've exhausted all retry attempts.
             if attempt == retries:
                 raise
             delay = min(max_delay, base * (2 ** attempt))
             delay += random.uniform(0, 0.1)
+            # 429 = rate-limited; wait at least 12s (aligns with 5 RPM).
+            if status == 429:
+                delay = max(delay, 12.0)
+            log.debug(
+                "Retry %d/%d for %s after %.2fs (status=%s): %s",
+                attempt + 1,
+                retries,
+                getattr(fn, "__name__", "unknown"),
+                delay,
+                status,
+                exc,
+            )
             time.sleep(delay)
     # Should be unreachable because either fn() succeeds or an exception is raised.
     raise RuntimeError("call_with_backoff reached an unreachable state")
@@ -72,7 +99,7 @@ async def async_retry(
             if retry_on is not None and not isinstance(exc, retry_on):
                 raise
             # Check for HTTP status codes on responses
-            status = getattr(getattr(exc, "response", None), "status_code", None)
+            status = _extract_status(exc)
             if status is not None:
                 # Only retry on transient HTTP errors
                 if status not in {408, 409, 429} and not (500 <= status < 600):
