@@ -1,12 +1,13 @@
 """Tests for the weekly recap cog."""
 import asyncio
-import types
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
 from gentlebot.cogs import weekly_recap_cog
 from gentlebot.cogs.weekly_recap_cog import WeeklyRecapCog, _delta_str, _week_range_title
+from gentlebot.queries import engagement as eq
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -50,14 +51,24 @@ _DEFAULT_PATCHES = {
 }
 
 
-def _patch_all_queries(overrides=None):
-    """Context manager that patches all engagement query functions."""
+def _run_with_patched_queries(cog, guild, overrides=None, vibe_text=None):
+    """Run _build_recap_embed with all queries patched via ExitStack."""
     values = {**_DEFAULT_PATCHES, **(overrides or {})}
-    patches = {}
-    base = "gentlebot.cogs.weekly_recap_cog.eq"
-    for name, val in values.items():
-        patches[name] = patch(f"{base}.{name}", new_callable=AsyncMock, return_value=val)
-    return patches
+    vibe = vibe_text or "A high-energy week with lively debates."
+    with ExitStack() as stack:
+        for name, val in values.items():
+            stack.enter_context(
+                patch.object(eq, name, new_callable=AsyncMock, return_value=val)
+            )
+        stack.enter_context(
+            patch(
+                "gentlebot.cogs.weekly_recap_cog._generate_vibe",
+                new_callable=AsyncMock,
+                return_value=vibe,
+            )
+        )
+        embed = asyncio.run(cog._build_recap_embed(guild))
+    return embed
 
 
 # ── Tests ──────────────────────────────────────────────────────────────
@@ -100,21 +111,7 @@ def test_build_recap_embed_fields():
     cog = _make_cog(pool=AsyncMock())
     guild = _mock_guild()
 
-    patches = _patch_all_queries()
-    started = {}
-    for name, p in patches.items():
-        started[name] = p.start()
-
-    # Patch LLM vibe generation
-    with patch(
-        "gentlebot.cogs.weekly_recap_cog._generate_vibe",
-        new_callable=AsyncMock,
-        return_value="A high-energy week with lively debates.",
-    ):
-        embed = asyncio.run(cog._build_recap_embed(guild))
-
-    for p in started.values():
-        p.stop()
+    embed = _run_with_patched_queries(cog, guild)
 
     assert isinstance(embed, discord.Embed)
 
@@ -148,20 +145,11 @@ def test_recap_empty_data():
         "active_streak_counts": (0, 0),
         "new_hof_count": 0,
     }
-    patches = _patch_all_queries(empty)
-    started = {}
-    for name, p in patches.items():
-        started[name] = p.start()
 
-    with patch(
-        "gentlebot.cogs.weekly_recap_cog._generate_vibe",
-        new_callable=AsyncMock,
-        return_value="Here's what happened in Gentlefolk this week.",
-    ):
-        embed = asyncio.run(cog._build_recap_embed(guild))
-
-    for p in started.values():
-        p.stop()
+    embed = _run_with_patched_queries(
+        cog, guild, overrides=empty,
+        vibe_text="Here's what happened in Gentlefolk this week.",
+    )
 
     assert isinstance(embed, discord.Embed)
     # Should still have Community Pulse even when empty
@@ -210,20 +198,10 @@ def test_recap_message_of_week_truncation():
         "reaction_count": 18,
     }
 
-    patches = _patch_all_queries({"top_reacted_message": long_msg})
-    started = {}
-    for name, p in patches.items():
-        started[name] = p.start()
-
-    with patch(
-        "gentlebot.cogs.weekly_recap_cog._generate_vibe",
-        new_callable=AsyncMock,
-        return_value="Test vibe.",
-    ):
-        embed = asyncio.run(cog._build_recap_embed(guild))
-
-    for p in started.values():
-        p.stop()
+    embed = _run_with_patched_queries(
+        cog, guild, overrides={"top_reacted_message": long_msg},
+        vibe_text="Test vibe.",
+    )
 
     motw_field = next(f for f in embed.fields if f.name == "Message of the Week")
     # Content should be truncated to ~120 chars + "..."

@@ -195,7 +195,8 @@ class MyStatsCog(PoolAwareCog):
         vibe_lines.append(f"Peak hour: **{_format_hour(peak_hour)}**")
         if top_emojis:
             emoji_parts = [f"{emoji} x{cnt}" for emoji, cnt in top_emojis]
-            vibe_lines.append(f"Top reactions: {' \u00b7 '.join(emoji_parts)}")
+            emoji_str = " \u00b7 ".join(emoji_parts)
+            vibe_lines.append(f"Top reactions: {emoji_str}")
         if hof_count > 0:
             vibe_lines.append(f"Hall of Fame entries: **{hof_count}**")
         embed.add_field(name="Your Vibe", value="\n".join(vibe_lines), inline=False)

@@ -1,6 +1,6 @@
 """Tests for the /mystats slash command cog."""
 import asyncio
-import types
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +14,7 @@ from gentlebot.cogs.mystats_cog import (
     _format_percentile,
     TIMEFRAMES,
 )
+from gentlebot.queries import engagement as eq
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -52,27 +53,15 @@ _DEFAULT_QUERY_RESULTS = {
 }
 
 
-def _patch_all_queries(overrides=None):
-    """Return dict of patch objects for all engagement queries."""
-    values = {**_DEFAULT_QUERY_RESULTS, **(overrides or {})}
-    patches = {}
-    base = "gentlebot.cogs.mystats_cog.eq"
-    for name, val in values.items():
-        patches[name] = patch(f"{base}.{name}", new_callable=AsyncMock, return_value=val)
-    return patches
-
-
 def _build_embed(cog, member, uid, interval, timeframe, query_overrides=None):
     """Run _build_stats_embed with patched queries and return the embed."""
-    patches = _patch_all_queries(query_overrides)
-    started = {}
-    for name, p in patches.items():
-        started[name] = p.start()
-    try:
+    values = {**_DEFAULT_QUERY_RESULTS, **(query_overrides or {})}
+    with ExitStack() as stack:
+        for name, val in values.items():
+            stack.enter_context(
+                patch.object(eq, name, new_callable=AsyncMock, return_value=val)
+            )
         embed = asyncio.run(cog._build_stats_embed(member, uid, interval, timeframe))
-    finally:
-        for p in started.values():
-            p.stop()
     return embed
 
 
@@ -172,16 +161,14 @@ def test_mystats_ephemeral():
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
 
-    patches = _patch_all_queries()
-    started = {}
-    for name, p in patches.items():
-        started[name] = p.start()
-    try:
+    values = {**_DEFAULT_QUERY_RESULTS}
+    with ExitStack() as stack:
+        for name, val in values.items():
+            stack.enter_context(
+                patch.object(eq, name, new_callable=AsyncMock, return_value=val)
+            )
         # Use .callback to bypass the app_commands.Command wrapper
         asyncio.run(cog.mystats.callback(cog, interaction, timeframe="30d"))
-    finally:
-        for p in started.values():
-            p.stop()
 
     interaction.response.defer.assert_awaited_once_with(ephemeral=True)
     interaction.followup.send.assert_awaited_once()
