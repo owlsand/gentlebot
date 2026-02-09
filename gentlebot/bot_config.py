@@ -198,6 +198,17 @@ WEEKLY_RECAP_CHANNEL_ID = int_env("WEEKLY_RECAP_CHANNEL_ID", 0)  # 0 = LOBBY_CHA
 WEEKLY_RECAP_LLM_ENABLED = bool_env("WEEKLY_RECAP_LLM_ENABLED", True)
 MYSTATS_ENABLED = bool_env("MYSTATS_ENABLED", True)
 
+# ─── Feature Discovery ────────────────────────────────────────────────────
+# Contextual one-time tips and periodic feature spotlights
+FEATURE_DISCOVERY_ENABLED = bool_env("FEATURE_DISCOVERY_ENABLED", True)
+FEATURE_SPOTLIGHT_INTERVAL_DAYS = int_env("FEATURE_SPOTLIGHT_INTERVAL_DAYS", 5)
+
+# ─── Welcome Back / Lurker Re-engagement ─────────────────────────────────
+WELCOME_BACK_ENABLED = bool_env("WELCOME_BACK_ENABLED", True)
+WELCOME_BACK_MIN_GAP_DAYS = int_env("WELCOME_BACK_MIN_GAP_DAYS", 7)
+WELCOME_BACK_COOLDOWN_DAYS = int_env("WELCOME_BACK_COOLDOWN_DAYS", 30)
+MONTHLY_RECAP_DM_ENABLED = bool_env("MONTHLY_RECAP_DM_ENABLED", True)
+
 # ─── Hall of Fame ─────────────────────────────────────────────────────────
 # Community-curated archive of exceptional messages
 HALL_OF_FAME_ENABLED = bool_env("HALL_OF_FAME_ENABLED", True)
