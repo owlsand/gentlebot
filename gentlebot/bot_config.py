@@ -192,6 +192,12 @@ TLDR_MIN_LENGTH = int_env("TLDR_MIN_LENGTH", 500)
 # Whether book enrichment is enabled (auto-detects books in #reading)
 BOOK_ENRICHMENT_ENABLED = bool_env("BOOK_ENRICHMENT_ENABLED", True)
 
+# ─── Weekly Recap & /mystats ──────────────────────────────────────────
+WEEKLY_RECAP_ENABLED = bool_env("WEEKLY_RECAP_ENABLED", True)
+WEEKLY_RECAP_CHANNEL_ID = int_env("WEEKLY_RECAP_CHANNEL_ID", 0)  # 0 = LOBBY_CHANNEL_ID
+WEEKLY_RECAP_LLM_ENABLED = bool_env("WEEKLY_RECAP_LLM_ENABLED", True)
+MYSTATS_ENABLED = bool_env("MYSTATS_ENABLED", True)
+
 # ─── Hall of Fame ─────────────────────────────────────────────────────────
 # Community-curated archive of exceptional messages
 HALL_OF_FAME_ENABLED = bool_env("HALL_OF_FAME_ENABLED", True)
