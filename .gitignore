@@ -67,3 +67,7 @@ cython_debug/
 prompt_state.json
 marketbet.db
 src/.env
+
+# claude
+.claude/
+data/
