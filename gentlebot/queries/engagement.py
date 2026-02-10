@@ -6,6 +6,7 @@ Each guards on ``pool is None`` and returns a sane default.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 import asyncpg
@@ -38,7 +39,7 @@ _NON_BOT_FILTER = """
 # Server-wide queries (used by weekly recap)
 # ===================================================================
 
-async def server_message_count(pool: asyncpg.Pool | None, interval: str) -> int:
+async def server_message_count(pool: asyncpg.Pool | None, interval: timedelta) -> int:
     """Total non-bot messages in public non-NSFW channels within *interval*."""
     if pool is None:
         return 0
@@ -56,7 +57,7 @@ async def server_message_count(pool: asyncpg.Pool | None, interval: str) -> int:
     ) or 0
 
 
-async def unique_posters(pool: asyncpg.Pool | None, interval: str) -> int:
+async def unique_posters(pool: asyncpg.Pool | None, interval: timedelta) -> int:
     """Distinct author count in public channels within *interval*."""
     if pool is None:
         return 0
@@ -75,7 +76,7 @@ async def unique_posters(pool: asyncpg.Pool | None, interval: str) -> int:
 
 
 async def top_posters(
-    pool: asyncpg.Pool | None, interval: str, limit: int = 5,
+    pool: asyncpg.Pool | None, interval: timedelta, limit: int = 5,
 ) -> list[tuple[int, int]]:
     """Top posters as ``[(author_id, count)]`` sorted desc."""
     if pool is None:
@@ -100,7 +101,7 @@ async def top_posters(
 
 
 async def top_reaction_receivers(
-    pool: asyncpg.Pool | None, interval: str, limit: int = 5,
+    pool: asyncpg.Pool | None, interval: timedelta, limit: int = 5,
 ) -> list[tuple[int, int]]:
     """Top reaction receivers as ``[(author_id, reaction_count)]``."""
     if pool is None:
@@ -127,7 +128,7 @@ async def top_reaction_receivers(
 
 
 async def most_active_channels(
-    pool: asyncpg.Pool | None, interval: str, limit: int = 5,
+    pool: asyncpg.Pool | None, interval: timedelta, limit: int = 5,
 ) -> list[tuple[int, str, int]]:
     """Most active channels as ``[(channel_id, name, count)]``."""
     if pool is None:
@@ -152,7 +153,7 @@ async def most_active_channels(
 
 
 async def top_reacted_message(
-    pool: asyncpg.Pool | None, interval: str,
+    pool: asyncpg.Pool | None, interval: timedelta,
 ) -> dict[str, Any] | None:
     """Single most-reacted message in the window.
 
@@ -188,7 +189,7 @@ async def top_reacted_message(
     return dict(row)
 
 
-async def new_member_count(pool: asyncpg.Pool | None, interval: str) -> int:
+async def new_member_count(pool: asyncpg.Pool | None, interval: timedelta) -> int:
     """Users with ``first_seen_at`` in window."""
     if pool is None:
         return 0
@@ -222,7 +223,7 @@ async def active_streak_counts(
     return (row["total_active"], row["strong"])
 
 
-async def new_hof_count(pool: asyncpg.Pool | None, interval: str) -> int:
+async def new_hof_count(pool: asyncpg.Pool | None, interval: timedelta) -> int:
     """Hall of fame inductions in window."""
     if pool is None:
         return 0
@@ -242,7 +243,7 @@ async def new_hof_count(pool: asyncpg.Pool | None, interval: str) -> int:
 # ===================================================================
 
 async def user_message_count(
-    pool: asyncpg.Pool | None, user_id: int, interval: str,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta,
 ) -> int:
     """Message count for one user in public channels within *interval*."""
     if pool is None:
@@ -262,7 +263,7 @@ async def user_message_count(
 
 
 async def user_message_percentile(
-    pool: asyncpg.Pool | None, user_id: int, interval: str,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta,
 ) -> float | None:
     """Percentile rank among all posters (0.0–1.0).
 
@@ -292,7 +293,7 @@ async def user_message_percentile(
 
 
 async def user_reactions_received(
-    pool: asyncpg.Pool | None, user_id: int, interval: str,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta,
 ) -> int:
     """Total ADD reactions on a user's messages in the window."""
     if pool is None:
@@ -314,7 +315,7 @@ async def user_reactions_received(
 
 
 async def user_top_emojis_received(
-    pool: asyncpg.Pool | None, user_id: int, interval: str, limit: int = 5,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta, limit: int = 5,
 ) -> list[tuple[str, int]]:
     """Top emojis received as ``[(emoji, count)]``."""
     if pool is None:
@@ -341,7 +342,7 @@ async def user_top_emojis_received(
 
 
 async def user_top_channels(
-    pool: asyncpg.Pool | None, user_id: int, interval: str, limit: int = 3,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta, limit: int = 3,
 ) -> list[tuple[int, str, int]]:
     """User's most-posted channels as ``[(channel_id, name, count)]``."""
     if pool is None:
@@ -366,7 +367,7 @@ async def user_top_channels(
 
 
 async def user_peak_hour(
-    pool: asyncpg.Pool | None, user_id: int, interval: str,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta,
 ) -> int | None:
     """Most active hour of day in LA timezone. Returns 0–23 or *None*."""
     if pool is None:
@@ -430,7 +431,7 @@ async def user_fun_facts(
 
 
 async def user_reaction_percentile(
-    pool: asyncpg.Pool | None, user_id: int, interval: str,
+    pool: asyncpg.Pool | None, user_id: int, interval: timedelta,
 ) -> float | None:
     """Percentile rank for reactions received among all message authors.
 
