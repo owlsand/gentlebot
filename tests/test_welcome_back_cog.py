@@ -1,6 +1,7 @@
 """Tests for the Welcome Back cog."""
 import asyncio
 import types
+from datetime import timedelta
 
 
 def test_welcome_templates_not_empty():
@@ -175,7 +176,7 @@ def test_build_recap_embed_empty_stats():
             guild=types.SimpleNamespace(name="TestGuild"),
         )
 
-        embed = await cog._build_recap_embed(member, "30 days")
+        embed = await cog._build_recap_embed(member, timedelta(days=30))
         assert embed.title == "📊 Your Monthly Recap"
         assert "TestGuild" in embed.description
 

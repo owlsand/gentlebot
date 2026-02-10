@@ -26,8 +26,8 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 
 LA = pytz.timezone("America/Los_Angeles")
 
-INTERVAL = "7 days"
-PREV_INTERVAL = "14 days"  # used for week-over-week delta
+INTERVAL = timedelta(days=7)
+PREV_INTERVAL = timedelta(days=14)  # used for week-over-week delta
 
 
 def _week_range_title() -> str:

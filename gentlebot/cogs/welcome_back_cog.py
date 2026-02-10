@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import date
+from datetime import date, timedelta
 
 import discord
 import pytz
@@ -297,7 +297,7 @@ class WelcomeBackCog(PoolAwareCog):
         if not guild:
             return "error:guild_not_found"
 
-        interval = "30 days"
+        interval = timedelta(days=30)
         sent = 0
         failed = 0
 
@@ -336,7 +336,7 @@ class WelcomeBackCog(PoolAwareCog):
         return result
 
     async def _build_recap_embed(
-        self, member: discord.Member, interval: str,
+        self, member: discord.Member, interval: timedelta,
     ) -> discord.Embed:
         """Build a personalized recap embed for a user."""
         pool = self.pool

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
@@ -19,12 +19,12 @@ from ..queries import engagement as eq
 
 log = logging.getLogger(f"gentlebot.{__name__}")
 
-# Timeframe choices: label shown in Discord -> Postgres interval
-TIMEFRAMES: dict[str, str] = {
-    "7d": "7 days",
-    "30d": "30 days",
-    "90d": "90 days",
-    "all": "100 years",  # effectively "all time"
+# Timeframe choices: label shown in Discord -> timedelta for asyncpg
+TIMEFRAMES: dict[str, timedelta] = {
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
+    "all": timedelta(days=36500),  # effectively "all time"
 }
 
 TIMEFRAME_LABELS: dict[str, str] = {
@@ -102,7 +102,7 @@ class MyStatsCog(PoolAwareCog):
         )
         await interaction.response.defer(ephemeral=True)
 
-        interval = TIMEFRAMES.get(timeframe, "30 days")
+        interval = TIMEFRAMES.get(timeframe, timedelta(days=30))
         uid = interaction.user.id
 
         embed = await self._build_stats_embed(interaction.user, uid, interval, timeframe)
@@ -112,7 +112,7 @@ class MyStatsCog(PoolAwareCog):
         self,
         member: discord.User | discord.Member,
         uid: int,
-        interval: str,
+        interval: timedelta,
         timeframe: str,
     ) -> discord.Embed:
         """Build the full stats embed for a user."""

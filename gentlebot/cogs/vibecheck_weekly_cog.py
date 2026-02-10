@@ -28,6 +28,9 @@ class WeeklyVibeCheckCog(commands.Cog):
         self.scheduler: AsyncIOScheduler | None = None
 
     async def cog_load(self) -> None:
+        if not self.bot.get_cog("VibeCheckCog"):
+            log.warning("VibeCheckCog not loaded — skipping weekly scheduler")
+            return
         self.scheduler = AsyncIOScheduler(timezone=LA)
         trigger = CronTrigger(day_of_week="mon", hour=9, minute=0, timezone=LA)
         self.scheduler.add_job(self._run_vibecheck, trigger)
@@ -43,17 +46,17 @@ class WeeklyVibeCheckCog(commands.Cog):
         await self.bot.wait_until_ready()
         channel = self.bot.get_channel(cfg.LOBBY_CHANNEL_ID)
         if not isinstance(channel, discord.TextChannel):
-            log.error("Lobby channel not found")
+            log.warning("Lobby channel not found")
             return
         cog = self.bot.get_cog("VibeCheckCog")
         if not isinstance(cog, VibeCheckCog):
-            log.error("VibeCheckCog not loaded")
+            log.warning("VibeCheckCog not loaded — skipping weekly vibe check")
             return
         embed = await cog.build_embed(
             self.bot.get_guild(cfg.GUILD_ID), llm_route="scheduled"
         )
         if not embed:
-            log.error("Vibe report unavailable")
+            log.warning("Vibe report unavailable")
             return
         await channel.send(embed=embed)
 

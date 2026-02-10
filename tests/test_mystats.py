@@ -1,7 +1,7 @@
 """Tests for the /mystats slash command cog."""
 import asyncio
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -115,7 +115,7 @@ def test_mystats_embed_structure():
     cog = _make_cog(pool=pool)
     member = _mock_member()
 
-    embed = _build_embed(cog, member, member.id, "30 days", "30d")
+    embed = _build_embed(cog, member, member.id, timedelta(days=30), "30d")
 
     field_names = [f.name for f in embed.fields]
     assert "Messages" in field_names
@@ -138,7 +138,7 @@ def test_mystats_no_activity():
     member = _mock_member()
 
     embed = _build_embed(
-        cog, member, member.id, "7 days", "7d",
+        cog, member, member.id, timedelta(days=7), "7d",
         query_overrides={"user_message_count": 0},
     )
 
@@ -197,7 +197,7 @@ def test_mystats_percentile_display_top():
     member = _mock_member()
 
     embed = _build_embed(
-        cog, member, member.id, "30 days", "30d",
+        cog, member, member.id, timedelta(days=30), "30d",
         query_overrides={"user_message_percentile": 0.85},
     )
 
@@ -213,7 +213,7 @@ def test_mystats_percentile_display_bottom():
     member = _mock_member()
 
     embed = _build_embed(
-        cog, member, member.id, "30 days", "30d",
+        cog, member, member.id, timedelta(days=30), "30d",
         query_overrides={"user_message_percentile": 0.30},
     )
 
@@ -246,7 +246,7 @@ def test_mystats_streak_from_db():
     cog = _make_cog(pool=pool)
     member = _mock_member()
 
-    embed = _build_embed(cog, member, member.id, "30 days", "30d")
+    embed = _build_embed(cog, member, member.id, timedelta(days=30), "30d")
 
     streak_field = next(f for f in embed.fields if f.name == "Streak")
     assert "12" in streak_field.value
@@ -260,7 +260,7 @@ def test_mystats_no_streak_record():
     cog = _make_cog(pool=pool)
     member = _mock_member()
 
-    embed = _build_embed(cog, member, member.id, "30 days", "30d")
+    embed = _build_embed(cog, member, member.id, timedelta(days=30), "30d")
 
     streak_field = next(f for f in embed.fields if f.name == "Streak")
     assert "0" in streak_field.value
@@ -274,7 +274,7 @@ def test_mystats_hof_omitted_when_zero():
     member = _mock_member()
 
     embed = _build_embed(
-        cog, member, member.id, "30 days", "30d",
+        cog, member, member.id, timedelta(days=30), "30d",
         query_overrides={"user_hall_of_fame_count": 0},
     )
 

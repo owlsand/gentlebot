@@ -1,5 +1,6 @@
 """Tests for the shared engagement query module."""
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from gentlebot.queries import engagement as eq
@@ -21,32 +22,32 @@ def _mock_pool(fetchval=None, fetch=None, fetchrow=None):
 
 
 def test_server_message_count_none_pool():
-    result = asyncio.run(eq.server_message_count(None, "7 days"))
+    result = asyncio.run(eq.server_message_count(None, timedelta(days=7)))
     assert result == 0
 
 
 def test_unique_posters_none_pool():
-    assert asyncio.run(eq.unique_posters(None, "7 days")) == 0
+    assert asyncio.run(eq.unique_posters(None, timedelta(days=7))) == 0
 
 
 def test_top_posters_none_pool():
-    assert asyncio.run(eq.top_posters(None, "7 days")) == []
+    assert asyncio.run(eq.top_posters(None, timedelta(days=7))) == []
 
 
 def test_top_reaction_receivers_none_pool():
-    assert asyncio.run(eq.top_reaction_receivers(None, "7 days")) == []
+    assert asyncio.run(eq.top_reaction_receivers(None, timedelta(days=7))) == []
 
 
 def test_most_active_channels_none_pool():
-    assert asyncio.run(eq.most_active_channels(None, "7 days")) == []
+    assert asyncio.run(eq.most_active_channels(None, timedelta(days=7))) == []
 
 
 def test_top_reacted_message_none_pool():
-    assert asyncio.run(eq.top_reacted_message(None, "7 days")) is None
+    assert asyncio.run(eq.top_reacted_message(None, timedelta(days=7))) is None
 
 
 def test_new_member_count_none_pool():
-    assert asyncio.run(eq.new_member_count(None, "7 days")) == 0
+    assert asyncio.run(eq.new_member_count(None, timedelta(days=7))) == 0
 
 
 def test_active_streak_counts_none_pool():
@@ -54,31 +55,31 @@ def test_active_streak_counts_none_pool():
 
 
 def test_new_hof_count_none_pool():
-    assert asyncio.run(eq.new_hof_count(None, "7 days")) == 0
+    assert asyncio.run(eq.new_hof_count(None, timedelta(days=7))) == 0
 
 
 def test_user_message_count_none_pool():
-    assert asyncio.run(eq.user_message_count(None, 123, "7 days")) == 0
+    assert asyncio.run(eq.user_message_count(None, 123, timedelta(days=7))) == 0
 
 
 def test_user_message_percentile_none_pool():
-    assert asyncio.run(eq.user_message_percentile(None, 123, "7 days")) is None
+    assert asyncio.run(eq.user_message_percentile(None, 123, timedelta(days=7))) is None
 
 
 def test_user_reactions_received_none_pool():
-    assert asyncio.run(eq.user_reactions_received(None, 123, "7 days")) == 0
+    assert asyncio.run(eq.user_reactions_received(None, 123, timedelta(days=7))) == 0
 
 
 def test_user_top_emojis_received_none_pool():
-    assert asyncio.run(eq.user_top_emojis_received(None, 123, "7 days")) == []
+    assert asyncio.run(eq.user_top_emojis_received(None, 123, timedelta(days=7))) == []
 
 
 def test_user_top_channels_none_pool():
-    assert asyncio.run(eq.user_top_channels(None, 123, "7 days")) == []
+    assert asyncio.run(eq.user_top_channels(None, 123, timedelta(days=7))) == []
 
 
 def test_user_peak_hour_none_pool():
-    assert asyncio.run(eq.user_peak_hour(None, 123, "7 days")) is None
+    assert asyncio.run(eq.user_peak_hour(None, 123, timedelta(days=7))) is None
 
 
 def test_user_hall_of_fame_count_none_pool():
@@ -93,7 +94,7 @@ def test_user_fun_facts_none_pool():
 
 
 def test_user_reaction_percentile_none_pool():
-    assert asyncio.run(eq.user_reaction_percentile(None, 123, "7 days")) is None
+    assert asyncio.run(eq.user_reaction_percentile(None, 123, timedelta(days=7))) is None
 
 
 # ── With mock pool ─────────────────────────────────────────────────────
@@ -101,34 +102,34 @@ def test_user_reaction_percentile_none_pool():
 
 def test_server_message_count_returns_int():
     pool = _mock_pool(fetchval=42)
-    result = asyncio.run(eq.server_message_count(pool, "7 days"))
+    result = asyncio.run(eq.server_message_count(pool, timedelta(days=7)))
     assert result == 42
     pool.fetchval.assert_awaited_once()
 
 
 def test_unique_posters_returns_int():
     pool = _mock_pool(fetchval=10)
-    assert asyncio.run(eq.unique_posters(pool, "7 days")) == 10
+    assert asyncio.run(eq.unique_posters(pool, timedelta(days=7))) == 10
 
 
 def test_top_posters_returns_list():
     rows = [{"author_id": 1, "cnt": 50}, {"author_id": 2, "cnt": 30}]
     pool = _mock_pool(fetch=rows)
-    result = asyncio.run(eq.top_posters(pool, "7 days"))
+    result = asyncio.run(eq.top_posters(pool, timedelta(days=7)))
     assert result == [(1, 50), (2, 30)]
 
 
 def test_top_reaction_receivers_returns_list():
     rows = [{"author_id": 5, "cnt": 20}]
     pool = _mock_pool(fetch=rows)
-    result = asyncio.run(eq.top_reaction_receivers(pool, "7 days"))
+    result = asyncio.run(eq.top_reaction_receivers(pool, timedelta(days=7)))
     assert result == [(5, 20)]
 
 
 def test_most_active_channels_returns_list():
     rows = [{"channel_id": 100, "name": "general", "cnt": 200}]
     pool = _mock_pool(fetch=rows)
-    result = asyncio.run(eq.most_active_channels(pool, "7 days"))
+    result = asyncio.run(eq.most_active_channels(pool, timedelta(days=7)))
     assert result == [(100, "general", 200)]
 
 
@@ -142,20 +143,20 @@ def test_top_reacted_message_returns_dict():
         "reaction_count": 15,
     }
     pool = _mock_pool(fetchrow=row)
-    result = asyncio.run(eq.top_reacted_message(pool, "7 days"))
+    result = asyncio.run(eq.top_reacted_message(pool, timedelta(days=7)))
     assert result["message_id"] == 99
     assert result["reaction_count"] == 15
 
 
 def test_top_reacted_message_returns_none():
     pool = _mock_pool(fetchrow=None)
-    result = asyncio.run(eq.top_reacted_message(pool, "7 days"))
+    result = asyncio.run(eq.top_reacted_message(pool, timedelta(days=7)))
     assert result is None
 
 
 def test_new_member_count_returns_int():
     pool = _mock_pool(fetchval=3)
-    assert asyncio.run(eq.new_member_count(pool, "7 days")) == 3
+    assert asyncio.run(eq.new_member_count(pool, timedelta(days=7))) == 3
 
 
 def test_active_streak_counts_returns_tuple():
@@ -172,42 +173,42 @@ def test_active_streak_counts_none_row():
 
 def test_new_hof_count_returns_int():
     pool = _mock_pool(fetchval=2)
-    assert asyncio.run(eq.new_hof_count(pool, "7 days")) == 2
+    assert asyncio.run(eq.new_hof_count(pool, timedelta(days=7))) == 2
 
 
 def test_user_message_count_returns_int():
     pool = _mock_pool(fetchval=127)
-    assert asyncio.run(eq.user_message_count(pool, 1, "30 days")) == 127
+    assert asyncio.run(eq.user_message_count(pool, 1, timedelta(days=30))) == 127
 
 
 def test_user_message_percentile_returns_float():
     pool = _mock_pool(fetchval=0.85)
-    result = asyncio.run(eq.user_message_percentile(pool, 1, "30 days"))
+    result = asyncio.run(eq.user_message_percentile(pool, 1, timedelta(days=30)))
     assert result == 0.85
 
 
 def test_user_reactions_received_returns_int():
     pool = _mock_pool(fetchval=43)
-    assert asyncio.run(eq.user_reactions_received(pool, 1, "30 days")) == 43
+    assert asyncio.run(eq.user_reactions_received(pool, 1, timedelta(days=30))) == 43
 
 
 def test_user_top_emojis_returns_list():
     rows = [{"emoji": "\u2764\ufe0f", "cnt": 12}, {"emoji": "\U0001f602", "cnt": 9}]
     pool = _mock_pool(fetch=rows)
-    result = asyncio.run(eq.user_top_emojis_received(pool, 1, "30 days"))
+    result = asyncio.run(eq.user_top_emojis_received(pool, 1, timedelta(days=30)))
     assert result == [("\u2764\ufe0f", 12), ("\U0001f602", 9)]
 
 
 def test_user_top_channels_returns_list():
     rows = [{"channel_id": 10, "name": "general", "cnt": 52}]
     pool = _mock_pool(fetch=rows)
-    result = asyncio.run(eq.user_top_channels(pool, 1, "30 days"))
+    result = asyncio.run(eq.user_top_channels(pool, 1, timedelta(days=30)))
     assert result == [(10, "general", 52)]
 
 
 def test_user_peak_hour_returns_int():
     pool = _mock_pool(fetchval=14)
-    assert asyncio.run(eq.user_peak_hour(pool, 1, "30 days")) == 14
+    assert asyncio.run(eq.user_peak_hour(pool, 1, timedelta(days=30))) == 14
 
 
 def test_user_hall_of_fame_count_returns_int():
@@ -238,11 +239,11 @@ def test_user_fun_facts_none_row():
 
 def test_user_reaction_percentile_returns_float():
     pool = _mock_pool(fetchval=0.78)
-    result = asyncio.run(eq.user_reaction_percentile(pool, 1, "30 days"))
+    result = asyncio.run(eq.user_reaction_percentile(pool, 1, timedelta(days=30)))
     assert result == 0.78
 
 
 def test_server_message_count_null_fetchval():
     """fetchval returning None should be coerced to 0."""
     pool = _mock_pool(fetchval=None)
-    assert asyncio.run(eq.server_message_count(pool, "7 days")) == 0
+    assert asyncio.run(eq.server_message_count(pool, timedelta(days=7))) == 0
