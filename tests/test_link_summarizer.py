@@ -151,3 +151,32 @@ def test_skip_domains_contains_expected():
     assert "tenor.com" in SKIP_DOMAINS
     assert "giphy.com" in SKIP_DOMAINS
     assert "imgur.com" in SKIP_DOMAINS
+    assert "klipy.com" in SKIP_DOMAINS
+
+
+def test_should_skip_url_klipy():
+    """_should_skip_url should skip klipy.com embed URLs."""
+    from gentlebot.cogs.link_summarizer_cog import _should_skip_url
+
+    assert _should_skip_url("https://klipy.com/embed/abc") is True
+
+
+def test_should_skip_url_gif_extension():
+    """_should_skip_url should skip URLs ending with .gif."""
+    from gentlebot.cogs.link_summarizer_cog import _should_skip_url
+
+    assert _should_skip_url("https://example.com/funny.gif") is True
+
+
+def test_should_skip_url_media_with_query_string():
+    """_should_skip_url should skip media URLs even with query strings."""
+    from gentlebot.cogs.link_summarizer_cog import _should_skip_url
+
+    assert _should_skip_url("https://example.com/photo.jpg?w=500") is True
+
+
+def test_should_skip_url_normal_article():
+    """_should_skip_url should NOT skip normal article URLs."""
+    from gentlebot.cogs.link_summarizer_cog import _should_skip_url
+
+    assert _should_skip_url("https://nytimes.com/article") is False

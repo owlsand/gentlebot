@@ -65,6 +65,7 @@ class YahooFantasyWeeklyCog(commands.Cog):
         self.bot = bot
         self.pool = None
         self.scheduler: AsyncIOScheduler | None = None
+        self._last_target_week: int | None = None
         self._channel_id = getattr(cfg, "FANTASY_CHANNEL_ID", 0) or getattr(
             cfg, "SPORTS_CHANNEL_ID", 0
         )
@@ -131,8 +132,27 @@ class YahooFantasyWeeklyCog(commands.Cog):
         if not message:
             log.info("Yahoo Fantasy recap skipped; no message generated")
             return "skipped:no_message"
+
+        # Prevent re-posting the same fantasy week across different calendar weeks
+        target_week = self._last_target_week
+        if target_week is not None and self.pool:
+            already_sent = await self.pool.fetchval(
+                """
+                SELECT 1 FROM discord.task_execution
+                WHERE task_name = 'yahoo_fantasy_weekly'
+                  AND result = $1
+                """,
+                f"sent:week_{target_week}",
+            )
+            if already_sent:
+                log.info(
+                    "Yahoo Fantasy week %s already posted; skipping duplicate",
+                    target_week,
+                )
+                return f"skipped:already_sent_week_{target_week}"
+
         await channel.send(message)
-        return "sent"
+        return f"sent:week_{target_week}" if target_week is not None else "sent"
 
     @app_commands.command(
         name="fantasyrecap", description="Run the Yahoo Fantasy Football weekly recap"
@@ -190,6 +210,7 @@ class YahooFantasyWeeklyCog(commands.Cog):
             )
             context = extract_league_context(payload)
             target_week = determine_target_week(context)
+            self._last_target_week = target_week
             if target_week is None:
                 log.info("Yahoo Fantasy season appears complete; skipping recap")
                 return None

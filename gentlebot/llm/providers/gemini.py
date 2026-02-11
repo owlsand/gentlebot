@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from types import SimpleNamespace
 
 from .base import LLMProvider, Message, GenerationResult, ToolCall
+from ...infra.retries import _extract_status
 
 try:
     from google import genai  # type: ignore
@@ -167,7 +168,11 @@ class GeminiProvider(LLMProvider):
                 model=model, contents=content, config=config
             )
         except Exception as exc:  # pragma: no cover
-            log.exception("Gemini API call failed: %s", exc)
+            status = _extract_status(exc)
+            if status == 429:
+                log.warning("Gemini rate-limited (429): %s", exc)
+            else:
+                log.exception("Gemini API call failed: %s", exc)
             raise
 
         # Extract text
