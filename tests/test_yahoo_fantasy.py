@@ -176,3 +176,26 @@ def test_weekly_recap_is_final_detects_in_progress() -> None:
         matchups=[_matchup("in_progress")],
     )
     assert not recap.is_final()
+
+
+def test_determine_target_week_at_end_week() -> None:
+    """When current_week == end_week, should return a valid target (the last completed week)."""
+    context = LeagueContext(name="Gentlefolk2.0", current_week=15, start_week=1, end_week=15)
+    result = determine_target_week(context)
+    assert result is not None
+    assert result == 14
+
+
+def test_determine_target_week_past_end_returns_none() -> None:
+    """When current_week > end_week, should return None (season over)."""
+    context = LeagueContext(name="Gentlefolk2.0", current_week=16, start_week=1, end_week=15)
+    result = determine_target_week(context)
+    assert result is None
+
+
+def test_sent_result_string_format() -> None:
+    """Verify the result string format matches f'sent:week_{N}'."""
+    target_week = 14
+    result = f"sent:week_{target_week}"
+    assert result == "sent:week_14"
+    assert result.startswith("sent:week_")

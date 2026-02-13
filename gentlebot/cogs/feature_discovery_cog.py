@@ -22,6 +22,7 @@ import logging
 import re
 import time
 from datetime import date
+from urllib.parse import urlparse
 
 import discord
 import pytz
@@ -50,11 +51,18 @@ URL_PATTERN = re.compile(r'https?://[^\s<>"\')\]]+', re.IGNORECASE)
 
 # Domains to skip (image/GIF hosts that aren't summarizable)
 _SKIP_DOMAINS = {
-    "tenor.com", "giphy.com", "imgur.com", "gfycat.com",
+    "tenor.com", "giphy.com", "imgur.com", "gfycat.com", "klipy.com",
     "media.discordapp.net", "cdn.discordapp.com",
     "i.redd.it", "v.redd.it", "preview.redd.it",
     "i.imgur.com", "media.tenor.com", "c.tenor.com",
 }
+
+# File extensions to skip (media files that aren't summarizable)
+_SKIP_EXTENSIONS = frozenset({
+    ".gif", ".gifv", ".jpg", ".jpeg", ".png", ".webp",
+    ".mp4", ".mov", ".webm", ".svg", ".bmp", ".ico",
+    ".mp3", ".wav", ".ogg", ".avif",
+})
 
 # Pattern to detect "how active" / "who's posting" style questions
 ACTIVITY_PATTERN = re.compile(
@@ -176,6 +184,12 @@ def _extract_domain(url: str) -> str:
         return ""
 
 
+def _is_media_url(url: str) -> bool:
+    """Return True if the URL path ends with a known media extension."""
+    path = urlparse(url).path.lower()
+    return any(path.endswith(ext) for ext in _SKIP_EXTENSIONS)
+
+
 class FeatureDiscoveryCog(PoolAwareCog):
     """Contextual feature tips and periodic feature spotlights."""
 
@@ -294,11 +308,12 @@ class FeatureDiscoveryCog(PoolAwareCog):
         if len(content) >= LONG_MESSAGE_THRESHOLD:
             return "tldr", TIP_DEFINITIONS[0][1]
 
-        # 2. URL (non-image host) -> link summary tip
+        # 2. URL (non-image host, non-media extension) -> link summary tip
         urls = URL_PATTERN.findall(content)
         valid_urls = [
             u for u in urls
             if not any(skip in _extract_domain(u) for skip in _SKIP_DOMAINS)
+            and not _is_media_url(u)
         ]
         if valid_urls:
             return "link_summary", TIP_DEFINITIONS[1][1]

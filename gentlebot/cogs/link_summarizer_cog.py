@@ -15,10 +15,12 @@ Configuration in bot_config.py:
 from __future__ import annotations
 
 import asyncio
+import collections
 import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import discord
 import requests
@@ -49,6 +51,7 @@ SKIP_DOMAINS = {
     "giphy.com",
     "imgur.com",
     "gfycat.com",
+    "klipy.com",
     "media.discordapp.net",
     "cdn.discordapp.com",
     "i.redd.it",
@@ -58,6 +61,13 @@ SKIP_DOMAINS = {
     "media.tenor.com",
     "c.tenor.com",
 }
+
+# File extensions to skip (media files that aren't summarizable)
+SKIP_EXTENSIONS = frozenset({
+    ".gif", ".gifv", ".jpg", ".jpeg", ".png", ".webp",
+    ".mp4", ".mov", ".webm", ".svg", ".bmp", ".ico",
+    ".mp3", ".wav", ".ogg", ".avif",
+})
 
 # Cache for summaries to avoid repeated API calls
 # Key: message_id, Value: (url, summary)
@@ -83,9 +93,15 @@ def _extract_domain(url: str) -> str:
 
 
 def _should_skip_url(url: str) -> bool:
-    """Check if URL should be skipped (image/GIF hosts)."""
+    """Check if URL should be skipped (image/GIF hosts or media files)."""
     domain = _extract_domain(url)
-    return any(skip in domain for skip in SKIP_DOMAINS)
+    if any(skip in domain for skip in SKIP_DOMAINS):
+        return True
+    # Check file extension (strip query string first)
+    path = urlparse(url).path.lower()
+    if any(path.endswith(ext) for ext in SKIP_EXTENSIONS):
+        return True
+    return False
 
 
 class LinkSummarizerCog(commands.Cog):
@@ -105,6 +121,7 @@ class LinkSummarizerCog(commands.Cog):
         self.bot = bot
         self.session = self._build_session()
         self.enabled = getattr(cfg, "LINK_SUMMARIZER_ENABLED", True)
+        self._responded_messages: collections.deque[int] = collections.deque(maxlen=500)
 
     def _build_session(self) -> requests.Session:
         """Build a requests session with retry logic."""
@@ -269,6 +286,10 @@ Requirements:
         if payload.user_id == self.bot.user.id:
             return
 
+        # Guard against repeated responses for the same message
+        if payload.message_id in self._responded_messages:
+            return
+
         # Get the channel and message first (needed for both cache hit and miss)
         channel = self.bot.get_channel(payload.channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
@@ -312,6 +333,7 @@ Requirements:
         domain = _extract_domain(url)
         response = f"📋 **Summary** ({domain})\n\n{summary}"
 
+        self._responded_messages.append(payload.message_id)
         try:
             await message.reply(response, mention_author=False)
             log.info(
@@ -323,6 +345,11 @@ Requirements:
             # Remove from cache after sending to avoid duplicate responses
             _summary_cache.pop(payload.message_id, None)
         except discord.HTTPException as exc:
+            # Allow retry on send failure
+            try:
+                self._responded_messages.remove(payload.message_id)
+            except ValueError:
+                pass
             log.warning("Failed to send link summary: %s", exc)
 
 

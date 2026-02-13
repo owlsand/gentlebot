@@ -217,3 +217,41 @@ def test_on_message_skips_dm():
         await cog.on_message(msg)
 
     asyncio.run(run())
+
+
+def test_match_tip_skips_klipy_urls():
+    """_match_tip should return (None, None) for klipy.com URLs."""
+    bot = types.SimpleNamespace()
+    bot.user = types.SimpleNamespace(id=123)
+
+    from gentlebot.cogs.feature_discovery_cog import FeatureDiscoveryCog
+
+    cog = FeatureDiscoveryCog(bot)
+
+    msg = types.SimpleNamespace(
+        content="Check this out https://klipy.com/embed/abc",
+        channel=types.SimpleNamespace(id=789),
+    )
+
+    key, text = cog._match_tip(msg)
+    assert key is None
+    assert text is None
+
+
+def test_match_tip_skips_gif_extension():
+    """_match_tip should return (None, None) for .gif extension URLs."""
+    bot = types.SimpleNamespace()
+    bot.user = types.SimpleNamespace(id=123)
+
+    from gentlebot.cogs.feature_discovery_cog import FeatureDiscoveryCog
+
+    cog = FeatureDiscoveryCog(bot)
+
+    msg = types.SimpleNamespace(
+        content="Look at https://example.com/funny.gif",
+        channel=types.SimpleNamespace(id=789),
+    )
+
+    key, text = cog._match_tip(msg)
+    assert key is None
+    assert text is None
