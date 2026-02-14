@@ -68,20 +68,26 @@ class BackfillBot(commands.Bot):
                             for user in users:
                                 if user.bot:
                                     continue
-                                tag = await self.pool.execute(
-                                    """
-                                    INSERT INTO discord.reaction_event (
-                                        message_id, user_id, emoji, reaction_action, event_at
-                                    ) VALUES ($1,$2,$3,$4,$5)
-                                    ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts DO NOTHING
-                                    """,
-                                    msg.id,
-                                    user.id,
-                                    str(reaction.emoji),
-                                    ReactionAction.MESSAGE_REACTION_ADD.name,
-                                    msg.created_at,
-                                )
-                                self.inserted += rows_from_tag(tag)
+                                try:
+                                    tag = await self.pool.execute(
+                                        """
+                                        INSERT INTO discord.reaction_event (
+                                            message_id, user_id, emoji, reaction_action, event_at
+                                        ) VALUES ($1,$2,$3,$4,$5)
+                                        ON CONFLICT ON CONSTRAINT uniq_reaction_event_msg_user_emoji_act_ts DO NOTHING
+                                        """,
+                                        msg.id,
+                                        user.id,
+                                        str(reaction.emoji),
+                                        ReactionAction.MESSAGE_REACTION_ADD.name,
+                                        msg.created_at,
+                                    )
+                                    self.inserted += rows_from_tag(tag)
+                                except asyncpg.ForeignKeyViolationError:
+                                    log.debug(
+                                        "Skipping reaction for unarchived message %s",
+                                        msg.id,
+                                    )
                 except discord.Forbidden as exc:
                     log.warning(
                         "History fetch forbidden for channel %s: %s",

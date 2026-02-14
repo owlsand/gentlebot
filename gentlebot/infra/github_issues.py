@@ -94,6 +94,10 @@ def _normalize_message(message: str) -> str:
     # Replace quoted strings with X
     normalized = re.sub(r'"[^"]*"', '"X"', normalized)
     normalized = re.sub(r"'[^']*'", "'X'", normalized)
+    # Collapse variable usernames after "role N to/from" for roles_cog dedup
+    normalized = re.sub(
+        r"(role N (?:to|from)) .+?(?=\. Ensure)", r"\1 <name>", normalized
+    )
     return normalized
 
 

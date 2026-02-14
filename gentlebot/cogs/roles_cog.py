@@ -705,7 +705,7 @@ class RoleCog(commands.Cog):
             self.assign_counts[role_id] += 1
             await member.add_roles(role, reason="RoleCog auto-assign")
         except discord.Forbidden:
-            log.error(
+            log.warning(
                 "Missing permissions to assign role %s to %s. "
                 "Ensure the bot's role is above the target role and has Manage Roles.",
                 role_id,
@@ -754,7 +754,7 @@ class RoleCog(commands.Cog):
         try:
             await member.remove_roles(role, reason="RoleCog auto-remove")
         except discord.Forbidden:
-            log.error(
+            log.warning(
                 "Missing permissions to remove role %s from %s. "
                 "Ensure the bot's role is above the target role and has Manage Roles.",
                 role_id,

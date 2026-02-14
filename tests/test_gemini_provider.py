@@ -39,6 +39,27 @@ def test_429_logs_warning_not_error(caplog):
     assert not error_records
 
 
+def test_400_logs_warning_not_error(caplog):
+    """A 400 exception should emit a WARNING, not an ERROR."""
+    provider = _make_provider()
+
+    exc = Exception("Bad request: function calling not supported")
+    exc.code = 400  # type: ignore[attr-defined]
+    provider.client.models.generate_content.side_effect = exc
+
+    with caplog.at_level(logging.DEBUG):
+        with pytest.raises(Exception, match="Bad request"):
+            provider.generate(
+                model="gemini-2.5-flash",
+                messages=[{"role": "user", "content": "hello"}],
+            )
+
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert any("400" in r.message for r in warning_records)
+    assert not error_records
+
+
 def test_500_logs_error(caplog):
     """A non-429 exception should still log at ERROR level."""
     provider = _make_provider()
