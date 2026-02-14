@@ -447,7 +447,12 @@ class GeminiCog(commands.Cog):
                 log.exception("Model call failed: %s", e)
                 return
 
-        # 11) Check for pending images from tool calls
+        # 11) Skip empty responses to avoid posting blank messages
+        if not response or not response.strip():
+            log.info("Suppressed empty response in channel %s", chan_name(message.channel))
+            return
+
+        # 12) Check for pending images from tool calls
         pending_images = get_router().get_pending_images()
         files: list[discord.File] = []
         for idx, (img_prompt, img_data) in enumerate(pending_images):
@@ -481,6 +486,10 @@ class GeminiCog(commands.Cog):
             )
         except Exception as e:
             log.exception("Model call failed in /ask: %s", e)
+            return
+
+        if not response or not response.strip():
+            log.info("Suppressed empty /ask response from %s", user_name(interaction.user))
             return
 
         # Check for pending images from tool calls
