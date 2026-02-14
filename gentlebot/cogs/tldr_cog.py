@@ -16,6 +16,7 @@ Configuration in bot_config.py:
 from __future__ import annotations
 
 import asyncio
+import collections
 import logging
 from typing import Dict, Tuple
 
@@ -61,6 +62,7 @@ class TLDRCog(commands.Cog):
         self.bot = bot
         self.enabled = getattr(cfg, "TLDR_ENABLED", True)
         self.min_length = getattr(cfg, "TLDR_MIN_LENGTH", DEFAULT_MIN_LENGTH)
+        self._responded_messages: collections.deque[int] = collections.deque(maxlen=500)
 
     async def _summarize_message(self, content: str, author_name: str) -> str:
         """Use LLM to summarize the message content."""
@@ -89,10 +91,10 @@ Requirements:
             return response.strip()
         except (RateLimited, SafetyBlocked):
             log.info("LLM unavailable for TL;DR summary")
-            return "Summary unavailable. Try again later."
+            return ""
         except Exception:
             log.exception("Failed to generate TL;DR summary")
-            return "Could not generate summary for this message."
+            return ""
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -149,6 +151,10 @@ Requirements:
         if payload.user_id == self.bot.user.id:
             return
 
+        # Guard against repeated responses for the same message
+        if payload.message_id in self._responded_messages:
+            return
+
         # Check if we have cached data for this message
         cached = _tldr_cache.get(payload.message_id)
         if not cached:
@@ -177,12 +183,16 @@ Requirements:
             author_name = user_name(message.author)
             summary = await self._summarize_message(content, author_name)
 
+            if not summary:
+                return
+
             # Cache the summary
             _tldr_cache[payload.message_id] = (content, summary)
 
         # Send the summary as a reply
         response = f"📝 **TL;DR**\n\n{summary}"
 
+        self._responded_messages.append(payload.message_id)
         try:
             await message.reply(response, mention_author=False)
             log.info(
@@ -194,6 +204,11 @@ Requirements:
             # Remove from cache after sending to avoid duplicate responses
             _tldr_cache.pop(payload.message_id, None)
         except discord.HTTPException as exc:
+            # Allow retry on send failure
+            try:
+                self._responded_messages.remove(payload.message_id)
+            except ValueError:
+                pass
             log.warning("Failed to send TL;DR summary: %s", exc)
 
 

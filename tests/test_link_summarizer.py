@@ -180,3 +180,36 @@ def test_should_skip_url_normal_article():
     from gentlebot.cogs.link_summarizer_cog import _should_skip_url
 
     assert _should_skip_url("https://nytimes.com/article") is False
+
+
+def test_summarize_content_returns_empty_on_llm_failure():
+    """_summarize_content should return empty string on LLM failure."""
+    bot = types.SimpleNamespace()
+    from gentlebot.cogs.link_summarizer_cog import LinkSummarizerCog
+
+    cog = LinkSummarizerCog(bot)
+
+    async def run():
+        with patch("gentlebot.cogs.link_summarizer_cog.router") as mock_router:
+            mock_router.generate.side_effect = Exception("LLM down")
+            result = await cog._summarize_content("https://example.com", "some content")
+            assert result == ""
+
+    asyncio.run(run())
+
+
+def test_summarize_content_returns_empty_on_rate_limit():
+    """_summarize_content should return empty string on rate limit."""
+    bot = types.SimpleNamespace()
+    from gentlebot.cogs.link_summarizer_cog import LinkSummarizerCog
+    from gentlebot.infra import RateLimited
+
+    cog = LinkSummarizerCog(bot)
+
+    async def run():
+        with patch("gentlebot.cogs.link_summarizer_cog.router") as mock_router:
+            mock_router.generate.side_effect = RateLimited("general")
+            result = await cog._summarize_content("https://example.com", "some content")
+            assert result == ""
+
+    asyncio.run(run())

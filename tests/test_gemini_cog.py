@@ -34,7 +34,6 @@ def test_on_message_logs_failure_no_reply(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     async def raise_error(*args, **kwargs):
         raise RuntimeError("boom")
@@ -64,16 +63,13 @@ def test_on_message_dm_receives_reply(monkeypatch):
     message.channel.id = 789
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
-    message.add_reaction = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 0)
     cog.call_llm = AsyncMock(return_value="hi")
     cog._get_context_from_archive = AsyncMock(return_value="")
 
     asyncio.run(cog.on_message(message))
 
     message.reply.assert_called_once_with("hi", files=None, mention_author=True)
-    message.add_reaction.assert_called_once()
 
 
 def test_call_llm_robot_persona(monkeypatch):
@@ -116,27 +112,6 @@ def test_call_llm_logs_output_not_input(monkeypatch, caplog):
     assert "logged output" in caplog.text
 
 
-def test_choose_emoji_llm_custom_and_standard(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake")
-    intents = discord.Intents.none()
-    bot = commands.Bot(command_prefix="!", intents=intents)
-    cog = GeminiCog(bot)
-
-    async def fake_custom(_cid: int, _prompt: str) -> str:
-        return "<:party:123>"
-
-    cog.call_llm = fake_custom
-    result = asyncio.run(cog.choose_emoji_llm("hello", ["<:party:123>"]))
-    assert result == "<:party:123>"
-
-    async def fake_standard(_cid: int, _prompt: str) -> str:
-        return "🔥"
-
-    cog.call_llm = fake_standard
-    result = asyncio.run(cog.choose_emoji_llm("hello", []))
-    assert result == "🔥"
-
-
 def test_sanitize_prompt_replaces_user_mentions(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     intents = discord.Intents.none()
@@ -167,7 +142,6 @@ def test_on_message_includes_archive_context(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     captured: dict[str, str] = {}
 
@@ -207,7 +181,6 @@ def test_on_message_context_sanitization(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     captured: dict[str, str] = {}
 
@@ -248,7 +221,6 @@ def test_on_message_replaces_user_placeholder(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     async def fake_call(_cid: int, _prompt: str) -> str:
         return "@User hello"
@@ -283,7 +255,6 @@ def test_on_message_dm_without_text(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     captured: dict[str, str] = {}
 
@@ -321,7 +292,6 @@ def test_on_message_replies_to_direct_mention_without_text(monkeypatch):
     message.channel.typing.return_value = dummy_typing()
     message.reply = AsyncMock()
 
-    monkeypatch.setattr(gemini_cog.random, "random", lambda: 1)
 
     captured: dict[str, str] = {}
 

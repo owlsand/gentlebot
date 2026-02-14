@@ -1,6 +1,8 @@
 """Tests for the TL;DR cog."""
 import asyncio
+import collections
 import types
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 def test_tldr_emoji_constant():
@@ -107,3 +109,57 @@ def test_max_cache_size():
     from gentlebot.cogs.tldr_cog import MAX_CACHE_SIZE
 
     assert MAX_CACHE_SIZE == 200
+
+
+def test_dedup_guard_blocks_second_reaction():
+    """Second reaction on same message should be blocked by dedup deque."""
+    from gentlebot.cogs.tldr_cog import TLDRCog
+
+    bot = types.SimpleNamespace()
+    bot.user = types.SimpleNamespace(id=100)
+
+    cog = TLDRCog(bot)
+    cog.enabled = True
+
+    # Pre-populate the dedup deque
+    cog._responded_messages.append(999)
+
+    async def run():
+        payload = types.SimpleNamespace(
+            emoji="📝",
+            user_id=456,
+            message_id=999,
+            channel_id=789,
+        )
+        # Should return early without fetching the channel
+        await cog.on_raw_reaction_add(payload)
+
+    asyncio.run(run())
+    # Deque should still contain the message (not removed)
+    assert 999 in cog._responded_messages
+
+
+def test_dedup_deque_initialized():
+    """TLDRCog should have _responded_messages deque on init."""
+    from gentlebot.cogs.tldr_cog import TLDRCog
+
+    bot = types.SimpleNamespace()
+    cog = TLDRCog(bot)
+    assert isinstance(cog._responded_messages, collections.deque)
+    assert cog._responded_messages.maxlen == 500
+
+
+def test_error_summary_returns_empty():
+    """_summarize_message should return empty string on LLM failure."""
+    from gentlebot.cogs.tldr_cog import TLDRCog
+
+    bot = types.SimpleNamespace()
+    cog = TLDRCog(bot)
+
+    async def run():
+        with patch("gentlebot.cogs.tldr_cog.router") as mock_router:
+            mock_router.generate.side_effect = Exception("LLM down")
+            result = await cog._summarize_message("test content", "TestUser")
+            assert result == ""
+
+    asyncio.run(run())
