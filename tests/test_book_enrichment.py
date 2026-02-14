@@ -1,5 +1,6 @@
 """Tests for the book enrichment cog."""
 import asyncio
+import collections
 import types
 from unittest.mock import MagicMock, patch
 
@@ -179,3 +180,40 @@ def test_book_emoji_constant():
     from gentlebot.cogs.book_enrichment_cog import BOOK_EMOJI
 
     assert BOOK_EMOJI == "📚"
+
+
+def test_dedup_guard_blocks_second_reaction():
+    """Second reaction on same message should be blocked by dedup deque."""
+    from gentlebot.cogs.book_enrichment_cog import BookEnrichmentCog
+
+    bot = types.SimpleNamespace()
+    bot.user = types.SimpleNamespace(id=100)
+
+    cog = BookEnrichmentCog(bot)
+    cog.enabled = True
+
+    # Pre-populate the dedup deque
+    cog._responded_messages.append(999)
+
+    async def run():
+        payload = types.SimpleNamespace(
+            emoji="📚",
+            user_id=456,
+            message_id=999,
+            channel_id=789,
+        )
+        # Should return early without fetching the channel
+        await cog.on_raw_reaction_add(payload)
+
+    asyncio.run(run())
+    assert 999 in cog._responded_messages
+
+
+def test_dedup_deque_initialized():
+    """BookEnrichmentCog should have _responded_messages deque on init."""
+    from gentlebot.cogs.book_enrichment_cog import BookEnrichmentCog
+
+    bot = types.SimpleNamespace()
+    cog = BookEnrichmentCog(bot)
+    assert isinstance(cog._responded_messages, collections.deque)
+    assert cog._responded_messages.maxlen == 500

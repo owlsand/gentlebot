@@ -19,6 +19,7 @@ Configuration in bot_config.py:
 from __future__ import annotations
 
 import asyncio
+import collections
 import logging
 import os
 import re
@@ -73,6 +74,7 @@ class BookEnrichmentCog(commands.Cog):
         self.session = self._build_session()
         self.reading_channel_id = getattr(cfg, "READING_CHANNEL_ID", 0)
         self.enabled = getattr(cfg, "BOOK_ENRICHMENT_ENABLED", True)
+        self._responded_messages: collections.deque[int] = collections.deque(maxlen=500)
 
     def _build_session(self) -> requests.Session:
         """Build a requests session with retry logic."""
@@ -309,6 +311,10 @@ Examples:
         if payload.user_id == self.bot.user.id:
             return
 
+        # Guard against repeated responses for the same message
+        if payload.message_id in self._responded_messages:
+            return
+
         # Check if we have cached data for this message
         book_data = _book_cache.get(payload.message_id)
         if not book_data:
@@ -332,6 +338,7 @@ Examples:
         # Create and send the embed
         embed = self._format_book_embed(book_info)
 
+        self._responded_messages.append(payload.message_id)
         try:
             await message.reply(embed=embed, mention_author=False)
             log.info(
@@ -343,6 +350,11 @@ Examples:
             # Remove from cache after sending to avoid duplicate responses
             _book_cache.pop(payload.message_id, None)
         except discord.HTTPException as exc:
+            # Allow retry on send failure
+            try:
+                self._responded_messages.remove(payload.message_id)
+            except ValueError:
+                pass
             log.warning("Failed to send book info: %s", exc)
 
 

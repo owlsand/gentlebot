@@ -1,9 +1,8 @@
-"""Gemini-powered conversational responses and emoji reactions."""
+"""Gemini-powered conversational responses."""
 
 import io
 import re
 import time
-import random
 import asyncio
 import inspect
 import logging
@@ -45,15 +44,6 @@ class GeminiCog(commands.Cog):
         self.MAX_PROMPT_LEN = 4000  # Increased from 750 to allow complex questions
         self.DISALLOWED_PATTERN = re.compile(r"<@&\d+>")  # e.g. guild roles
         self.MENTION_CLEANUP = re.compile(r"<@!?(\d+)>")  # strip user mentions
-
-        # === Emoji reaction settings ===
-        self.base_reaction_chance = 0.02  # 2% chance per message by default
-        self.mention_reaction_chance = 0.25  # 45% chance when content mentions "gentlebot"
-        # static fallback unicode emojis
-        self.default_emojis = ["😂", "🤔", "😅", "🔥", "🙃", "😎"]
-
-        # === Ambient response chance ===
-        self.ambient_chance = 0  # ambient message responses disabled
 
         # === Database pool for archived messages ===
         self.pool: asyncpg.Pool | None = None
@@ -290,7 +280,7 @@ class GeminiCog(commands.Cog):
         return await func(channel, user_prompt)
 
     async def _get_context_from_archive(self, channel_id: int) -> str:
-        """Return messages from the last 24h in the given channel."""
+        """Return messages from the last 24h in the given channel with participant summary."""
         if not self.pool:
             return ""
         since = discord.utils.utcnow() - timedelta(hours=24)
@@ -310,12 +300,20 @@ class GeminiCog(commands.Cog):
             log.exception("Archive fetch failed")
             return ""
         lines = []
+        participants: dict[str, int] = {}
         for r in rows:
             content = r["content"]
             author = r["display_name"] or "?"
+            participants[author] = participants.get(author, 0) + 1
             if content:
                 lines.append(f"{author}: {content}")
-        return "\n".join(lines)
+        if not lines:
+            return ""
+        # Build a participant summary header
+        active = sorted(participants.items(), key=lambda x: x[1], reverse=True)
+        names = [name for name, _ in active[:6]]
+        header = f"Active participants: {', '.join(names)}\n"
+        return header + "\n".join(lines)
 
     async def _get_conversation_turns(
         self,
@@ -364,30 +362,6 @@ class GeminiCog(commands.Cog):
 
         return messages
 
-    async def choose_emoji_llm(self, message_content: str, custom_emojis: list[str]) -> str | None:
-        """
-        Ask the Gemini model to select either a standard emoji or one of the
-        provided custom_emojis that humorously reacts to the message_content.
-        Returns the chosen emoji string or ``None`` on failure.
-        """
-        custom_list = ", ".join(custom_emojis) if custom_emojis else ""
-        prompt = (
-            "You may react using any standard emoji or one of these custom"
-            f" emojis: {custom_list}. Select a single emoji that best expresses"
-            f" how a friendly person would react to the following message:"
-            f" '{message_content}'. Respond only with the emoji."
-        )
-        try:
-            # Use dummy channel to avoid polluting histories
-            response = (await self._invoke_llm(None, prompt)).strip()
-            for emoji in custom_emojis:
-                if emoji in response:
-                    return emoji
-            return response.split()[0] if response else None
-        except Exception as e:
-            log.exception("Gemini emoji selection failed: %s", e)
-            return None
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         # 1) Ignore bots
@@ -401,24 +375,7 @@ class GeminiCog(commands.Cog):
         content = message.content.strip()
         is_dm = message.guild is None
 
-        # 2) Determine reaction probability
-        if "gentlebot" in content.lower():
-            chance = self.mention_reaction_chance
-        else:
-            chance = self.base_reaction_chance
-
-        # 3) React based on chance
-        if random.random() < chance:
-            custom = [str(e) for e in message.guild.emojis] if message.guild and message.guild.emojis else []
-            emoji_resp = await self.choose_emoji_llm(message.content, custom)
-            pool = custom + self.default_emojis
-            emoji_to_use = emoji_resp if emoji_resp in pool else random.choice(pool)
-            try:
-                await message.add_reaction(emoji_to_use)
-            except Exception as e:
-                log.exception("Failed to add reaction: %s", e)
-
-        # 4) Ensure mention_strs initialized
+        # 2) Ensure mention_strs initialized
         if not self.mention_strs:
             return
 
@@ -469,40 +426,16 @@ class GeminiCog(commands.Cog):
 
         await self._maybe_trigger_typing(message.channel)
 
-        # 9) Build user_prompt with optional context
-        is_ambient = (
-            prompt == content
-            and 'gentlebot' not in content.lower()
-            and not mention_starts_message
-            and not (message.reference and isinstance(message.reference.resolved, discord.Message) and message.reference.resolved.author.id == self.bot.user.id)
-        )
-        if is_ambient:
-            recent_msgs = []
-            async for m in message.channel.history(limit=10):
-                if m.id != message.id and not m.author.bot:
-                    recent_msgs.append(m.content.strip())
-            recent_msgs.reverse()
-            context_str = self.strip_mentions("\n".join(recent_msgs))
-            prefix = (
-                "You are jumping into an ongoing conversation that people probably don't want you involved in. Here are the last few messages:\n"
-            )
-            suffix = f"\nNow react to the message: '{sanitized_prompt}'"
-            max_context = self.MAX_PROMPT_LEN - len(prefix) - len(suffix)
-            if context_str and max_context > 0:
-                context_part = context_str[-max_context:]
-                user_prompt = f"{prefix}{context_part}{suffix}"
-            else:
-                user_prompt = sanitized_prompt
+        # 9) Build user_prompt with conversation context
+        context_str = self.strip_mentions(await self._get_context_from_archive(message.channel.id))
+        prefix = "Recent conversation within the last 24 hours:\n"
+        suffix = f"\n\nUser message: {sanitized_prompt}"
+        max_context = self.MAX_PROMPT_LEN - len(prefix) - len(suffix)
+        if context_str and max_context > 0:
+            context_part = context_str[-max_context:]
+            user_prompt = f"{prefix}{context_part}{suffix}"
         else:
-            context_str = self.strip_mentions(await self._get_context_from_archive(message.channel.id))
-            prefix = "Recent conversation within the last 24 hours:\n"
-            suffix = f"\n\nUser message: {sanitized_prompt}"
-            max_context = self.MAX_PROMPT_LEN - len(prefix) - len(suffix)
-            if context_str and max_context > 0:
-                context_part = context_str[-max_context:]
-                user_prompt = f"{prefix}{context_part}{suffix}"
-            else:
-                user_prompt = sanitized_prompt
+            user_prompt = sanitized_prompt
 
         # 10) Typing indicator while fetching
         async with message.channel.typing():

@@ -219,10 +219,10 @@ Requirements:
             return response.strip()
         except (RateLimited, SafetyBlocked):
             log.info("LLM unavailable for link summary")
-            return "Summary unavailable. Try again later."
+            return ""
         except Exception:
             log.exception("Failed to generate summary")
-            return "Could not generate summary for this link."
+            return ""
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -322,9 +322,12 @@ Requirements:
             # Fetch content and generate summary
             content = await asyncio.to_thread(self._fetch_page_content, url)
             if not content:
-                summary = f"Could not fetch content from {_extract_domain(url)}. The page may require JavaScript or authentication."
-            else:
-                summary = await self._summarize_content(url, content)
+                log.warning("Could not fetch content from %s for message %s", _extract_domain(url), payload.message_id)
+                return
+            summary = await self._summarize_content(url, content)
+
+            if not summary:
+                return
 
             # Cache the summary
             _summary_cache[payload.message_id] = (url, summary)
