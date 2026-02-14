@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -384,5 +385,75 @@ def test_badge_task_ignores_bot_messages(monkeypatch):
 
         await cog.badge_task()
         assert winner == human.id
+
+    asyncio.run(run_test())
+
+
+def test_assign_forbidden_logs_warning(monkeypatch, caplog):
+    """discord.Forbidden in _assign should log WARNING, not ERROR."""
+
+    async def run_test():
+        monkeypatch.setattr(roles_cog.RoleCog.badge_task, "start", lambda self: None)
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = roles_cog.RoleCog(bot)
+
+        role_id = 42
+        role = SimpleNamespace(id=role_id, name="test")
+
+        guild = SimpleNamespace(id=1)
+        guild.get_role = lambda rid: role if rid == role_id else None
+
+        member = SimpleNamespace(id=99, guild=guild, roles=[], bot=False)
+
+        async def raise_forbidden(r, reason=None):
+            resp = SimpleNamespace(status=403, reason="Forbidden")
+            raise discord.Forbidden(resp, "Missing permissions")
+
+        member.add_roles = raise_forbidden
+        monkeypatch.setattr(roles_cog, "ROLE_NPC_FLAG", 0)
+        monkeypatch.setattr(cfg, "ROLE_NPC_FLAG", 0)
+
+        with caplog.at_level(logging.DEBUG):
+            await cog._assign(member, role_id)
+
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert any("Missing permissions" in r.message for r in warning_records)
+        assert not error_records
+
+    asyncio.run(run_test())
+
+
+def test_remove_forbidden_logs_warning(monkeypatch, caplog):
+    """discord.Forbidden in _remove should log WARNING, not ERROR."""
+
+    async def run_test():
+        monkeypatch.setattr(roles_cog.RoleCog.badge_task, "start", lambda self: None)
+        intents = discord.Intents.none()
+        bot = commands.Bot(command_prefix="!", intents=intents)
+        cog = roles_cog.RoleCog(bot)
+
+        role_id = 42
+        role = SimpleNamespace(id=role_id, name="test")
+
+        guild = SimpleNamespace(id=1)
+        guild.get_role = lambda rid: role if rid == role_id else None
+
+        member = SimpleNamespace(id=99, guild=guild, roles=[role], bot=False)
+
+        async def raise_forbidden(r, reason=None):
+            resp = SimpleNamespace(status=403, reason="Forbidden")
+            raise discord.Forbidden(resp, "Missing permissions")
+
+        member.remove_roles = raise_forbidden
+
+        with caplog.at_level(logging.DEBUG):
+            await cog._remove(member, role_id)
+
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert any("Missing permissions" in r.message for r in warning_records)
+        assert not error_records
 
     asyncio.run(run_test())

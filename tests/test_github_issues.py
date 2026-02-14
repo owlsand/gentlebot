@@ -115,6 +115,19 @@ def test_normalize_message():
     assert norm2 == 'Error: "X" was invalid'
     assert norm3 == "User 'X' with ID N failed"
 
+    # Role name normalization — different usernames should produce same output
+    role_msg1 = "Missing permissions to assign role 123 to H.L. Goldrush. Ensure the bot's role is above"
+    role_msg2 = "Missing permissions to assign role 456 to Miles!. Ensure the bot's role is above"
+    role_msg3 = "Missing permissions to remove role 789 from JaneDoe. Ensure the bot's role is above"
+
+    norm_r1 = _normalize_message(role_msg1)
+    norm_r2 = _normalize_message(role_msg2)
+    norm_r3 = _normalize_message(role_msg3)
+
+    assert norm_r1 == norm_r2  # same fingerprint regardless of username
+    assert "role N to <name>" in norm_r1
+    assert "role N from <name>" in norm_r3
+
 
 # ─── Rate Limiter Tests ────────────────────────────────────────────────────
 

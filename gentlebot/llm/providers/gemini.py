@@ -167,10 +167,12 @@ class GeminiProvider(LLMProvider):
             response = self.client.models.generate_content(
                 model=model, contents=content, config=config
             )
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             status = _extract_status(exc)
             if status == 429:
                 log.warning("Gemini rate-limited (429): %s", exc)
+            elif status == 400:
+                log.warning("Gemini client error (400): %s", exc)
             else:
                 log.exception("Gemini API call failed: %s", exc)
             raise
