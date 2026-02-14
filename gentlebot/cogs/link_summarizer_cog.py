@@ -60,6 +60,10 @@ SKIP_DOMAINS = {
     "i.imgur.com",
     "media.tenor.com",
     "c.tenor.com",
+    # Auth walls / error pages — these return unusable content
+    "x.com",
+    "twitter.com",
+    "reddit.com",
 }
 
 # File extensions to skip (media files that aren't summarizable)
@@ -75,6 +79,11 @@ _summary_cache: Dict[int, Tuple[str, str]] = {}
 
 # Maximum cache size
 MAX_CACHE_SIZE = 200
+
+# URL-level dedup: (channel_id, url) → timestamp of last summary
+# Prevents re-summarizing the same URL within 1 hour, even across messages
+_recent_urls: Dict[Tuple[int, str], datetime] = {}
+_URL_DEDUP_TTL = 3600  # seconds
 
 
 def _extract_domain(url: str) -> str:
@@ -289,6 +298,9 @@ Requirements:
         # Guard against repeated responses for the same message
         if payload.message_id in self._responded_messages:
             return
+        # Claim the slot immediately, BEFORE any await, to prevent race
+        # conditions when multiple users react near-simultaneously.
+        self._responded_messages.append(payload.message_id)
 
         # Get the channel and message first (needed for both cache hit and miss)
         channel = self.bot.get_channel(payload.channel_id)
@@ -315,6 +327,23 @@ Requirements:
             url = urls[0]
             existing_summary = ""
 
+        # URL-level dedup: skip if same URL was summarized recently in this channel
+        now = datetime.now(timezone.utc)
+        url_key = (payload.channel_id, url)
+        # Evict stale entries
+        stale = [k for k, v in _recent_urls.items()
+                 if (now - v).total_seconds() > _URL_DEDUP_TTL]
+        for k in stale:
+            del _recent_urls[k]
+        if url_key in _recent_urls and not existing_summary:
+            log.info("Skipping duplicate URL summary for %s in channel %s",
+                     url[:80], payload.channel_id)
+            try:
+                self._responded_messages.remove(payload.message_id)
+            except ValueError:
+                pass
+            return
+
         # If we already have a summary, use it
         if existing_summary:
             summary = existing_summary
@@ -323,10 +352,30 @@ Requirements:
             content = await asyncio.to_thread(self._fetch_page_content, url)
             if not content:
                 log.warning("Could not fetch content from %s for message %s", _extract_domain(url), payload.message_id)
+                try:
+                    self._responded_messages.remove(payload.message_id)
+                except ValueError:
+                    pass
                 return
             summary = await self._summarize_content(url, content)
 
             if not summary:
+                try:
+                    self._responded_messages.remove(payload.message_id)
+                except ValueError:
+                    pass
+                return
+
+            # Filter out LLM-generated error/apology text
+            _error_phrases = ("could not", "unavailable", "unable to", "error occurred",
+                              "cannot access", "i'm sorry", "i cannot")
+            if any(phrase in summary.lower() for phrase in _error_phrases):
+                log.info("Filtered error summary for %s: %s", url[:80], summary[:100])
+                _summary_cache.pop(payload.message_id, None)
+                try:
+                    self._responded_messages.remove(payload.message_id)
+                except ValueError:
+                    pass
                 return
 
             # Cache the summary
@@ -336,7 +385,6 @@ Requirements:
         domain = _extract_domain(url)
         response = f"📋 **Summary** ({domain})\n\n{summary}"
 
-        self._responded_messages.append(payload.message_id)
         try:
             await message.reply(response, mention_author=False)
             log.info(
@@ -347,8 +395,10 @@ Requirements:
 
             # Remove from cache after sending to avoid duplicate responses
             _summary_cache.pop(payload.message_id, None)
+            # Record URL for cross-message dedup
+            _recent_urls[(payload.channel_id, url)] = datetime.now(timezone.utc)
         except discord.HTTPException as exc:
-            # Allow retry on send failure
+            # Allow retry on send failure by releasing the dedup slot
             try:
                 self._responded_messages.remove(payload.message_id)
             except ValueError:

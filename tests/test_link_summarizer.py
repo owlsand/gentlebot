@@ -29,7 +29,10 @@ def test_should_skip_url_allows_normal_urls():
 
     assert _should_skip_url("https://nytimes.com/article") is False
     assert _should_skip_url("https://github.com/repo") is False
-    assert _should_skip_url("https://twitter.com/status/123") is False
+    # twitter.com, x.com, reddit.com now in SKIP_DOMAINS (auth walls)
+    assert _should_skip_url("https://twitter.com/status/123") is True
+    assert _should_skip_url("https://x.com/status/123") is True
+    assert _should_skip_url("https://reddit.com/r/foo/comments/123") is True
 
 
 def test_url_pattern_matches():
