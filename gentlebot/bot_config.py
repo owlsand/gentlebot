@@ -33,6 +33,7 @@ YAHOO_CLIENT_ID = os.getenv("YAHOO_CLIENT_ID")
 YAHOO_CLIENT_SECRET = os.getenv("YAHOO_CLIENT_SECRET")
 YAHOO_REFRESH_TOKEN = os.getenv("YAHOO_REFRESH_TOKEN")
 YAHOO_LEAGUE_KEY = os.getenv("YAHOO_LEAGUE_KEY")
+YAHOO_FANTASY_WEEKLY_ENABLED = bool_env("YAHOO_FANTASY_WEEKLY_ENABLED", False)
 
 # ─── IDs per environment ──────────────────────────────────────────────────
 if IS_TEST:
@@ -200,7 +201,7 @@ MYSTATS_ENABLED = bool_env("MYSTATS_ENABLED", True)
 
 # ─── Feature Discovery ────────────────────────────────────────────────────
 # Contextual one-time tips and periodic feature spotlights
-FEATURE_DISCOVERY_ENABLED = bool_env("FEATURE_DISCOVERY_ENABLED", True)
+FEATURE_DISCOVERY_ENABLED = bool_env("FEATURE_DISCOVERY_ENABLED", False)
 FEATURE_SPOTLIGHT_INTERVAL_DAYS = int_env("FEATURE_SPOTLIGHT_INTERVAL_DAYS", 5)
 
 # ─── Welcome Back / Lurker Re-engagement ─────────────────────────────────

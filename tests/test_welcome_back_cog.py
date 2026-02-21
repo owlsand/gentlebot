@@ -191,5 +191,5 @@ def test_config_defaults():
     assert cfg.WELCOME_BACK_MIN_GAP_DAYS == 7
     assert cfg.WELCOME_BACK_COOLDOWN_DAYS == 30
     assert cfg.MONTHLY_RECAP_DM_ENABLED is True
-    assert cfg.FEATURE_DISCOVERY_ENABLED is True
+    assert cfg.FEATURE_DISCOVERY_ENABLED is False
     assert cfg.FEATURE_SPOTLIGHT_INTERVAL_DAYS == 5

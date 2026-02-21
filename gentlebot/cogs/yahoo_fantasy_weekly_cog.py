@@ -69,7 +69,7 @@ class YahooFantasyWeeklyCog(commands.Cog):
         self._channel_id = getattr(cfg, "FANTASY_CHANNEL_ID", 0) or getattr(
             cfg, "SPORTS_CHANNEL_ID", 0
         )
-        self._enabled = all(
+        self._enabled = getattr(cfg, "YAHOO_FANTASY_WEEKLY_ENABLED", False) and all(
             (
                 getattr(cfg, "YAHOO_CLIENT_ID", None),
                 getattr(cfg, "YAHOO_CLIENT_SECRET", None),
