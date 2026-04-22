@@ -1019,6 +1019,7 @@ class MarinersGameCog(commands.Cog):
 
     async def _open_game_threads(self) -> None:
         """Create game threads 1 hour before game time."""
+        return  # thread creation disabled
         now = datetime.now(tz=pytz.utc)
 
         try:
