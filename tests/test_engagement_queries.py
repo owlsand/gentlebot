@@ -107,6 +107,14 @@ def test_server_message_count_returns_int():
     pool.fetchval.assert_awaited_once()
 
 
+def test_server_message_count_passes_guild_id():
+    pool = _mock_pool(fetchval=42)
+    asyncio.run(eq.server_message_count(pool, timedelta(days=7), guild_id=123))
+    args = pool.fetchval.await_args.args
+    assert args[1] == timedelta(days=7)
+    assert args[2] == 123
+
+
 def test_unique_posters_returns_int():
     pool = _mock_pool(fetchval=10)
     assert asyncio.run(eq.unique_posters(pool, timedelta(days=7))) == 10
@@ -159,6 +167,15 @@ def test_new_member_count_returns_int():
     assert asyncio.run(eq.new_member_count(pool, timedelta(days=7))) == 3
 
 
+def test_new_member_count_guild_scoped_query():
+    pool = _mock_pool(fetchval=2)
+    result = asyncio.run(eq.new_member_count(pool, timedelta(days=7), guild_id=123))
+    assert result == 2
+    args = pool.fetchval.await_args.args
+    assert args[1] == timedelta(days=7)
+    assert args[2] == 123
+
+
 def test_active_streak_counts_returns_tuple():
     pool = _mock_pool(fetchrow={"total_active": 14, "strong": 5})
     result = asyncio.run(eq.active_streak_counts(pool))
@@ -174,6 +191,15 @@ def test_active_streak_counts_none_row():
 def test_new_hof_count_returns_int():
     pool = _mock_pool(fetchval=2)
     assert asyncio.run(eq.new_hof_count(pool, timedelta(days=7))) == 2
+
+
+def test_new_hof_count_guild_scoped_query():
+    pool = _mock_pool(fetchval=1)
+    result = asyncio.run(eq.new_hof_count(pool, timedelta(days=7), guild_id=321))
+    assert result == 1
+    args = pool.fetchval.await_args.args
+    assert args[1] == timedelta(days=7)
+    assert args[2] == 321
 
 
 def test_user_message_count_returns_int():

@@ -223,3 +223,59 @@ def test_generate_vibe_fallback_on_error():
     ):
         result = asyncio.run(weekly_recap_cog._generate_vibe({}, "TestServer"))
     assert "TestServer" in result
+
+
+def test_recap_queries_are_guild_scoped():
+    """Weekly recap should pass guild_id to message-backed engagement queries."""
+    cog = _make_cog(pool=AsyncMock())
+    guild = _mock_guild()
+
+    with ExitStack() as stack:
+        server_message_count = stack.enter_context(
+            patch.object(eq, "server_message_count", new_callable=AsyncMock, return_value=10)
+        )
+        unique_posters = stack.enter_context(
+            patch.object(eq, "unique_posters", new_callable=AsyncMock, return_value=5)
+        )
+        top_posters = stack.enter_context(
+            patch.object(eq, "top_posters", new_callable=AsyncMock, return_value=[])
+        )
+        top_reaction_receivers = stack.enter_context(
+            patch.object(eq, "top_reaction_receivers", new_callable=AsyncMock, return_value=[])
+        )
+        most_active_channels = stack.enter_context(
+            patch.object(eq, "most_active_channels", new_callable=AsyncMock, return_value=[])
+        )
+        top_reacted_message = stack.enter_context(
+            patch.object(eq, "top_reacted_message", new_callable=AsyncMock, return_value=None)
+        )
+        new_member_count = stack.enter_context(
+            patch.object(eq, "new_member_count", new_callable=AsyncMock, return_value=0)
+        )
+        stack.enter_context(
+            patch.object(eq, "active_streak_counts", new_callable=AsyncMock, return_value=(0, 0))
+        )
+        new_hof_count = stack.enter_context(
+            patch.object(eq, "new_hof_count", new_callable=AsyncMock, return_value=0)
+        )
+        stack.enter_context(
+            patch(
+                "gentlebot.cogs.weekly_recap_cog._generate_vibe",
+                new_callable=AsyncMock,
+                return_value="test vibe",
+            )
+        )
+
+        asyncio.run(cog._build_recap_embed(guild))
+
+    for mock in [
+        server_message_count,
+        unique_posters,
+        top_posters,
+        top_reaction_receivers,
+        most_active_channels,
+        top_reacted_message,
+        new_member_count,
+        new_hof_count,
+    ]:
+        assert mock.await_args.kwargs["guild_id"] == guild.id

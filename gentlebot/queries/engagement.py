@@ -39,7 +39,9 @@ _NON_BOT_FILTER = """
 # Server-wide queries (used by weekly recap)
 # ===================================================================
 
-async def server_message_count(pool: asyncpg.Pool | None, interval: timedelta) -> int:
+async def server_message_count(
+    pool: asyncpg.Pool | None, interval: timedelta, guild_id: int | None = None,
+) -> int:
     """Total non-bot messages in public non-NSFW channels within *interval*."""
     if pool is None:
         return 0
@@ -50,14 +52,18 @@ async def server_message_count(pool: asyncpg.Pool | None, interval: timedelta) -
         {_NON_BOT_JOIN}
         {_PRIVACY_JOIN}
         WHERE m.created_at >= now() - $1::interval
+          AND ($2::bigint IS NULL OR m.guild_id = $2)
         {_NON_BOT_FILTER}
         {_PRIVACY_FILTER}
         """,
         interval,
+        guild_id,
     ) or 0
 
 
-async def unique_posters(pool: asyncpg.Pool | None, interval: timedelta) -> int:
+async def unique_posters(
+    pool: asyncpg.Pool | None, interval: timedelta, guild_id: int | None = None,
+) -> int:
     """Distinct author count in public channels within *interval*."""
     if pool is None:
         return 0
@@ -68,15 +74,20 @@ async def unique_posters(pool: asyncpg.Pool | None, interval: timedelta) -> int:
         {_NON_BOT_JOIN}
         {_PRIVACY_JOIN}
         WHERE m.created_at >= now() - $1::interval
+          AND ($2::bigint IS NULL OR m.guild_id = $2)
         {_NON_BOT_FILTER}
         {_PRIVACY_FILTER}
         """,
         interval,
+        guild_id,
     ) or 0
 
 
 async def top_posters(
-    pool: asyncpg.Pool | None, interval: timedelta, limit: int = 5,
+    pool: asyncpg.Pool | None,
+    interval: timedelta,
+    limit: int = 5,
+    guild_id: int | None = None,
 ) -> list[tuple[int, int]]:
     """Top posters as ``[(author_id, count)]`` sorted desc."""
     if pool is None:
@@ -88,6 +99,7 @@ async def top_posters(
         {_NON_BOT_JOIN}
         {_PRIVACY_JOIN}
         WHERE m.created_at >= now() - $1::interval
+          AND ($3::bigint IS NULL OR m.guild_id = $3)
         {_NON_BOT_FILTER}
         {_PRIVACY_FILTER}
         GROUP BY m.author_id
@@ -96,12 +108,16 @@ async def top_posters(
         """,
         interval,
         limit,
+        guild_id,
     )
     return [(r["author_id"], r["cnt"]) for r in rows]
 
 
 async def top_reaction_receivers(
-    pool: asyncpg.Pool | None, interval: timedelta, limit: int = 5,
+    pool: asyncpg.Pool | None,
+    interval: timedelta,
+    limit: int = 5,
+    guild_id: int | None = None,
 ) -> list[tuple[int, int]]:
     """Top reaction receivers as ``[(author_id, reaction_count)]``."""
     if pool is None:
@@ -115,6 +131,7 @@ async def top_reaction_receivers(
         {_PRIVACY_JOIN}
         WHERE re.event_at >= now() - $1::interval
           AND re.reaction_action = 'MESSAGE_REACTION_ADD'
+          AND ($3::bigint IS NULL OR m.guild_id = $3)
         {_NON_BOT_FILTER}
         {_PRIVACY_FILTER}
         GROUP BY m.author_id
@@ -123,12 +140,16 @@ async def top_reaction_receivers(
         """,
         interval,
         limit,
+        guild_id,
     )
     return [(r["author_id"], r["cnt"]) for r in rows]
 
 
 async def most_active_channels(
-    pool: asyncpg.Pool | None, interval: timedelta, limit: int = 5,
+    pool: asyncpg.Pool | None,
+    interval: timedelta,
+    limit: int = 5,
+    guild_id: int | None = None,
 ) -> list[tuple[int, str, int]]:
     """Most active channels as ``[(channel_id, name, count)]``."""
     if pool is None:
@@ -140,6 +161,7 @@ async def most_active_channels(
         {_NON_BOT_JOIN}
         {_PRIVACY_JOIN}
         WHERE m.created_at >= now() - $1::interval
+          AND ($3::bigint IS NULL OR m.guild_id = $3)
         {_NON_BOT_FILTER}
         {_PRIVACY_FILTER}
         GROUP BY c.channel_id, c.name
@@ -148,12 +170,13 @@ async def most_active_channels(
         """,
         interval,
         limit,
+        guild_id,
     )
     return [(r["channel_id"], r["name"], r["cnt"]) for r in rows]
 
 
 async def top_reacted_message(
-    pool: asyncpg.Pool | None, interval: timedelta,
+    pool: asyncpg.Pool | None, interval: timedelta, guild_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Single most-reacted message in the window.
 
@@ -176,6 +199,7 @@ async def top_reacted_message(
         {_PRIVACY_JOIN}
         WHERE re.event_at >= now() - $1::interval
           AND re.reaction_action = 'MESSAGE_REACTION_ADD'
+          AND ($2::bigint IS NULL OR m.guild_id = $2)
         {_NON_BOT_FILTER}
         {_PRIVACY_FILTER}
         GROUP BY m.message_id, m.channel_id, c.name, m.author_id, m.content
@@ -183,16 +207,37 @@ async def top_reacted_message(
         LIMIT 1
         """,
         interval,
+        guild_id,
     )
     if row is None:
         return None
     return dict(row)
 
 
-async def new_member_count(pool: asyncpg.Pool | None, interval: timedelta) -> int:
-    """Users with ``first_seen_at`` in window."""
+async def new_member_count(
+    pool: asyncpg.Pool | None, interval: timedelta, guild_id: int | None = None,
+) -> int:
+    """Users with ``first_seen_at`` in window (optionally scoped to a guild)."""
     if pool is None:
         return 0
+    if guild_id is not None:
+        return await pool.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT m.author_id, MIN(m.created_at) AS first_msg_at
+                FROM discord.message m
+                JOIN discord."user" u ON u.user_id = m.author_id
+                WHERE m.guild_id = $2
+                  AND u.is_bot IS NOT TRUE
+                GROUP BY m.author_id
+            ) first_seen
+            WHERE first_msg_at >= now() - $1::interval
+            """,
+            interval,
+            guild_id,
+        ) or 0
+
     return await pool.fetchval(
         """
         SELECT COUNT(*)
@@ -223,10 +268,26 @@ async def active_streak_counts(
     return (row["total_active"], row["strong"])
 
 
-async def new_hof_count(pool: asyncpg.Pool | None, interval: timedelta) -> int:
+async def new_hof_count(
+    pool: asyncpg.Pool | None, interval: timedelta, guild_id: int | None = None,
+) -> int:
     """Hall of fame inductions in window."""
     if pool is None:
         return 0
+    if guild_id is not None:
+        return await pool.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM discord.hall_of_fame hof
+            JOIN discord.message m ON m.message_id = hof.message_id
+            WHERE hof.inducted_at >= now() - $1::interval
+              AND hof.inducted_at IS NOT NULL
+              AND m.guild_id = $2
+            """,
+            interval,
+            guild_id,
+        ) or 0
+
     return await pool.fetchval(
         """
         SELECT COUNT(*)
