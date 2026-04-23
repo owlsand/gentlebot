@@ -155,20 +155,21 @@ class WeeklyRecapCog(PoolAwareCog):
     ) -> discord.Embed:
         """Assemble the full weekly recap embed."""
         pool = self.pool
+        guild_id = guild.id
 
         # Current week stats
-        msg_count = await eq.server_message_count(pool, INTERVAL)
-        posters = await eq.unique_posters(pool, INTERVAL)
-        top_post = await eq.top_posters(pool, INTERVAL, limit=5)
-        top_react = await eq.top_reaction_receivers(pool, INTERVAL, limit=5)
-        hot_channels = await eq.most_active_channels(pool, INTERVAL, limit=5)
-        top_msg = await eq.top_reacted_message(pool, INTERVAL)
-        new_members = await eq.new_member_count(pool, INTERVAL)
+        msg_count = await eq.server_message_count(pool, INTERVAL, guild_id=guild_id)
+        posters = await eq.unique_posters(pool, INTERVAL, guild_id=guild_id)
+        top_post = await eq.top_posters(pool, INTERVAL, limit=5, guild_id=guild_id)
+        top_react = await eq.top_reaction_receivers(pool, INTERVAL, limit=5, guild_id=guild_id)
+        hot_channels = await eq.most_active_channels(pool, INTERVAL, limit=5, guild_id=guild_id)
+        top_msg = await eq.top_reacted_message(pool, INTERVAL, guild_id=guild_id)
+        new_members = await eq.new_member_count(pool, INTERVAL, guild_id=guild_id)
         streaks = await eq.active_streak_counts(pool)
-        hof = await eq.new_hof_count(pool, INTERVAL)
+        hof = await eq.new_hof_count(pool, INTERVAL, guild_id=guild_id)
 
         # Previous 14-day total for week-over-week delta
-        prev_msg_count = await eq.server_message_count(pool, PREV_INTERVAL)
+        prev_msg_count = await eq.server_message_count(pool, PREV_INTERVAL, guild_id=guild_id)
 
         # LLM vibe summary
         stats_dict = {
