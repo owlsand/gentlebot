@@ -1,0 +1,41 @@
+name: deploy
+
+# Push to main -> CI builds + pushes the image to GHCR ->
+# a self-hosted runner on pibox pulls + restarts the gentlebot container.
+# Mirrors the mynd deploy process (event-driven, no watchtower polling).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: gentlebot-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 15
+    steps:
+      - name: Pull and restart gentlebot on pibox
+        run: |
+          set -euo pipefail
+          cd /srv/gentlebot
+          docker compose pull gentlebot
+          docker compose up -d gentlebot
+          # Wait for the new container to be running (and healthy, if a
+          # healthcheck is configured) before declaring success.
+          for i in $(seq 1 24); do
+            state=$(docker inspect -f '{{.State.Status}}' gentlebot 2>/dev/null || echo "?")
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' gentlebot 2>/dev/null || echo "?")
+            if [ "$state" = "running" ] && { [ "$health" = "healthy" ] || [ "$health" = "none" ]; }; then
+              echo "gentlebot is $state/$health"
+              break
+            fi
+            sleep 5
+          done
+          docker compose ps gentlebot
