@@ -389,11 +389,11 @@ class GeminiCog(commands.Cog):
             for mention in self.mention_strs:
                 raw = raw.replace(mention, "").strip()
             prompt = raw
-        # 6) Reply to bot: treat as prompt
+        # 6) Reply to bot: disabled per Don (2026-10-01) — no auto-response on replies
         elif message.reference and isinstance(message.reference.resolved, discord.Message):
             ref_msg = message.reference.resolved
             if ref_msg.author.id == self.bot.user.id:
-                prompt = content
+                return
         # 7) DM conversation: treat entire content as prompt
         elif is_dm:
             prompt = content
