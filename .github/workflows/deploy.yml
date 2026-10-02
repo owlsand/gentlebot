@@ -1,0 +1,83 @@
+name: deploy
+
+# Push to main -> CI builds + pushes the image to GHCR ->
+# a self-hosted runner on pibox pulls + restarts the gentlebot container.
+# Mirrors the mynd deploy process (event-driven, no watchtower polling).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gentlebot-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: [self-hosted, Linux, ARM64, pibox]
+    timeout-minutes: 15
+    steps:
+      - name: Select the current main image
+        id: target
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.eventName === 'workflow_run'
+              ? context.payload.workflow_run.head_sha : context.sha;
+            const {data: main} = await github.rest.git.getRef({
+              ...context.repo, ref: 'heads/main'
+            });
+            if (sha !== main.object.sha) {
+              core.notice(`Skipping superseded build ${sha}; main is ${main.object.sha}`);
+              core.setOutput('deploy', 'false');
+              return;
+            }
+            core.setOutput('sha', sha);
+            core.setOutput('deploy', 'true');
+      - name: Pull and restart gentlebot on pibox
+        if: steps.target.outputs.deploy == 'true'
+        env:
+          DEPLOY_SHA: ${{ steps.target.outputs.sha }}
+          DEPLOY_DIR: /srv/gentlebot
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          cd "$DEPLOY_DIR"
+          image="ghcr.io/owlsand/gentlebot:$DEPLOY_SHA"
+          docker pull "$image"
+          expected_image=$(docker image inspect -f '{{.Id}}' "$image")
+          # Persist the selected image for future Compose invocations, without
+          # changing the host's credentials, volumes, or database configuration.
+          override=$(mktemp .deploy-compose.XXXXXX)
+          trap 'rm -f "$override"' EXIT
+          printf 'services:\n  gentlebot:\n    image: %s\n' "$image" > "$override"
+          chmod 644 "$override"
+          mv "$override" docker-compose.override.yml
+          docker compose up -d --no-deps gentlebot
+          # Wait for the new container to be running (and healthy, if a
+          # healthcheck is configured) before declaring success.
+          for i in $(seq 1 24); do
+            state=$(docker inspect -f '{{.State.Status}}' gentlebot 2>/dev/null || echo "?")
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' gentlebot 2>/dev/null || echo "?")
+            actual_image=$(docker inspect -f '{{.Image}}' gentlebot 2>/dev/null || echo "?")
+            if [ "$actual_image" = "$expected_image" ] && [ "$state" = "running" ] && { [ "$health" = "healthy" ] || [ "$health" = "none" ]; }; then
+              echo "gentlebot $DEPLOY_SHA is $state/$health ($actual_image)"
+              docker compose ps gentlebot
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps gentlebot
+          echo "gentlebot $DEPLOY_SHA did not become healthy on the expected image" >&2
+          exit 1
