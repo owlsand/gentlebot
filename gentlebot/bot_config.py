@@ -26,6 +26,20 @@ load_dotenv()
 env = os.getenv("env", "prod").upper()
 IS_TEST = env == "TEST"
 
+# ─── Bot identity ─────────────────────────────────────────────────────────
+# The bot's display name — the name it goes by in Discord and the name
+# every LLM prompt must use when telling the bot who it is. This is the
+# single source of truth for the bot's identity: prompts, system
+# instructions and user-facing self-references must interpolate this
+# variable instead of hardcoding a name, so renaming the bot is a
+# one-place change (here, or via the BOT_NAME env var).
+#
+# It must match the bot's actual Discord username. The bot's Discord
+# username is "Clanker"; when prompts called it "Gentlebot" instead, it
+# insisted it was Gentlebot-not-Clanker and disowned its own earlier
+# messages (which chat history attributes to Clanker).
+BOT_NAME = os.getenv("BOT_NAME", "Clanker").strip() or "Clanker"
+
 # ─── Tokens ───────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")

@@ -323,14 +323,14 @@ class StreakCog(PoolAwareCog):
                 f"who just reached a {milestone}-day engagement streak on Discord. "
                 f"Their total streak is now {streak} days. Be warm and encouraging but concise. "
                 f"Don't use the word 'journey' or start with 'Congratulations'. "
-                f"Sign as 'Gentlebot'."
+                f"Sign as '{cfg.BOT_NAME}'."
             )
             messages = [{"role": "user", "content": prompt}]
             response = router.generate(
                 "general",
                 messages,
                 temperature=0.8,
-                system_instruction="You are Gentlebot, a friendly Discord bot. Write brief, warm celebratory messages.",
+                system_instruction=f"You are {cfg.BOT_NAME}, a friendly Discord bot. Write brief, warm celebratory messages.",
             )
             return response.strip()
         except SafetyBlocked:
@@ -381,7 +381,7 @@ class StreakCog(PoolAwareCog):
         # Try to add LLM-generated personalized message
         llm_message = await self._generate_celebration_message(member, milestone, streak)
         if llm_message:
-            embed.add_field(name="From Gentlebot", value=llm_message, inline=False)
+            embed.add_field(name=f"From {cfg.BOT_NAME}", value=llm_message, inline=False)
 
         embed.set_footer(text="Keep the streak alive!")
         embed.set_thumbnail(url=member.display_avatar.url)

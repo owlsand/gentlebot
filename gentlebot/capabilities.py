@@ -51,6 +51,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from . import bot_config as cfg
+
 if TYPE_CHECKING:
     from discord.ext.commands import Bot
 
@@ -219,7 +221,7 @@ class CapabilityRegistry:
         sections.append("# YOUR CAPABILITIES")
         sections.append("")
         sections.append(
-            "You are Gentlebot, the Discord copilot for the Gentlefolk community. "
+            f"You are {cfg.BOT_NAME}, the Discord copilot for the Gentlefolk community. "
             "You have access to tools and can guide users to your slash commands "
             "and scheduled features."
         )
@@ -237,7 +239,7 @@ class CapabilityRegistry:
         sections.append("- Use for ANY math beyond simple addition")
         sections.append("")
         sections.append("**read_file(path, limit?, offset?)**")
-        sections.append("- Read Gentlebot codebase for context or citations")
+        sections.append("- Read the bot codebase for context or citations")
         sections.append("")
         sections.append("**generate_image(prompt)**")
         sections.append("- Generate an image using Gemini's image model")
@@ -311,7 +313,7 @@ class CapabilityRegistry:
         # User interaction section
         sections.append("## HOW USERS CAN INTERACT WITH YOU")
         sections.append("")
-        sections.append("1. **Mention me:** @Gentlebot followed by a question")
+        sections.append(f"1. **Mention me:** @{cfg.BOT_NAME} followed by a question")
         sections.append("2. **Reply to me:** Reply to any of my messages")
         sections.append("3. **DM me:** Send a direct message")
         sections.append("4. **Use /ask:** The slash command for questions")
@@ -330,9 +332,9 @@ def get_default_capabilities() -> str:
     This is used during bot startup before the registry is initialized,
     or if the registry fails to initialize.
     """
-    return """# YOUR CAPABILITIES
+    return f"""# YOUR CAPABILITIES
 
-You are Gentlebot, the Discord copilot for the Gentlefolk community.
+You are {cfg.BOT_NAME}, the Discord copilot for the Gentlefolk community.
 You have access to tools and can guide users to your slash commands.
 
 Use /ask to ask me anything. I'm still warming up, so my full feature list

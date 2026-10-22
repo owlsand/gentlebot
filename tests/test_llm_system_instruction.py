@@ -1,6 +1,7 @@
-"""Ensure LLMRouter sends the Gentlebot persona as system instruction."""
+"""Ensure LLMRouter sends the bot persona as system instruction."""
 from types import SimpleNamespace
 
+from gentlebot import bot_config as cfg
 import gentlebot.llm.router as llm_router
 
 
@@ -25,7 +26,7 @@ def test_router_includes_system_instruction(monkeypatch):
     router.generate("general", [{"content": "hi"}])
 
     assert captured["system_instruction"].startswith(
-        "You are Gentlebot, a Discord copilot/robot for the Gentlefolk community."
+        f"You are {cfg.BOT_NAME}, a Discord copilot/robot for the Gentlefolk community."
     )
 
 

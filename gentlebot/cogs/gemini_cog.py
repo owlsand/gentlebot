@@ -13,6 +13,7 @@ import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands
+from .. import bot_config as cfg
 from ..util import chan_name, user_name
 from ..llm.router import SafetyBlocked, SYSTEM_INSTRUCTION, router, get_router
 from ..llm.tokenizer import estimate_tokens, truncate_to_token_budget
@@ -179,7 +180,7 @@ class GeminiCog(commands.Cog):
             capabilities_prompt = get_default_capabilities()
 
         return (
-            "You are Gentlebot, a Discord copilot/robot for the Gentlefolk community.\n\n"
+            f"You are {cfg.BOT_NAME}, a Discord copilot/robot for the Gentlefolk community.\n\n"
             "# CONTEXT LAYER\n"
             f"- **Time:** {current_time}\n"
             f"- **Channel:** #{channel_name} (Topic: {topic})\n"
@@ -471,9 +472,9 @@ class GeminiCog(commands.Cog):
                 await message.reply(chunk, files=chunk_files, mention_author=True)
 
     # === Slash command /ask ===
-    @app_commands.command(name="ask", description="Ask Gentlebot a question.")
+    @app_commands.command(name="ask", description=f"Ask {cfg.BOT_NAME} a question.")
     async def ask(self, interaction: discord.Interaction, prompt: str):
-        """Slash command to ask Gentlebot a question."""
+        """Slash command to ask the bot a question."""
         log.info("/ask invoked by %s in %s", user_name(interaction.user), chan_name(interaction.channel))
         await interaction.response.defer()
         sanitized = self.sanitize_prompt(prompt)

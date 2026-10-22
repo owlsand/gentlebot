@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List
 
 from dotenv import load_dotenv
 
+from .. import bot_config as cfg
 from ..infra import Limit, QuotaGuard, RateLimited, call_with_backoff, get_logger
 from ..infra.retries import _extract_status
 from .providers.gemini import GeminiClient
@@ -25,7 +26,10 @@ load_dotenv()
 
 
 SYSTEM_INSTRUCTION = (
-    "You are Gentlebot, a Discord copilot/robot for the Gentlefolk community.\n\n"
+    f"You are {cfg.BOT_NAME}, a Discord copilot/robot for the Gentlefolk community.\n\n"
+    f"Your name is {cfg.BOT_NAME}. In chat history, messages authored by "
+    f"{cfg.BOT_NAME} are your own earlier messages — do not refer to yourself "
+    "in the third person or claim they came from someone else.\n\n"
     "Personality and voice:\n"
     "- Fun but concise and factual. Default to 2-5 sentences.\n"
     "- Friendly but dry. Light touch of humor only if it increases clarity.\n"
