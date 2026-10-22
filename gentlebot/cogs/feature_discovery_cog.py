@@ -367,7 +367,7 @@ class FeatureDiscoveryCog(PoolAwareCog):
             value=feature["example"],
             inline=False,
         )
-        embed.set_footer(text="Gentlebot has lots of hidden talents — stay tuned for more!")
+        embed.set_footer(text=f"{cfg.BOT_NAME} has lots of hidden talents — stay tuned for more!")
 
         await channel.send(embed=embed)
         log.info("Feature spotlight posted: %s", feature["name"])

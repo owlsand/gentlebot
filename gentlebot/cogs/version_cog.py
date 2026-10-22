@@ -11,6 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from .. import bot_config as cfg
 from ..version import VERSION
 from ..util import chan_name, user_name
 
@@ -19,7 +20,7 @@ log = logging.getLogger(f"gentlebot.{__name__}")
 
 
 class VersionCog(commands.Cog):
-    """Slash command to show the running Gentlebot version."""
+    """Slash command to show the running bot version."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -33,7 +34,7 @@ class VersionCog(commands.Cog):
             chan_name(interaction.channel),
         )
         await interaction.response.send_message(
-            f"Gentlebot version: {VERSION}", ephemeral=True
+            f"{cfg.BOT_NAME} version: {VERSION}", ephemeral=True
         )
 
 
