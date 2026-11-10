@@ -449,16 +449,10 @@ class SeahawksGameCog(commands.Cog):
             sea_total = state.get("sea_total", 0)
             opp_total = state.get("opp_total", 0)
             lines.append(f"## Seahawks {sea_total} — {opp_short} {opp_total}")
-            label = self._period_label(state.get("period", 0))
-            clock = state.get("clock", "")
-            if label and clock:
-                lines.append(f"🟢 Live — {label}, {clock} left")
-            elif label:
-                lines.append(f"🟢 Live — {label}")
-            else:
-                lines.append("🟢 Live")
-            lines.append("")
-            lines.extend(_quarter_lines())
+            quarter = _quarter_lines()
+            if quarter:
+                lines.append("")
+                lines.extend(quarter)
             if state.get("last_play"):
                 lines.append("")
                 lines.append(f"Last score: {state['last_play']}")

@@ -460,7 +460,8 @@ def test_edits_message_after_every_score(monkeypatch):
         assert "## Seahawks 7 — Rams 3" in message.edits[-1]
         assert message.edits[-1].index("## Seahawks 7") < message.edits[-1].index("Q1:")
         assert "Q1: SEA 7 - LAR 3" in message.edits[-1]
-        assert "🟢 Live — Q1, 8:12 left" in message.edits[-1]
+        # No separate live line: the Last score line carries quarter + clock.
+        assert "🟢 Live" not in message.edits[-1]
         assert "Last score: Q1 8:12 — Fake TD pass" in message.edits[-1]
         # The projection lives in the preview only; once live it's gone.
         assert "Projected:" not in message.edits[-1]
