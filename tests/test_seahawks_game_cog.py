@@ -495,6 +495,78 @@ def test_edits_message_after_every_score(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_failed_final_edit_retries_next_tick(monkeypatch):
+    async def run_test():
+        cog = _make_cog(monkeypatch)
+        start = PST.localize(datetime(2024, 1, 1, 17, 30)).astimezone(timezone.utc)
+        game = _game(start)
+        monkeypatch.setattr(cog, "fetch_schedule", lambda: [game])
+        monkeypatch.setattr(
+            cog, "fetch_projection",
+            lambda gid: {"sea_score": 24, "opp_score": 21, "sea_win": 0.55, "opp_win": 0.45},
+        )
+
+        channel = FakeChannel()
+        monkeypatch.setattr(cog, "_sports_channel", lambda: channel)
+        now = PST.localize(datetime(2024, 1, 1, 16, 35)).astimezone(timezone.utc)
+        monkeypatch.setattr(cog, "_now", lambda: now)
+
+        await cog._open_game_messages()
+        assert len(channel.sent) == 1
+        message = channel.sent[0]
+
+        # A live score first, so there is a message to edit.
+        monkeypatch.setattr(
+            cog, "fetch_game_state",
+            lambda gid: _state(1, "in", [7], [3], 7, 3, "8:12",
+                               "Q1 8:12 — Fake TD pass"),
+        )
+        await cog._update_scores()
+        assert len(message.edits) == 1
+
+        # Final: the summary fetch works, but the edit fails transiently.
+        monkeypatch.setattr(
+            cog, "fetch_game_state",
+            lambda gid: _state(4, "post", [10, 0, 7, 3], [3, 10, 0, 7], 20, 20, "0:00"),
+        )
+        monkeypatch.setattr(
+            cog, "fetch_game_summary",
+            lambda gid: {
+                "sea_score": 20, "opp_score": 20,
+                "opp_name": "Rams", "opp_abbr": "LAR",
+                "sea_total_yards": "295", "opp_total_yards": "363",
+                "sea_passing_yards": "175", "opp_passing_yards": "148",
+                "sea_rushing_yards": "120", "opp_rushing_yards": "126",
+                "sea_turnovers": "1", "opp_turnovers": "1",
+            },
+        )
+
+        calls = {"n": 0}
+        real_edit = message.edit
+
+        async def flaky_edit(content=None, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise Exception("transient Discord 500")
+            return await real_edit(content, **kwargs)
+
+        message.edit = flaky_edit
+
+        await cog._update_scores()  # final edit fails: game must stay tracked
+        assert len(message.edits) == 1
+        assert "g1" not in cog.done
+        assert "g1" in cog.messages
+        assert "g1" not in cog.final_posted
+
+        await cog._update_scores()  # next tick retries and lands the final
+        assert len(message.edits) == 2
+        assert "Final Score:** Seahawks 20 - Rams 20" in message.edits[-1]
+        assert "g1" in cog.done
+        assert "g1" not in cog.messages
+
+    asyncio.run(run_test())
+
+
 def test_recovers_message_after_restart(monkeypatch):
     async def run_test():
         cog = _make_cog(monkeypatch)

@@ -585,6 +585,15 @@ class SeahawksGameCog(commands.Cog):
         await self.bot.wait_until_ready()
         await self._open_game_messages()
 
+    def _finish_game(self, gid: str) -> None:
+        """Mark a game's final summary posted and stop polling it."""
+        self.final_posted.add(gid)
+        self.messages.pop(gid, None)
+        self.games.pop(gid, None)
+        self.projections.pop(gid, None)
+        self.rendered.pop(gid, None)
+        self.done.add(gid)
+
     async def _update_scores(self) -> None:
         """Edit each tracked game message when its score or status changes."""
         await self._ensure_tracking()
@@ -605,13 +614,16 @@ class SeahawksGameCog(commands.Cog):
                 except Exception:  # pragma: no cover - network
                     log.exception("Failed to fetch final summary for %s", gid)
                     summary = None
-                if summary:
-                    self.final_posted.add(gid)
 
             body = self._render_body(
                 game, self.projections.get(gid), state, summary
             )
             if body == self.rendered.get(gid):
+                # Already rendered (e.g. the final body landed before a
+                # restart adopted this message): if the summary is in
+                # hand, stop polling; otherwise keep retrying it.
+                if state.get("state") == "post" and summary is not None:
+                    self._finish_game(gid)
                 continue
             try:
                 await message.edit(content=body)
@@ -632,14 +644,13 @@ class SeahawksGameCog(commands.Cog):
                 self.rendered[gid] = body
             except Exception:  # pragma: no cover - network
                 log.exception("Failed to edit game message for %s", gid)
+                # Transient edit failure: stay tracked so the next tick
+                # retries instead of dropping the final summary for good.
+                continue
 
-            if state.get("state") == "post" and gid in self.final_posted:
+            if state.get("state") == "post" and summary is not None:
                 # Final summary is in the message; stop polling this game.
-                self.messages.pop(gid, None)
-                self.games.pop(gid, None)
-                self.projections.pop(gid, None)
-                self.rendered.pop(gid, None)
-                self.done.add(gid)
+                self._finish_game(gid)
 
     @tasks.loop(minutes=2)
     async def score_task(self) -> None:
