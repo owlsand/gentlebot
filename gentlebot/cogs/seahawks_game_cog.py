@@ -309,11 +309,11 @@ class SeahawksGameCog(commands.Cog):
                 team = leader.get("team", {})
                 if team.get("abbreviation") == "SEA":
                     for cat in leader.get("leaders", []):
-                        if cat.get("name") == "passingLeader":
+                        if cat.get("name") in ("passingLeader", "passingYards"):
                             athlete = cat.get("leaders", [{}])[0].get("athlete", {})
                             summary["sea_qb"] = athlete.get("displayName", "")
                             summary["sea_qb_stats"] = cat.get("leaders", [{}])[0].get("displayValue", "")
-                        elif cat.get("name") == "rushingLeader":
+                        elif cat.get("name") in ("rushingLeader", "rushingYards"):
                             athlete = cat.get("leaders", [{}])[0].get("athlete", {})
                             summary["sea_rb"] = athlete.get("displayName", "")
                             summary["sea_rb_stats"] = cat.get("leaders", [{}])[0].get("displayValue", "")

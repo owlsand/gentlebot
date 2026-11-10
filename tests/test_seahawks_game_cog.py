@@ -288,7 +288,31 @@ _SUMMARY_PAYLOAD = {
             "clock": {"displayValue": "0:15"},
         },
     ],
-    "leaders": [],
+    "leaders": [
+        {
+            "team": {"abbreviation": "SEA"},
+            "leaders": [
+                {
+                    "name": "passingYards",
+                    "leaders": [
+                        {
+                            "athlete": {"displayName": "Drew Lock"},
+                            "displayValue": "19/28, 175 YDS, 1 TD",
+                        }
+                    ],
+                },
+                {
+                    "name": "rushingYards",
+                    "leaders": [
+                        {
+                            "athlete": {"displayName": "Zach Charbonnet"},
+                            "displayValue": "16 CAR, 77 YDS",
+                        }
+                    ],
+                },
+            ],
+        }
+    ],
 }
 
 
@@ -339,6 +363,10 @@ def test_final_summary_uses_header_score(monkeypatch):
     assert summary["sea_passing_yards"] == "175"
     assert summary["sea_rushing_yards"] == "120"
     assert summary["sea_total_yards"] == "295"
+    assert summary["sea_qb"] == "Drew Lock"
+    assert summary["sea_qb_stats"] == "19/28, 175 YDS, 1 TD"
+    assert summary["sea_rb"] == "Zach Charbonnet"
+    assert summary["sea_rb_stats"] == "16 CAR, 77 YDS"
 
 
 def test_edits_message_after_every_score(monkeypatch):
