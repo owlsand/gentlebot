@@ -84,7 +84,8 @@ def test_posts_single_message_with_projection(monkeypatch):
         # guard for the old per-game thread behaviour.
         assert not hasattr(channel, "create_thread")
 
-        now = PST.localize(datetime(2024, 1, 1, 9, 5)).astimezone(timezone.utc)
+        # The preview posts in the hour before kickoff, not at 9 AM.
+        now = PST.localize(datetime(2024, 1, 1, 16, 35)).astimezone(timezone.utc)
         monkeypatch.setattr(cog, "_now", lambda: now)
 
         await cog._open_game_messages()
@@ -95,6 +96,33 @@ def test_posts_single_message_with_projection(monkeypatch):
         assert "Win odds: Seahawks 55.0%, Rams 45.0%" in body
         assert "Live score updates will land here as the game goes." in body
         assert cog.messages["g1"] is channel.sent[0]
+
+    asyncio.run(run_test())
+
+
+def test_preview_waits_until_one_hour_before_kickoff(monkeypatch):
+    async def run_test():
+        cog = _make_cog(monkeypatch)
+        start = PST.localize(datetime(2024, 1, 1, 17, 30)).astimezone(timezone.utc)
+        monkeypatch.setattr(cog, "fetch_schedule", lambda: [_game(start)])
+        projection = {"sea_score": 24, "opp_score": 21, "sea_win": 0.55, "opp_win": 0.45}
+        monkeypatch.setattr(cog, "fetch_projection", lambda gid: projection)
+
+        channel = FakeChannel()
+        monkeypatch.setattr(cog, "_sports_channel", lambda: channel)
+        clock = {"now": PST.localize(datetime(2024, 1, 1, 9, 5)).astimezone(timezone.utc)}
+        monkeypatch.setattr(cog, "_now", lambda: clock["now"])
+
+        await cog._open_game_messages()
+        assert channel.sent == []  # 9 AM is too early; preview waits
+
+        clock["now"] = PST.localize(datetime(2024, 1, 1, 16, 29)).astimezone(timezone.utc)
+        await cog._open_game_messages()
+        assert channel.sent == []  # 61 minutes out is still too early
+
+        clock["now"] = PST.localize(datetime(2024, 1, 1, 16, 35)).astimezone(timezone.utc)
+        await cog._open_game_messages()
+        assert len(channel.sent) == 1  # inside the hour: posted
 
     asyncio.run(run_test())
 
@@ -382,7 +410,8 @@ def test_edits_message_after_every_score(monkeypatch):
 
         channel = FakeChannel()
         monkeypatch.setattr(cog, "_sports_channel", lambda: channel)
-        now = PST.localize(datetime(2024, 1, 1, 9, 5)).astimezone(timezone.utc)
+        # Opener posts in the hour before kickoff.
+        now = PST.localize(datetime(2024, 1, 1, 16, 35)).astimezone(timezone.utc)
         monkeypatch.setattr(cog, "_now", lambda: now)
 
         await cog._open_game_messages()
@@ -433,7 +462,8 @@ def test_edits_message_after_every_score(monkeypatch):
         assert "Q1: SEA 7 - LAR 3" in message.edits[-1]
         assert "🟢 Live — Q1, 8:12 left" in message.edits[-1]
         assert "Last score: Q1 8:12 — Fake TD pass" in message.edits[-1]
-        assert "Projected: Seahawks 24 - Rams 21 · Win odds: SEA 55.0%" in message.edits[-1]
+        # The projection lives in the preview only; once live it's gone.
+        assert "Projected:" not in message.edits[-1]
 
         await cog._update_scores()  # unchanged: still 1 edit
         assert len(message.edits) == 1
@@ -453,6 +483,7 @@ def test_edits_message_after_every_score(monkeypatch):
         assert "🤝 **TIE GAME**" in message.edits[-1]
         assert "Final Score:** Seahawks 20 - Rams 20" in message.edits[-1]
         assert "Passing: SEA 175 | LAR 148" in message.edits[-1]
+        assert "Projected score:" not in message.edits[-1]
         assert "g1" in cog.done
         assert "g1" not in cog.messages
 
@@ -470,10 +501,6 @@ def test_recovers_message_after_restart(monkeypatch):
         start = PST.localize(datetime(2024, 1, 1, 17, 30)).astimezone(timezone.utc)
         game = _game(start)
         monkeypatch.setattr(cog, "fetch_schedule", lambda: [game])
-        monkeypatch.setattr(
-            cog, "fetch_projection",
-            lambda gid: {"sea_score": 24, "opp_score": 21, "sea_win": 0.55, "opp_win": 0.45},
-        )
         monkeypatch.setattr(cog, "_now", lambda: now)
 
         # The 9 AM opener, as it sits in channel history after a restart.

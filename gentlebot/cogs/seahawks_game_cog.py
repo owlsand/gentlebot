@@ -1,11 +1,12 @@
 """Seahawks game day updates in a single channel message, edited live.
 
-One message per game is posted to the sports channel on game day morning
-with the projected score and win odds. The score task then edits that same
-message whenever the score changes (and at the end of each quarter), so the
-channel stays clean instead of spawning a thread per game plus a message
-per quarter. At the final whistle the message is edited once more with the
-full post-game summary.
+One message per game is posted to the sports channel an hour before
+kickoff with the projected score and win odds. The score task then edits
+that same message whenever the score changes (and at the end of each
+quarter), so the channel stays clean instead of spawning a thread per game
+plus a message per quarter. Once the game starts the projection is dropped:
+the live message leads with the current score, and at the final whistle it
+is edited once more with the full post-game summary.
 
 Score data comes from ESPN's site summary API. The per-quarter linescores
 and totals live under ``header.competitions[0].competitors`` (the
@@ -16,7 +17,7 @@ and passing yards are reported as ``netPassingYards``.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import asyncio
@@ -432,7 +433,6 @@ class SeahawksGameCog(commands.Cog):
             return out
 
         if game_state == "post":
-            lines.extend(_projection_lines())
             lines.append("")
             lines.extend(_quarter_lines())
             if summary:
@@ -462,13 +462,6 @@ class SeahawksGameCog(commands.Cog):
             if state.get("last_play"):
                 lines.append("")
                 lines.append(f"Last score: {state['last_play']}")
-            if proj:
-                lines.append("")
-                lines.append(
-                    f"Projected: Seahawks {proj['sea_score']:.0f} - "
-                    f"{opp_short} {proj['opp_score']:.0f} · "
-                    f"Win odds: SEA {proj['sea_win']*100:.1f}%"
-                )
             return "\n".join(lines)
 
         lines.extend(_projection_lines())
@@ -493,8 +486,9 @@ class SeahawksGameCog(commands.Cog):
         for g in games:
             if g["id"] in self.opened:
                 continue
-            start_pst = g["start"].astimezone(PST)
-            open_time = PST.localize(datetime.combine(start_pst.date(), time(9, 0))).astimezone(timezone.utc)
+            # The preview lands an hour before kickoff: post once the game
+            # is within an hour and hasn't started yet.
+            open_time = g["start"] - timedelta(hours=1)
             if not (open_time <= now < g["start"]):
                 continue
             channel = self._sports_channel()
@@ -540,7 +534,9 @@ class SeahawksGameCog(commands.Cog):
         Only runs when nothing is currently tracked (a restart clears the
         in-memory state). For a game that kicked off within the window,
         adopt its message from channel history, or post a fresh one if the
-        bot was down when the 9 AM post should have gone out.
+        bot was down when the preview should have gone out. No projection
+        is needed here: once a game is live or final the message carries
+        the score, not the preview.
         """
         if self.messages:
             return
@@ -570,24 +566,14 @@ class SeahawksGameCog(commands.Cog):
             if state.get("state") not in ("in", "post"):
                 continue
             message = await self._adopt_message(channel, g)
-            try:
-                proj = self.fetch_projection(gid)
-            except Exception:  # pragma: no cover - network
-                log.exception("Failed to fetch projection for %s", g["short"])
-                proj = None
             if message is not None:
-                if proj is None:
-                    # Without the projection the next render would strip
-                    # the opener's projection lines; retry next tick.
-                    continue
                 self.messages[gid] = message
                 self.games[gid] = g
-                self.projections[gid] = proj
                 self.rendered[gid] = message.content
                 self.opened.add(gid)
                 log.info("Recovered Seahawks game message for %s", g["short"])
             else:
-                body = self._opening_message(proj, g)
+                body = self._opening_message(None, g)
                 try:
                     message = await channel.send(body)
                 except Exception:  # pragma: no cover - network
@@ -596,13 +582,11 @@ class SeahawksGameCog(commands.Cog):
                 self.opened.add(gid)
                 self.messages[gid] = message
                 self.games[gid] = g
-                if proj is not None:
-                    self.projections[gid] = proj
                 self.rendered[gid] = body
                 log.info("Posted late Seahawks game message for %s", g["short"])
 
     # ---- background loop -------------------------------------------------------
-    @tasks.loop(minutes=30)
+    @tasks.loop(minutes=5)
     async def game_task(self) -> None:
         await self.bot.wait_until_ready()
         await self._open_game_messages()
