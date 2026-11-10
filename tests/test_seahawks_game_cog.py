@@ -427,23 +427,26 @@ def test_edits_message_after_every_score(monkeypatch):
 
         await cog._update_scores()  # Q1 7-3
         assert len(message.edits) == 1
+        # The live score is the headline, ahead of the quarter lines.
+        assert "## Seahawks 7 — Rams 3" in message.edits[-1]
+        assert message.edits[-1].index("## Seahawks 7") < message.edits[-1].index("Q1:")
         assert "Q1: SEA 7 - LAR 3" in message.edits[-1]
-        assert "Total: Seahawks 7 - Rams 3" in message.edits[-1]
         assert "🟢 Live — Q1, 8:12 left" in message.edits[-1]
         assert "Last score: Q1 8:12 — Fake TD pass" in message.edits[-1]
+        assert "Projected: Seahawks 24 - Rams 21 · Win odds: SEA 55.0%" in message.edits[-1]
 
         await cog._update_scores()  # unchanged: still 1 edit
         assert len(message.edits) == 1
 
         await cog._update_scores()  # second score in Q1
         assert len(message.edits) == 2
+        assert "## Seahawks 10 — Rams 3" in message.edits[-1]
         assert "Q1: SEA 10 - LAR 3" in message.edits[-1]
-        assert "Total: Seahawks 10 - Rams 3" in message.edits[-1]
 
         await cog._update_scores()  # Q2
         assert len(message.edits) == 3
+        assert "## Seahawks 10 — Rams 13" in message.edits[-1]
         assert "Q2: SEA 0 - LAR 10" in message.edits[-1]
-        assert "Total: Seahawks 10 - Rams 13" in message.edits[-1]
 
         await cog._update_scores()  # final: summary edited in, game done
         assert len(message.edits) == 4

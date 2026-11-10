@@ -400,29 +400,41 @@ class SeahawksGameCog(commands.Cog):
         state: Dict[str, Any],
         summary: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Render the full message body for the game's current state."""
+        """Render the full message body for the game's current state.
+
+        While the game is live the current score is the headline, right
+        under the matchup line; quarter lines and the projection sit below
+        it as supporting detail.
+        """
         start_pst = game["start"].astimezone(PST)
         opp_abbr = game.get("opp_abbr", "OPP")
-        lines = [self._game_header(game["short"], start_pst)]
-        if proj:
-            lines.append(
-                f"Projected score: Seahawks {proj['sea_score']:.0f} - "
-                f"{game['opponent']} {proj['opp_score']:.0f}"
-            )
-            lines.append(
-                f"Win odds: Seahawks {proj['sea_win']*100:.1f}%, "
-                f"{game['opponent']} {proj['opp_win']*100:.1f}%"
-            )
-        lines.append("")
-
+        opp_short = game["opponent"].split()[-1]
+        game_state = state.get("state", "")
         sea_lines = state.get("sea_lines", [])
         opp_lines = state.get("opp_lines", [])
-        for idx in range(min(len(sea_lines), len(opp_lines))):
-            label = self._period_label(idx + 1)
-            lines.append(f"{label}: SEA {sea_lines[idx]} - {opp_abbr} {opp_lines[idx]}")
+        lines = [self._game_header(game["short"], start_pst)]
 
-        game_state = state.get("state", "")
+        def _projection_lines() -> List[str]:
+            if not proj:
+                return []
+            return [
+                f"Projected score: Seahawks {proj['sea_score']:.0f} - "
+                f"{game['opponent']} {proj['opp_score']:.0f}",
+                f"Win odds: Seahawks {proj['sea_win']*100:.1f}%, "
+                f"{game['opponent']} {proj['opp_win']*100:.1f}%",
+            ]
+
+        def _quarter_lines() -> List[str]:
+            out = []
+            for idx in range(min(len(sea_lines), len(opp_lines))):
+                label = self._period_label(idx + 1)
+                out.append(f"{label}: SEA {sea_lines[idx]} - {opp_abbr} {opp_lines[idx]}")
+            return out
+
         if game_state == "post":
+            lines.extend(_projection_lines())
+            lines.append("")
+            lines.extend(_quarter_lines())
             if summary:
                 lines.append("")
                 lines.append(self._format_final_summary(summary))
@@ -433,14 +445,10 @@ class SeahawksGameCog(commands.Cog):
                 )
             return "\n".join(lines)
 
-        if sea_lines or opp_lines:
-            lines.append(
-                f"Total: Seahawks {state.get('sea_total', 0)} - "
-                f"{game['opponent']} {state.get('opp_total', 0)}"
-            )
-            lines.append("")
-
         if game_state == "in":
+            sea_total = state.get("sea_total", 0)
+            opp_total = state.get("opp_total", 0)
+            lines.append(f"## Seahawks {sea_total} — {opp_short} {opp_total}")
             label = self._period_label(state.get("period", 0))
             clock = state.get("clock", "")
             if label and clock:
@@ -449,10 +457,23 @@ class SeahawksGameCog(commands.Cog):
                 lines.append(f"🟢 Live — {label}")
             else:
                 lines.append("🟢 Live")
+            lines.append("")
+            lines.extend(_quarter_lines())
             if state.get("last_play"):
+                lines.append("")
                 lines.append(f"Last score: {state['last_play']}")
-        else:
-            lines.append("Live score updates will land here as the game goes.")
+            if proj:
+                lines.append("")
+                lines.append(
+                    f"Projected: Seahawks {proj['sea_score']:.0f} - "
+                    f"{opp_short} {proj['opp_score']:.0f} · "
+                    f"Win odds: SEA {proj['sea_win']*100:.1f}%"
+                )
+            return "\n".join(lines)
+
+        lines.extend(_projection_lines())
+        lines.append("")
+        lines.append("Live score updates will land here as the game goes.")
         return "\n".join(lines)
 
     def _sports_channel(self) -> Optional[discord.TextChannel]:
